@@ -34,9 +34,14 @@ internal sealed class BranchNameBuilder
     /// </summary>
     internal static string BuildSlug(string request)
     {
+        var timeout = TimeSpan.FromSeconds(1);
         var kebab = (request ?? string.Empty).Truncate(60, string.Empty).ToKebabCase();
-        var filtered = new string(kebab.ToLowerInvariant().Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-').ToArray());
-        filtered = filtered.Trim('-').Truncate(40, string.Empty);
-        return filtered.Length == 0 ? "task" : filtered;
+        var spacedOut = System.Text.RegularExpressions.Regex.Replace(kebab, @"\s+", "-", default, timeout);
+        var filtered = new string(spacedOut.ToLowerInvariant()
+            .Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-')
+            .ToArray());
+        var collapsed = System.Text.RegularExpressions.Regex.Replace(filtered, "-{2,}", "-", default, timeout)
+            .Trim('-').Truncate(40, string.Empty);
+        return collapsed.Length == 0 ? "task" : collapsed;
     }
 }

@@ -74,7 +74,9 @@ internal sealed class PathSandbox : IPathSandbox
             while (!string.IsNullOrEmpty(directory) &&
                    directory.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             {
-                if (Directory.ResolveLinkTarget(directory, returnFinalTarget: true) is { } target &&
+                // Directories that do not exist yet are being created fresh and cannot hide a link.
+                if (Directory.Exists(directory) &&
+                    Directory.ResolveLinkTarget(directory, returnFinalTarget: true) is { } target &&
                     !target.FullName.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
@@ -95,7 +97,7 @@ internal sealed class PathSandbox : IPathSandbox
         }
         catch
         {
-            // A path that cannot be inspected is treated as unsafe.
+            // An existing path that cannot be inspected is treated as unsafe.
             return true;
         }
 

@@ -24,7 +24,6 @@ internal sealed class CommandPolicy : ICommandPolicy
         "git push --force",
         "git push -f",
         "git branch -d",
-        "git branch -d",
         "git checkout -- .",
     ];
 

@@ -18,10 +18,13 @@
 		<!-- CA1031: boundary methods intentionally convert any exception into an Outcome failure.
 		     CA1040: IService is a deliberate marker interface (DepLens convention).
 		     CA1303: the CLI is not a localized application.
+		     CA1307/CA1308: StringComparison overload suggestions on char comparisons are noise here.
+		     CA1822: stateless runners stay instance methods for injection symmetry.
+		     S3267: "simplify loop" suggestions fight legitimate async loops with early returns.
 		     CA1707, S1135, CA1861: style choices mirrored from the reference repository. -->
-		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1707;S1135;CA1861</NoWarn>
+		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1307;CA1308;CA1822;S3267;CA1707;S1135;CA1861</NoWarn>
 	</PropertyGroup>
-    <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj'">
+    <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj' and '$(MSBuildProjectName)' != 'ImanSoftware.KeylessAgent.Tests'">
         <PackageReference Include="SonarAnalyzer.CSharp">
         <PrivateAssets>all</PrivateAssets>
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

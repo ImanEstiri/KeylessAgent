@@ -68,7 +68,7 @@ internal sealed class BackupService : IBackupService
         if (stampFolders.IsFailure)
             return Outcome.Failure<IReadOnlyList<string>>(stampFolders.Error);
 
-        var newest = stampFolders.Data!
+        var newest = stampFolders.Data
             .OrderByDescending(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
 
@@ -83,7 +83,7 @@ internal sealed class BackupService : IBackupService
             return Outcome.Failure<IReadOnlyList<string>>(files.Error);
 
         var restored = new List<string>();
-        foreach (var file in files.Data!)
+        foreach (var file in files.Data)
         {
             var relative = Path.GetRelativePath(newest, file.FullPath);
             var target = Path.Combine(workspaceRoot, relative);

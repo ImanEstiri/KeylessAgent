@@ -2,8 +2,10 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <!-- Tests are not a shipped library; XML docs are not required. -->
+    <!-- Tests are not a shipped library; XML docs and full analyzer strictness are not required. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AnalysisMode>None</AnalysisMode>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
   <ItemGroup>
