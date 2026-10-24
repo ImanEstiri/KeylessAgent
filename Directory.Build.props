@@ -15,7 +15,11 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 	<PropertyGroup>
-		<NoWarn>$(NoWarn);CA1873;CA2007</NoWarn>
+		<!-- CA1031: boundary methods intentionally convert any exception into an Outcome failure.
+		     CA1040: IService is a deliberate marker interface (DepLens convention).
+		     CA1303: the CLI is not a localized application.
+		     CA1707, S1135, CA1861: style choices mirrored from the reference repository. -->
+		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1707;S1135;CA1861</NoWarn>
 	</PropertyGroup>
     <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj'">
         <PackageReference Include="SonarAnalyzer.CSharp">

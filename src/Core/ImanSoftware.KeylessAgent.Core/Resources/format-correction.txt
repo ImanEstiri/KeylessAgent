@@ -1,0 +1,6 @@
+[KEYLESSAGENT FORMAT ERROR]
+Your last response was rejected. Nothing was executed.
+Problems:
+{problems}
+{truncationAdvice}
+Resend your COMPLETE response using only AgentScript v1. Do not apologize or explain. Do not add text outside blocks.

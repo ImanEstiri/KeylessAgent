@@ -1,8 +1,8 @@
 namespace ImanSoftware.KeylessAgent.Playground;
 
-internal class Program
+internal static class Program
 {
-    static async Task<int> Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         await Task.CompletedTask;
         Console.WriteLine("KeylessAgent Playground — placeholder (fake chat provider is wired in phase 5).");
