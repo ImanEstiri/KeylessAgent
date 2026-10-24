@@ -77,6 +77,9 @@ public static class ErrorCodes
     /// <summary>The user declined a command that needed confirmation.</summary>
     public const string CommandDeclined = "KA_COMMAND_DECLINED";
 
+    /// <summary>An external command ran but returned a non-zero exit code.</summary>
+    public const string CommandFailed = "KA_COMMAND_FAILED";
+
     /// <summary>An operation was blocked because the current branch is protected.</summary>
     public const string BranchProtected = "KA_BRANCH_PROTECTED";
 
