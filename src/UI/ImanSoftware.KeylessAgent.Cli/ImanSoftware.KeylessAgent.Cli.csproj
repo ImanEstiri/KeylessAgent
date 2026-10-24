@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Spectre.Console.Cli" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>keyless</ToolCommandName>
+    <PackageId>ImanSoftware.KeylessAgent.Cli</PackageId>
+    <Version>1.0.0</Version>
+    <Description>KeylessAgent: a coding agent that works through your own logged-in DeepSeek web chat instead of an API key. Applies model replies to your workspace using a strict command language, on a protected agent branch.</Description>
+    <PackageTags>ai-agent;coding-agent;deepseek;playwright;cli;dotnet-tool;keyless</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+</Project>
