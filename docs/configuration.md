@@ -13,6 +13,8 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",
     "ReplyTimeoutSeconds": 300,
+    "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
+    "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
     "MinDelayMs": 400,              // random human-like delay between actions
     "MaxDelayMs": 1500,
     "MaxMessagesPerMinute": 6,      // local rate limiter

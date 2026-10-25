@@ -1,0 +1,2106 @@
+Folder PATH listing for volume Local Disk
+Volume serial number is C0AD-37BC
+G:.
+|   .editorconfig
+|   .gitattributes
+|   .gitignore
+|   code-dump-result.md
+|   code-dump.bat
+|   Directory.Build.props
+|   Directory.Packages.props
+|   global.json
+|   KeylessAgent.slnx
+|   LICENSE
+|   LICENSE.txt
+|   nuget.config
+|   publish.ps1
+|   README.md
+|   tree.txt
+|   
++---.github
+|   \---workflows
+|           build-and-test.yml
+|           
++---artifacts
++---docs
+|       agentscript-spec.md
+|       architecture.md
+|       browser-automation.md
+|       configuration.md
+|       git-workflow.md
+|       security.md
+|       
+\---src
+    +---Core
+    |   +---ImanSoftware.KeylessAgent.Abstractions
+    |   |   |   ImanSoftware.KeylessAgent.Abstractions.csproj
+    |   |   |   
+    |   |   +---bin
+    |   |   |   +---Debug
+    |   |   |   |   \---net10.0
+    |   |   |   |           ImanSoftware.KeylessAgent.Abstractions.deps.json
+    |   |   |   |           ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |   |           ImanSoftware.KeylessAgent.Abstractions.pdb
+    |   |   |   |           ImanSoftware.KeylessAgent.Abstractions.xml
+    |   |   |   |           
+    |   |   |   \---Release
+    |   |   |       \---net10.0
+    |   |   |               ImanSoftware.KeylessAgent.Abstractions.deps.json
+    |   |   |               ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |               ImanSoftware.KeylessAgent.Abstractions.pdb
+    |   |   |               ImanSoftware.KeylessAgent.Abstractions.xml
+    |   |   |               
+    |   |   +---Models
+    |   |   |   |   ErrorCodes.cs
+    |   |   |   |   
+    |   |   |   +---Agent
+    |   |   |   |       AgentProgressEvent.cs
+    |   |   |   |       AgentSession.cs
+    |   |   |   |       AgentTurnResult.cs
+    |   |   |   |       ConfirmRequest.cs
+    |   |   |   |       FileChange.cs
+    |   |   |   |       
+    |   |   |   +---Chat
+    |   |   |   |       ChatSessionOptions.cs
+    |   |   |   |       
+    |   |   |   +---Configuration
+    |   |   |   |       KeylessOptions.cs
+    |   |   |   |       
+    |   |   |   +---Enums
+    |   |   |   |       AgentEventType.cs
+    |   |   |   |       ApprovalMode.cs
+    |   |   |   |       CommandKind.cs
+    |   |   |   |       CommandStatus.cs
+    |   |   |   |       SnapshotMode.cs
+    |   |   |   |       
+    |   |   |   +---Execution
+    |   |   |   |       AgentExecutionContext.cs
+    |   |   |   |       CommandExecutionResult.cs
+    |   |   |   |       
+    |   |   |   +---Git
+    |   |   |   |       GitRepositoryInfo.cs
+    |   |   |   |       
+    |   |   |   +---Parser
+    |   |   |   |       AgentScriptCommand.cs
+    |   |   |   |       AgentScriptParseResult.cs
+    |   |   |   |       FormatGuardResult.cs
+    |   |   |   |       FormatProblem.cs
+    |   |   |   |       
+    |   |   |   \---Snapshot
+    |   |   |           SnapshotAttachment.cs
+    |   |   |           
+    |   |   +---obj
+    |   |   |   |   ImanSoftware.KeylessAgent.Abstractions.csproj.nuget.dgspec.json
+    |   |   |   |   ImanSoftware.KeylessAgent.Abstractions.csproj.nuget.g.props
+    |   |   |   |   ImanSoftware.KeylessAgent.Abstractions.csproj.nuget.g.targets
+    |   |   |   |   project.assets.json
+    |   |   |   |   project.nuget.cache
+    |   |   |   |   
+    |   |   |   +---Debug
+    |   |   |   |   \---net10.0
+    |   |   |   |       |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.AssemblyInfo.cs
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.AssemblyInfoInputs.cache
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.assets.cache
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.csproj.AssemblyReference.cache
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.csproj.CoreCompileInputs.cache
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.csproj.FileListAbsolute.txt
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.GeneratedMSBuildEditorConfig.editorconfig
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.GlobalUsings.g.cs
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.sourcelink.json
+    |   |   |   |       |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |   |   |   |       |   
+    |   |   |   |       +---ref
+    |   |   |   |       |       ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |   |       |       
+    |   |   |   |       \---refint
+    |   |   |   |               ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |   |               
+    |   |   |   \---Release
+    |   |   |       \---net10.0
+    |   |   |           |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.AssemblyInfo.cs
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.AssemblyInfoInputs.cache
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.assets.cache
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.csproj.AssemblyReference.cache
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.csproj.CoreCompileInputs.cache
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.csproj.FileListAbsolute.txt
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.GeneratedMSBuildEditorConfig.editorconfig
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.GlobalUsings.g.cs
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.sourcelink.json
+    |   |   |           |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |   |   |           |   
+    |   |   |           +---ref
+    |   |   |           |       ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |           |       
+    |   |   |           \---refint
+    |   |   |                   ImanSoftware.KeylessAgent.Abstractions.dll
+    |   |   |                   
+    |   |   +---Properties
+    |   |   \---Services
+    |   |           IAgentLoop.cs
+    |   |           IAgentScriptParser.cs
+    |   |           IAgentUserInterface.cs
+    |   |           IBackupService.cs
+    |   |           IBranchGuard.cs
+    |   |           IChatProvider.cs
+    |   |           ICommandPolicy.cs
+    |   |           IConfigurationService.cs
+    |   |           IGitService.cs
+    |   |           IPathSandbox.cs
+    |   |           IReplyExtractor.cs
+    |   |           IResultFormatter.cs
+    |   |           IService.cs
+    |   |           ISessionStore.cs
+    |   |           ISnapshotService.cs
+    |   |           IWorkspaceCommandExecutor.cs
+    |   |           
+    |   \---ImanSoftware.KeylessAgent.Core
+    |       |   ImanSoftware.KeylessAgent.Core.csproj
+    |       |   
+    |       +---bin
+    |       |   +---Debug
+    |       |   |   \---net10.0
+    |       |   |       |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |       |   |       |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |       |   |       |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.deps.json
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.dll
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.xml
+    |       |   |       |   playwright.ps1
+    |       |   |       |   
+    |       |   |       \---.playwright
+    |       |   |           +---node
+    |       |   |           |   |   LICENSE
+    |       |   |           |   |   
+    |       |   |           |   \---win32_x64
+    |       |   |           |           node.exe
+    |       |   |           |           
+    |       |   |           \---package
+    |       |   |               |   browsers.json
+    |       |   |               |   cli.js
+    |       |   |               |   index.d.ts
+    |       |   |               |   index.js
+    |       |   |               |   index.mjs
+    |       |   |               |   LICENSE
+    |       |   |               |   NOTICE
+    |       |   |               |   package.json
+    |       |   |               |   README.md
+    |       |   |               |   ThirdPartyNotices.txt
+    |       |   |               |   
+    |       |   |               +---bin
+    |       |   |               |       install_media_pack.ps1
+    |       |   |               |       install_webkit_wsl.ps1
+    |       |   |               |       reinstall_chrome_beta_linux.sh
+    |       |   |               |       reinstall_chrome_beta_mac.sh
+    |       |   |               |       reinstall_chrome_beta_win.ps1
+    |       |   |               |       reinstall_chrome_stable_linux.sh
+    |       |   |               |       reinstall_chrome_stable_mac.sh
+    |       |   |               |       reinstall_chrome_stable_win.ps1
+    |       |   |               |       reinstall_msedge_beta_linux.sh
+    |       |   |               |       reinstall_msedge_beta_mac.sh
+    |       |   |               |       reinstall_msedge_beta_win.ps1
+    |       |   |               |       reinstall_msedge_dev_linux.sh
+    |       |   |               |       reinstall_msedge_dev_mac.sh
+    |       |   |               |       reinstall_msedge_dev_win.ps1
+    |       |   |               |       reinstall_msedge_stable_linux.sh
+    |       |   |               |       reinstall_msedge_stable_mac.sh
+    |       |   |               |       reinstall_msedge_stable_win.ps1
+    |       |   |               |       
+    |       |   |               +---lib
+    |       |   |               |   |   bootstrap.js
+    |       |   |               |   |   coreBundle.js
+    |       |   |               |   |   package.js
+    |       |   |               |   |   serverRegistry.js
+    |       |   |               |   |   serverRegistry.js.LICENSE
+    |       |   |               |   |   utilsBundle.js
+    |       |   |               |   |   utilsBundle.js.LICENSE
+    |       |   |               |   |   webp_codec.LICENSE
+    |       |   |               |   |   webp_codec.wasm
+    |       |   |               |   |   xdg-open
+    |       |   |               |   |   
+    |       |   |               |   +---entry
+    |       |   |               |   |       cliDaemon.js
+    |       |   |               |   |       dashboardApp.js
+    |       |   |               |   |       mcp.js
+    |       |   |               |   |       oopBrowserDownload.js
+    |       |   |               |   |       
+    |       |   |               |   +---server
+    |       |   |               |   |   +---chromium
+    |       |   |               |   |   |       appIcon.png
+    |       |   |               |   |   |       
+    |       |   |               |   |   \---electron
+    |       |   |               |   |           loader.js
+    |       |   |               |   |           
+    |       |   |               |   +---tools
+    |       |   |               |   |   +---cli-client
+    |       |   |               |   |   |       channelSessions.js
+    |       |   |               |   |   |       cli.js
+    |       |   |               |   |   |       help.json
+    |       |   |               |   |   |       minimist.js
+    |       |   |               |   |   |       output.js
+    |       |   |               |   |   |       program.js
+    |       |   |               |   |   |       registry.js
+    |       |   |               |   |   |       session.js
+    |       |   |               |   |   |       
+    |       |   |               |   |   +---dashboard
+    |       |   |               |   |   |       appIcon.png
+    |       |   |               |   |   |       
+    |       |   |               |   |   +---skills
+    |       |   |               |   |   |   +---playwright-cli
+    |       |   |               |   |   |   |   |   SKILL.md
+    |       |   |               |   |   |   |   |   
+    |       |   |               |   |   |   |   \---references
+    |       |   |               |   |   |   |           element-attributes.md
+    |       |   |               |   |   |   |           playwright-tests.md
+    |       |   |               |   |   |   |           pr-attachments.md
+    |       |   |               |   |   |   |           request-mocking.md
+    |       |   |               |   |   |   |           running-code.md
+    |       |   |               |   |   |   |           session-management.md
+    |       |   |               |   |   |   |           storage-state.md
+    |       |   |               |   |   |   |           test-generation.md
+    |       |   |               |   |   |   |           tracing.md
+    |       |   |               |   |   |   |           video-recording.md
+    |       |   |               |   |   |   |           
+    |       |   |               |   |   |   +---playwright-component-testing
+    |       |   |               |   |   |   |   |   SKILL.md
+    |       |   |               |   |   |   |   |   
+    |       |   |               |   |   |   |   \---references
+    |       |   |               |   |   |   |           gallery-spec.md
+    |       |   |               |   |   |   |           migration.md
+    |       |   |               |   |   |   |           react.md
+    |       |   |               |   |   |   |           typing.md
+    |       |   |               |   |   |   |           vue.md
+    |       |   |               |   |   |   |           
+    |       |   |               |   |   |   \---playwright-trace
+    |       |   |               |   |   |           SKILL.md
+    |       |   |               |   |   |           
+    |       |   |               |   |   \---utils
+    |       |   |               |   |           extension.js
+    |       |   |               |   |           socketConnection.js
+    |       |   |               |   |           
+    |       |   |               |   \---vite
+    |       |   |               |       +---dashboard
+    |       |   |               |       |   |   index.html
+    |       |   |               |       |   |   playwright-logo.svg
+    |       |   |               |       |   |   
+    |       |   |               |       |   \---assets
+    |       |   |               |       |           codeMirrorModule--QdMvsKi.css
+    |       |   |               |       |           codeMirrorModule-CQ8RZGBm.js
+    |       |   |               |       |           codicon-DCmgc-ay.ttf
+    |       |   |               |       |           firefox-1bWoP6pv.svg
+    |       |   |               |       |           firefox-beta-k3eOH_eK.svg
+    |       |   |               |       |           firefox-nightly-Cp5nfeDT.svg
+    |       |   |               |       |           index-AwgwcYie.css
+    |       |   |               |       |           index-hRvO4yU2.js
+    |       |   |               |       |           safari-na3_-uQk.svg
+    |       |   |               |       |           
+    |       |   |               |       +---htmlReport
+    |       |   |               |       |       index.html
+    |       |   |               |       |       report.css
+    |       |   |               |       |       report.js
+    |       |   |               |       |       
+    |       |   |               |       +---recorder
+    |       |   |               |       |   |   index.html
+    |       |   |               |       |   |   playwright-logo.svg
+    |       |   |               |       |   |   
+    |       |   |               |       |   \---assets
+    |       |   |               |       |           codeMirrorModule--QdMvsKi.css
+    |       |   |               |       |           codeMirrorModule-DK72OMRi.js
+    |       |   |               |       |           codicon-DCmgc-ay.ttf
+    |       |   |               |       |           index-BZpYJZ-P.css
+    |       |   |               |       |           index-Cn0mmDuv.js
+    |       |   |               |       |           
+    |       |   |               |       \---traceViewer
+    |       |   |               |           |   codeMirrorModule.-QdMvsKi.css
+    |       |   |               |           |   codicon.DCmgc-ay.ttf
+    |       |   |               |           |   defaultSettingsView.C8BeHuxd.css
+    |       |   |               |           |   index.B_TqY17P.css
+    |       |   |               |           |   index.html
+    |       |   |               |           |   index.oNry3Hjv.js
+    |       |   |               |           |   manifest.webmanifest
+    |       |   |               |           |   playwright-logo.svg
+    |       |   |               |           |   snapshot.B_Jk1wbt.js
+    |       |   |               |           |   snapshot.html
+    |       |   |               |           |   sw.bundle.js
+    |       |   |               |           |   uiMode.CyMfwkXJ.css
+    |       |   |               |           |   uiMode.CYwC_gH1.js
+    |       |   |               |           |   uiMode.html
+    |       |   |               |           |   xtermModule.kHJ-D0s7.css
+    |       |   |               |           |   
+    |       |   |               |           \---assets
+    |       |   |               |                   codeMirrorModule-BEB2e8M3.js
+    |       |   |               |                   defaultSettingsView-D-g2vrvf.js
+    |       |   |               |                   urlMatch-L3liM589.js
+    |       |   |               |                   xtermModule-B794rD2Z.js
+    |       |   |               |                   
+    |       |   |               \---types
+    |       |   |                       protocol.d.ts
+    |       |   |                       structs.d.ts
+    |       |   |                       types.d.ts
+    |       |   |                       
+    |       |   \---Release
+    |       |       \---net10.0
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |       |           |   ImanSoftware.KeylessAgent.Core.deps.json
+    |       |           |   ImanSoftware.KeylessAgent.Core.dll
+    |       |           |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Core.xml
+    |       |           |   playwright.ps1
+    |       |           |   
+    |       |           \---.playwright
+    |       |               +---node
+    |       |               |   |   LICENSE
+    |       |               |   |   
+    |       |               |   \---win32_x64
+    |       |               |           node.exe
+    |       |               |           
+    |       |               \---package
+    |       |                   |   browsers.json
+    |       |                   |   cli.js
+    |       |                   |   index.d.ts
+    |       |                   |   index.js
+    |       |                   |   index.mjs
+    |       |                   |   LICENSE
+    |       |                   |   NOTICE
+    |       |                   |   package.json
+    |       |                   |   README.md
+    |       |                   |   ThirdPartyNotices.txt
+    |       |                   |   
+    |       |                   +---bin
+    |       |                   |       install_media_pack.ps1
+    |       |                   |       install_webkit_wsl.ps1
+    |       |                   |       reinstall_chrome_beta_linux.sh
+    |       |                   |       reinstall_chrome_beta_mac.sh
+    |       |                   |       reinstall_chrome_beta_win.ps1
+    |       |                   |       reinstall_chrome_stable_linux.sh
+    |       |                   |       reinstall_chrome_stable_mac.sh
+    |       |                   |       reinstall_chrome_stable_win.ps1
+    |       |                   |       reinstall_msedge_beta_linux.sh
+    |       |                   |       reinstall_msedge_beta_mac.sh
+    |       |                   |       reinstall_msedge_beta_win.ps1
+    |       |                   |       reinstall_msedge_dev_linux.sh
+    |       |                   |       reinstall_msedge_dev_mac.sh
+    |       |                   |       reinstall_msedge_dev_win.ps1
+    |       |                   |       reinstall_msedge_stable_linux.sh
+    |       |                   |       reinstall_msedge_stable_mac.sh
+    |       |                   |       reinstall_msedge_stable_win.ps1
+    |       |                   |       
+    |       |                   +---lib
+    |       |                   |   |   bootstrap.js
+    |       |                   |   |   coreBundle.js
+    |       |                   |   |   package.js
+    |       |                   |   |   serverRegistry.js
+    |       |                   |   |   serverRegistry.js.LICENSE
+    |       |                   |   |   utilsBundle.js
+    |       |                   |   |   utilsBundle.js.LICENSE
+    |       |                   |   |   webp_codec.LICENSE
+    |       |                   |   |   webp_codec.wasm
+    |       |                   |   |   xdg-open
+    |       |                   |   |   
+    |       |                   |   +---entry
+    |       |                   |   |       cliDaemon.js
+    |       |                   |   |       dashboardApp.js
+    |       |                   |   |       mcp.js
+    |       |                   |   |       oopBrowserDownload.js
+    |       |                   |   |       
+    |       |                   |   +---server
+    |       |                   |   |   +---chromium
+    |       |                   |   |   |       appIcon.png
+    |       |                   |   |   |       
+    |       |                   |   |   \---electron
+    |       |                   |   |           loader.js
+    |       |                   |   |           
+    |       |                   |   +---tools
+    |       |                   |   |   +---cli-client
+    |       |                   |   |   |       channelSessions.js
+    |       |                   |   |   |       cli.js
+    |       |                   |   |   |       help.json
+    |       |                   |   |   |       minimist.js
+    |       |                   |   |   |       output.js
+    |       |                   |   |   |       program.js
+    |       |                   |   |   |       registry.js
+    |       |                   |   |   |       session.js
+    |       |                   |   |   |       
+    |       |                   |   |   +---dashboard
+    |       |                   |   |   |       appIcon.png
+    |       |                   |   |   |       
+    |       |                   |   |   +---skills
+    |       |                   |   |   |   +---playwright-cli
+    |       |                   |   |   |   |   |   SKILL.md
+    |       |                   |   |   |   |   |   
+    |       |                   |   |   |   |   \---references
+    |       |                   |   |   |   |           element-attributes.md
+    |       |                   |   |   |   |           playwright-tests.md
+    |       |                   |   |   |   |           pr-attachments.md
+    |       |                   |   |   |   |           request-mocking.md
+    |       |                   |   |   |   |           running-code.md
+    |       |                   |   |   |   |           session-management.md
+    |       |                   |   |   |   |           storage-state.md
+    |       |                   |   |   |   |           test-generation.md
+    |       |                   |   |   |   |           tracing.md
+    |       |                   |   |   |   |           video-recording.md
+    |       |                   |   |   |   |           
+    |       |                   |   |   |   +---playwright-component-testing
+    |       |                   |   |   |   |   |   SKILL.md
+    |       |                   |   |   |   |   |   
+    |       |                   |   |   |   |   \---references
+    |       |                   |   |   |   |           gallery-spec.md
+    |       |                   |   |   |   |           migration.md
+    |       |                   |   |   |   |           react.md
+    |       |                   |   |   |   |           typing.md
+    |       |                   |   |   |   |           vue.md
+    |       |                   |   |   |   |           
+    |       |                   |   |   |   \---playwright-trace
+    |       |                   |   |   |           SKILL.md
+    |       |                   |   |   |           
+    |       |                   |   |   \---utils
+    |       |                   |   |           extension.js
+    |       |                   |   |           socketConnection.js
+    |       |                   |   |           
+    |       |                   |   \---vite
+    |       |                   |       +---dashboard
+    |       |                   |       |   |   index.html
+    |       |                   |       |   |   playwright-logo.svg
+    |       |                   |       |   |   
+    |       |                   |       |   \---assets
+    |       |                   |       |           codeMirrorModule--QdMvsKi.css
+    |       |                   |       |           codeMirrorModule-CQ8RZGBm.js
+    |       |                   |       |           codicon-DCmgc-ay.ttf
+    |       |                   |       |           firefox-1bWoP6pv.svg
+    |       |                   |       |           firefox-beta-k3eOH_eK.svg
+    |       |                   |       |           firefox-nightly-Cp5nfeDT.svg
+    |       |                   |       |           index-AwgwcYie.css
+    |       |                   |       |           index-hRvO4yU2.js
+    |       |                   |       |           safari-na3_-uQk.svg
+    |       |                   |       |           
+    |       |                   |       +---htmlReport
+    |       |                   |       |       index.html
+    |       |                   |       |       report.css
+    |       |                   |       |       report.js
+    |       |                   |       |       
+    |       |                   |       +---recorder
+    |       |                   |       |   |   index.html
+    |       |                   |       |   |   playwright-logo.svg
+    |       |                   |       |   |   
+    |       |                   |       |   \---assets
+    |       |                   |       |           codeMirrorModule--QdMvsKi.css
+    |       |                   |       |           codeMirrorModule-DK72OMRi.js
+    |       |                   |       |           codicon-DCmgc-ay.ttf
+    |       |                   |       |           index-BZpYJZ-P.css
+    |       |                   |       |           index-Cn0mmDuv.js
+    |       |                   |       |           
+    |       |                   |       \---traceViewer
+    |       |                   |           |   codeMirrorModule.-QdMvsKi.css
+    |       |                   |           |   codicon.DCmgc-ay.ttf
+    |       |                   |           |   defaultSettingsView.C8BeHuxd.css
+    |       |                   |           |   index.B_TqY17P.css
+    |       |                   |           |   index.html
+    |       |                   |           |   index.oNry3Hjv.js
+    |       |                   |           |   manifest.webmanifest
+    |       |                   |           |   playwright-logo.svg
+    |       |                   |           |   snapshot.B_Jk1wbt.js
+    |       |                   |           |   snapshot.html
+    |       |                   |           |   sw.bundle.js
+    |       |                   |           |   uiMode.CyMfwkXJ.css
+    |       |                   |           |   uiMode.CYwC_gH1.js
+    |       |                   |           |   uiMode.html
+    |       |                   |           |   xtermModule.kHJ-D0s7.css
+    |       |                   |           |   
+    |       |                   |           \---assets
+    |       |                   |                   codeMirrorModule-BEB2e8M3.js
+    |       |                   |                   defaultSettingsView-D-g2vrvf.js
+    |       |                   |                   urlMatch-L3liM589.js
+    |       |                   |                   xtermModule-B794rD2Z.js
+    |       |                   |                   
+    |       |                   \---types
+    |       |                           protocol.d.ts
+    |       |                           structs.d.ts
+    |       |                           types.d.ts
+    |       |                           
+    |       +---Factory
+    |       |       KeylessAgentServiceFactory.cs
+    |       |       SingleProviderLoggerFactory.cs
+    |       |       
+    |       +---Implementation
+    |       |   +---Agent
+    |       |   |       AgentLoop.cs
+    |       |   |       CorrectionMessageBuilder.cs
+    |       |   |       ResultFormatter.cs
+    |       |   |       SessionStore.cs
+    |       |   |       SystemPromptBuilder.cs
+    |       |   |       TurnLogger.cs
+    |       |   |       
+    |       |   +---Browser
+    |       |   |       FakeChatProvider.cs
+    |       |   |       PlaywrightChatProvider.cs
+    |       |   |       PlaywrightChatSession.cs
+    |       |   |       RateLimiter.cs
+    |       |   |       ReplyExtractor.cs
+    |       |   |       SelectorsCatalog.cs
+    |       |   |       
+    |       |   +---Configuration
+    |       |   |       ConfigurationService.cs
+    |       |   |       
+    |       |   +---Diagnostics
+    |       |   |       FileLoggerProvider.cs
+    |       |   |       
+    |       |   +---Execution
+    |       |   |       AskExecutor.cs
+    |       |   |       BackupService.cs
+    |       |   |       CommandPolicy.cs
+    |       |   |       CommitExecutor.cs
+    |       |   |       DeleteFileExecutor.cs
+    |       |   |       DoneExecutor.cs
+    |       |   |       EditFileExecutor.cs
+    |       |   |       FileWriteHelpers.cs
+    |       |   |       ICommandExecutor.cs
+    |       |   |       NewFileExecutor.cs
+    |       |   |       PathSandbox.cs
+    |       |   |       ProcessRunner.cs
+    |       |   |       ReadFileExecutor.cs
+    |       |   |       RunCommandExecutor.cs
+    |       |   |       SayExecutor.cs
+    |       |   |       UpdateFileExecutor.cs
+    |       |   |       WorkspaceCommandExecutor.cs
+    |       |   |       
+    |       |   +---Git
+    |       |   |       BranchGuard.cs
+    |       |   |       BranchNameBuilder.cs
+    |       |   |       GitService.cs
+    |       |   |       
+    |       |   +---Parsing
+    |       |   |       AgentScriptParser.cs
+    |       |   |       AgentScriptValidator.cs
+    |       |   |       ResponseFormatGuard.cs
+    |       |   |       
+    |       |   \---Snapshot
+    |       |           SnapshotFilter.cs
+    |       |           SnapshotService.cs
+    |       |           
+    |       +---obj
+    |       |   |   ImanSoftware.KeylessAgent.Core.csproj.nuget.dgspec.json
+    |       |   |   ImanSoftware.KeylessAgent.Core.csproj.nuget.g.props
+    |       |   |   ImanSoftware.KeylessAgent.Core.csproj.nuget.g.targets
+    |       |   |   project.assets.json
+    |       |   |   project.nuget.cache
+    |       |   |   
+    |       |   +---Debug
+    |       |   |   \---net10.0
+    |       |   |       |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |       |   |       |   ImanSoft.C9C5FCA2.Up2Date
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.AssemblyInfo.cs
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.AssemblyInfoInputs.cache
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.assets.cache
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.csproj.AssemblyReference.cache
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.csproj.CoreCompileInputs.cache
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.csproj.FileListAbsolute.txt
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.dll
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.GeneratedMSBuildEditorConfig.editorconfig
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.GlobalUsings.g.cs
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.sourcelink.json
+    |       |   |       |   ImanSoftware.KeylessAgent.Core.xml
+    |       |   |       |   
+    |       |   |       +---ref
+    |       |   |       |       ImanSoftware.KeylessAgent.Core.dll
+    |       |   |       |       
+    |       |   |       \---refint
+    |       |   |               ImanSoftware.KeylessAgent.Core.dll
+    |       |   |               
+    |       |   \---Release
+    |       |       \---net10.0
+    |       |           |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |       |           |   ImanSoft.C9C5FCA2.Up2Date
+    |       |           |   ImanSoftware.KeylessAgent.Core.AssemblyInfo.cs
+    |       |           |   ImanSoftware.KeylessAgent.Core.AssemblyInfoInputs.cache
+    |       |           |   ImanSoftware.KeylessAgent.Core.assets.cache
+    |       |           |   ImanSoftware.KeylessAgent.Core.csproj.AssemblyReference.cache
+    |       |           |   ImanSoftware.KeylessAgent.Core.csproj.CoreCompileInputs.cache
+    |       |           |   ImanSoftware.KeylessAgent.Core.csproj.FileListAbsolute.txt
+    |       |           |   ImanSoftware.KeylessAgent.Core.dll
+    |       |           |   ImanSoftware.KeylessAgent.Core.GeneratedMSBuildEditorConfig.editorconfig
+    |       |           |   ImanSoftware.KeylessAgent.Core.GlobalUsings.g.cs
+    |       |           |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Core.sourcelink.json
+    |       |           |   ImanSoftware.KeylessAgent.Core.xml
+    |       |           |   
+    |       |           +---ref
+    |       |           |       ImanSoftware.KeylessAgent.Core.dll
+    |       |           |       
+    |       |           \---refint
+    |       |                   ImanSoftware.KeylessAgent.Core.dll
+    |       |                   
+    |       +---Properties
+    |       |       AssemblyInfo.cs
+    |       |       
+    |       \---Resources
+    |               format-correction.txt
+    |               selectors.json
+    |               system-prompt.md
+    |               
+    +---Playground
+    |   \---ImanSoftware.KeylessAgent.Playground
+    |       |   ImanSoftware.KeylessAgent.Playground.csproj
+    |       |   Program.cs
+    |       |   
+    |       +---bin
+    |       |   \---Debug
+    |       |       \---net10.0
+    |       |           |   ImanSoftware.DateTimeProvider.dll
+    |       |           |   ImanSoftware.Extensions.dll
+    |       |           |   ImanSoftware.FileStorage.dll
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |       |           |   ImanSoftware.KeylessAgent.Core.dll
+    |       |           |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Core.xml
+    |       |           |   ImanSoftware.KeylessAgent.Playground.deps.json
+    |       |           |   ImanSoftware.KeylessAgent.Playground.dll
+    |       |           |   ImanSoftware.KeylessAgent.Playground.exe
+    |       |           |   ImanSoftware.KeylessAgent.Playground.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Playground.runtimeconfig.json
+    |       |           |   ImanSoftware.KeylessAgent.Playground.xml
+    |       |           |   ImanSoftware.Logging.dll
+    |       |           |   ImanSoftware.Outcome.dll
+    |       |           |   ImanSoftware.Serialization.dll
+    |       |           |   Microsoft.Bcl.AsyncInterfaces.dll
+    |       |           |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+    |       |           |   Microsoft.Extensions.Logging.Abstractions.dll
+    |       |           |   Microsoft.Extensions.Options.dll
+    |       |           |   Microsoft.Extensions.Primitives.dll
+    |       |           |   Microsoft.Playwright.dll
+    |       |           |   Newtonsoft.Json.dll
+    |       |           |   playwright.ps1
+    |       |           |   
+    |       |           \---.playwright
+    |       |               +---node
+    |       |               |   |   LICENSE
+    |       |               |   |   
+    |       |               |   \---win32_x64
+    |       |               |           node.exe
+    |       |               |           
+    |       |               \---package
+    |       |                   |   browsers.json
+    |       |                   |   cli.js
+    |       |                   |   index.d.ts
+    |       |                   |   index.js
+    |       |                   |   index.mjs
+    |       |                   |   LICENSE
+    |       |                   |   NOTICE
+    |       |                   |   package.json
+    |       |                   |   README.md
+    |       |                   |   ThirdPartyNotices.txt
+    |       |                   |   
+    |       |                   +---bin
+    |       |                   |       install_media_pack.ps1
+    |       |                   |       install_webkit_wsl.ps1
+    |       |                   |       reinstall_chrome_beta_linux.sh
+    |       |                   |       reinstall_chrome_beta_mac.sh
+    |       |                   |       reinstall_chrome_beta_win.ps1
+    |       |                   |       reinstall_chrome_stable_linux.sh
+    |       |                   |       reinstall_chrome_stable_mac.sh
+    |       |                   |       reinstall_chrome_stable_win.ps1
+    |       |                   |       reinstall_msedge_beta_linux.sh
+    |       |                   |       reinstall_msedge_beta_mac.sh
+    |       |                   |       reinstall_msedge_beta_win.ps1
+    |       |                   |       reinstall_msedge_dev_linux.sh
+    |       |                   |       reinstall_msedge_dev_mac.sh
+    |       |                   |       reinstall_msedge_dev_win.ps1
+    |       |                   |       reinstall_msedge_stable_linux.sh
+    |       |                   |       reinstall_msedge_stable_mac.sh
+    |       |                   |       reinstall_msedge_stable_win.ps1
+    |       |                   |       
+    |       |                   +---lib
+    |       |                   |   |   bootstrap.js
+    |       |                   |   |   coreBundle.js
+    |       |                   |   |   package.js
+    |       |                   |   |   serverRegistry.js
+    |       |                   |   |   serverRegistry.js.LICENSE
+    |       |                   |   |   utilsBundle.js
+    |       |                   |   |   utilsBundle.js.LICENSE
+    |       |                   |   |   webp_codec.LICENSE
+    |       |                   |   |   webp_codec.wasm
+    |       |                   |   |   xdg-open
+    |       |                   |   |   
+    |       |                   |   +---entry
+    |       |                   |   |       cliDaemon.js
+    |       |                   |   |       dashboardApp.js
+    |       |                   |   |       mcp.js
+    |       |                   |   |       oopBrowserDownload.js
+    |       |                   |   |       
+    |       |                   |   +---server
+    |       |                   |   |   +---chromium
+    |       |                   |   |   |       appIcon.png
+    |       |                   |   |   |       
+    |       |                   |   |   \---electron
+    |       |                   |   |           loader.js
+    |       |                   |   |           
+    |       |                   |   +---tools
+    |       |                   |   |   +---cli-client
+    |       |                   |   |   |       channelSessions.js
+    |       |                   |   |   |       cli.js
+    |       |                   |   |   |       help.json
+    |       |                   |   |   |       minimist.js
+    |       |                   |   |   |       output.js
+    |       |                   |   |   |       program.js
+    |       |                   |   |   |       registry.js
+    |       |                   |   |   |       session.js
+    |       |                   |   |   |       
+    |       |                   |   |   +---dashboard
+    |       |                   |   |   |       appIcon.png
+    |       |                   |   |   |       
+    |       |                   |   |   +---skills
+    |       |                   |   |   |   +---playwright-cli
+    |       |                   |   |   |   |   |   SKILL.md
+    |       |                   |   |   |   |   |   
+    |       |                   |   |   |   |   \---references
+    |       |                   |   |   |   |           element-attributes.md
+    |       |                   |   |   |   |           playwright-tests.md
+    |       |                   |   |   |   |           pr-attachments.md
+    |       |                   |   |   |   |           request-mocking.md
+    |       |                   |   |   |   |           running-code.md
+    |       |                   |   |   |   |           session-management.md
+    |       |                   |   |   |   |           storage-state.md
+    |       |                   |   |   |   |           test-generation.md
+    |       |                   |   |   |   |           tracing.md
+    |       |                   |   |   |   |           video-recording.md
+    |       |                   |   |   |   |           
+    |       |                   |   |   |   +---playwright-component-testing
+    |       |                   |   |   |   |   |   SKILL.md
+    |       |                   |   |   |   |   |   
+    |       |                   |   |   |   |   \---references
+    |       |                   |   |   |   |           gallery-spec.md
+    |       |                   |   |   |   |           migration.md
+    |       |                   |   |   |   |           react.md
+    |       |                   |   |   |   |           typing.md
+    |       |                   |   |   |   |           vue.md
+    |       |                   |   |   |   |           
+    |       |                   |   |   |   \---playwright-trace
+    |       |                   |   |   |           SKILL.md
+    |       |                   |   |   |           
+    |       |                   |   |   \---utils
+    |       |                   |   |           extension.js
+    |       |                   |   |           socketConnection.js
+    |       |                   |   |           
+    |       |                   |   \---vite
+    |       |                   |       +---dashboard
+    |       |                   |       |   |   index.html
+    |       |                   |       |   |   playwright-logo.svg
+    |       |                   |       |   |   
+    |       |                   |       |   \---assets
+    |       |                   |       |           codeMirrorModule--QdMvsKi.css
+    |       |                   |       |           codeMirrorModule-CQ8RZGBm.js
+    |       |                   |       |           codicon-DCmgc-ay.ttf
+    |       |                   |       |           firefox-1bWoP6pv.svg
+    |       |                   |       |           firefox-beta-k3eOH_eK.svg
+    |       |                   |       |           firefox-nightly-Cp5nfeDT.svg
+    |       |                   |       |           index-AwgwcYie.css
+    |       |                   |       |           index-hRvO4yU2.js
+    |       |                   |       |           safari-na3_-uQk.svg
+    |       |                   |       |           
+    |       |                   |       +---htmlReport
+    |       |                   |       |       index.html
+    |       |                   |       |       report.css
+    |       |                   |       |       report.js
+    |       |                   |       |       
+    |       |                   |       +---recorder
+    |       |                   |       |   |   index.html
+    |       |                   |       |   |   playwright-logo.svg
+    |       |                   |       |   |   
+    |       |                   |       |   \---assets
+    |       |                   |       |           codeMirrorModule--QdMvsKi.css
+    |       |                   |       |           codeMirrorModule-DK72OMRi.js
+    |       |                   |       |           codicon-DCmgc-ay.ttf
+    |       |                   |       |           index-BZpYJZ-P.css
+    |       |                   |       |           index-Cn0mmDuv.js
+    |       |                   |       |           
+    |       |                   |       \---traceViewer
+    |       |                   |           |   codeMirrorModule.-QdMvsKi.css
+    |       |                   |           |   codicon.DCmgc-ay.ttf
+    |       |                   |           |   defaultSettingsView.C8BeHuxd.css
+    |       |                   |           |   index.B_TqY17P.css
+    |       |                   |           |   index.html
+    |       |                   |           |   index.oNry3Hjv.js
+    |       |                   |           |   manifest.webmanifest
+    |       |                   |           |   playwright-logo.svg
+    |       |                   |           |   snapshot.B_Jk1wbt.js
+    |       |                   |           |   snapshot.html
+    |       |                   |           |   sw.bundle.js
+    |       |                   |           |   uiMode.CyMfwkXJ.css
+    |       |                   |           |   uiMode.CYwC_gH1.js
+    |       |                   |           |   uiMode.html
+    |       |                   |           |   xtermModule.kHJ-D0s7.css
+    |       |                   |           |   
+    |       |                   |           \---assets
+    |       |                   |                   codeMirrorModule-BEB2e8M3.js
+    |       |                   |                   defaultSettingsView-D-g2vrvf.js
+    |       |                   |                   urlMatch-L3liM589.js
+    |       |                   |                   xtermModule-B794rD2Z.js
+    |       |                   |                   
+    |       |                   \---types
+    |       |                           protocol.d.ts
+    |       |                           structs.d.ts
+    |       |                           types.d.ts
+    |       |                           
+    |       \---obj
+    |           |   ImanSoftware.KeylessAgent.Playground.csproj.nuget.dgspec.json
+    |           |   ImanSoftware.KeylessAgent.Playground.csproj.nuget.g.props
+    |           |   ImanSoftware.KeylessAgent.Playground.csproj.nuget.g.targets
+    |           |   project.assets.json
+    |           |   project.nuget.cache
+    |           |   
+    |           \---Debug
+    |               \---net10.0
+    |                   |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |                   |   apphost.exe
+    |                   |   ImanSoft.1C91BBD1.Up2Date
+    |                   |   ImanSoftware.KeylessAgent.Playground.AssemblyInfo.cs
+    |                   |   ImanSoftware.KeylessAgent.Playground.AssemblyInfoInputs.cache
+    |                   |   ImanSoftware.KeylessAgent.Playground.assets.cache
+    |                   |   ImanSoftware.KeylessAgent.Playground.csproj.AssemblyReference.cache
+    |                   |   ImanSoftware.KeylessAgent.Playground.csproj.CoreCompileInputs.cache
+    |                   |   ImanSoftware.KeylessAgent.Playground.csproj.FileListAbsolute.txt
+    |                   |   ImanSoftware.KeylessAgent.Playground.dll
+    |                   |   ImanSoftware.KeylessAgent.Playground.GeneratedMSBuildEditorConfig.editorconfig
+    |                   |   ImanSoftware.KeylessAgent.Playground.genruntimeconfig.cache
+    |                   |   ImanSoftware.KeylessAgent.Playground.GlobalUsings.g.cs
+    |                   |   ImanSoftware.KeylessAgent.Playground.pdb
+    |                   |   ImanSoftware.KeylessAgent.Playground.sourcelink.json
+    |                   |   ImanSoftware.KeylessAgent.Playground.xml
+    |                   |   
+    |                   +---ref
+    |                   |       ImanSoftware.KeylessAgent.Playground.dll
+    |                   |       
+    |                   \---refint
+    |                           ImanSoftware.KeylessAgent.Playground.dll
+    |                           
+    +---tests
+    |   \---ImanSoftware.KeylessAgent.Tests
+    |       |   ImanSoftware.KeylessAgent.Tests.csproj
+    |       |   
+    |       +---bin
+    |       |   \---Debug
+    |       |       \---net10.0
+    |       |           |   .msCoverageSourceRootsMapping_ImanSoftware.KeylessAgent.Tests
+    |       |           |   CoverletSourceRootsMapping_ImanSoftware.KeylessAgent.Tests
+    |       |           |   FluentAssertions.dll
+    |       |           |   ImanSoftware.DateTimeProvider.dll
+    |       |           |   ImanSoftware.Extensions.dll
+    |       |           |   ImanSoftware.FileStorage.dll
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.dll
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Abstractions.xml
+    |       |           |   ImanSoftware.KeylessAgent.Cli.deps.json
+    |       |           |   ImanSoftware.KeylessAgent.Cli.dll
+    |       |           |   ImanSoftware.KeylessAgent.Cli.exe
+    |       |           |   ImanSoftware.KeylessAgent.Cli.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Cli.runtimeconfig.json
+    |       |           |   ImanSoftware.KeylessAgent.Cli.xml
+    |       |           |   ImanSoftware.KeylessAgent.Core.dll
+    |       |           |   ImanSoftware.KeylessAgent.Core.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Core.xml
+    |       |           |   ImanSoftware.KeylessAgent.Tests.deps.json
+    |       |           |   ImanSoftware.KeylessAgent.Tests.dll
+    |       |           |   ImanSoftware.KeylessAgent.Tests.pdb
+    |       |           |   ImanSoftware.KeylessAgent.Tests.runtimeconfig.json
+    |       |           |   ImanSoftware.Logging.dll
+    |       |           |   ImanSoftware.Outcome.dll
+    |       |           |   ImanSoftware.Serialization.dll
+    |       |           |   Microsoft.Bcl.AsyncInterfaces.dll
+    |       |           |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+    |       |           |   Microsoft.Extensions.Logging.Abstractions.dll
+    |       |           |   Microsoft.Extensions.Options.dll
+    |       |           |   Microsoft.Extensions.Primitives.dll
+    |       |           |   Microsoft.Playwright.dll
+    |       |           |   Microsoft.TestPlatform.CommunicationUtilities.dll
+    |       |           |   Microsoft.TestPlatform.CoreUtilities.dll
+    |       |           |   Microsoft.TestPlatform.CrossPlatEngine.dll
+    |       |           |   Microsoft.TestPlatform.PlatformAbstractions.dll
+    |       |           |   Microsoft.TestPlatform.Utilities.dll
+    |       |           |   Microsoft.VisualStudio.CodeCoverage.Shim.dll
+    |       |           |   Microsoft.VisualStudio.TestPlatform.Common.dll
+    |       |           |   Microsoft.VisualStudio.TestPlatform.ObjectModel.dll
+    |       |           |   Microsoft.Win32.SystemEvents.dll
+    |       |           |   Newtonsoft.Json.dll
+    |       |           |   playwright.ps1
+    |       |           |   Spectre.Console.Ansi.dll
+    |       |           |   Spectre.Console.Cli.dll
+    |       |           |   Spectre.Console.dll
+    |       |           |   Spectre.Console.Testing.dll
+    |       |           |   System.Configuration.ConfigurationManager.dll
+    |       |           |   System.Drawing.Common.dll
+    |       |           |   System.Security.Cryptography.ProtectedData.dll
+    |       |           |   System.Security.Permissions.dll
+    |       |           |   System.Windows.Extensions.dll
+    |       |           |   testhost.dll
+    |       |           |   testhost.exe
+    |       |           |   xunit.abstractions.dll
+    |       |           |   xunit.assert.dll
+    |       |           |   xunit.core.dll
+    |       |           |   xunit.execution.dotnet.dll
+    |       |           |   xunit.runner.visualstudio.testadapter.dll
+    |       |           |   
+    |       |           +---.playwright
+    |       |           |   +---node
+    |       |           |   |   |   LICENSE
+    |       |           |   |   |   
+    |       |           |   |   \---win32_x64
+    |       |           |   |           node.exe
+    |       |           |   |           
+    |       |           |   \---package
+    |       |           |       |   browsers.json
+    |       |           |       |   cli.js
+    |       |           |       |   index.d.ts
+    |       |           |       |   index.js
+    |       |           |       |   index.mjs
+    |       |           |       |   LICENSE
+    |       |           |       |   NOTICE
+    |       |           |       |   package.json
+    |       |           |       |   README.md
+    |       |           |       |   ThirdPartyNotices.txt
+    |       |           |       |   
+    |       |           |       +---bin
+    |       |           |       |       install_media_pack.ps1
+    |       |           |       |       install_webkit_wsl.ps1
+    |       |           |       |       reinstall_chrome_beta_linux.sh
+    |       |           |       |       reinstall_chrome_beta_mac.sh
+    |       |           |       |       reinstall_chrome_beta_win.ps1
+    |       |           |       |       reinstall_chrome_stable_linux.sh
+    |       |           |       |       reinstall_chrome_stable_mac.sh
+    |       |           |       |       reinstall_chrome_stable_win.ps1
+    |       |           |       |       reinstall_msedge_beta_linux.sh
+    |       |           |       |       reinstall_msedge_beta_mac.sh
+    |       |           |       |       reinstall_msedge_beta_win.ps1
+    |       |           |       |       reinstall_msedge_dev_linux.sh
+    |       |           |       |       reinstall_msedge_dev_mac.sh
+    |       |           |       |       reinstall_msedge_dev_win.ps1
+    |       |           |       |       reinstall_msedge_stable_linux.sh
+    |       |           |       |       reinstall_msedge_stable_mac.sh
+    |       |           |       |       reinstall_msedge_stable_win.ps1
+    |       |           |       |       
+    |       |           |       +---lib
+    |       |           |       |   |   bootstrap.js
+    |       |           |       |   |   coreBundle.js
+    |       |           |       |   |   package.js
+    |       |           |       |   |   serverRegistry.js
+    |       |           |       |   |   serverRegistry.js.LICENSE
+    |       |           |       |   |   utilsBundle.js
+    |       |           |       |   |   utilsBundle.js.LICENSE
+    |       |           |       |   |   webp_codec.LICENSE
+    |       |           |       |   |   webp_codec.wasm
+    |       |           |       |   |   xdg-open
+    |       |           |       |   |   
+    |       |           |       |   +---entry
+    |       |           |       |   |       cliDaemon.js
+    |       |           |       |   |       dashboardApp.js
+    |       |           |       |   |       mcp.js
+    |       |           |       |   |       oopBrowserDownload.js
+    |       |           |       |   |       
+    |       |           |       |   +---server
+    |       |           |       |   |   +---chromium
+    |       |           |       |   |   |       appIcon.png
+    |       |           |       |   |   |       
+    |       |           |       |   |   \---electron
+    |       |           |       |   |           loader.js
+    |       |           |       |   |           
+    |       |           |       |   +---tools
+    |       |           |       |   |   +---cli-client
+    |       |           |       |   |   |       channelSessions.js
+    |       |           |       |   |   |       cli.js
+    |       |           |       |   |   |       help.json
+    |       |           |       |   |   |       minimist.js
+    |       |           |       |   |   |       output.js
+    |       |           |       |   |   |       program.js
+    |       |           |       |   |   |       registry.js
+    |       |           |       |   |   |       session.js
+    |       |           |       |   |   |       
+    |       |           |       |   |   +---dashboard
+    |       |           |       |   |   |       appIcon.png
+    |       |           |       |   |   |       
+    |       |           |       |   |   +---skills
+    |       |           |       |   |   |   +---playwright-cli
+    |       |           |       |   |   |   |   |   SKILL.md
+    |       |           |       |   |   |   |   |   
+    |       |           |       |   |   |   |   \---references
+    |       |           |       |   |   |   |           element-attributes.md
+    |       |           |       |   |   |   |           playwright-tests.md
+    |       |           |       |   |   |   |           pr-attachments.md
+    |       |           |       |   |   |   |           request-mocking.md
+    |       |           |       |   |   |   |           running-code.md
+    |       |           |       |   |   |   |           session-management.md
+    |       |           |       |   |   |   |           storage-state.md
+    |       |           |       |   |   |   |           test-generation.md
+    |       |           |       |   |   |   |           tracing.md
+    |       |           |       |   |   |   |           video-recording.md
+    |       |           |       |   |   |   |           
+    |       |           |       |   |   |   +---playwright-component-testing
+    |       |           |       |   |   |   |   |   SKILL.md
+    |       |           |       |   |   |   |   |   
+    |       |           |       |   |   |   |   \---references
+    |       |           |       |   |   |   |           gallery-spec.md
+    |       |           |       |   |   |   |           migration.md
+    |       |           |       |   |   |   |           react.md
+    |       |           |       |   |   |   |           typing.md
+    |       |           |       |   |   |   |           vue.md
+    |       |           |       |   |   |   |           
+    |       |           |       |   |   |   \---playwright-trace
+    |       |           |       |   |   |           SKILL.md
+    |       |           |       |   |   |           
+    |       |           |       |   |   \---utils
+    |       |           |       |   |           extension.js
+    |       |           |       |   |           socketConnection.js
+    |       |           |       |   |           
+    |       |           |       |   \---vite
+    |       |           |       |       +---dashboard
+    |       |           |       |       |   |   index.html
+    |       |           |       |       |   |   playwright-logo.svg
+    |       |           |       |       |   |   
+    |       |           |       |       |   \---assets
+    |       |           |       |       |           codeMirrorModule--QdMvsKi.css
+    |       |           |       |       |           codeMirrorModule-CQ8RZGBm.js
+    |       |           |       |       |           codicon-DCmgc-ay.ttf
+    |       |           |       |       |           firefox-1bWoP6pv.svg
+    |       |           |       |       |           firefox-beta-k3eOH_eK.svg
+    |       |           |       |       |           firefox-nightly-Cp5nfeDT.svg
+    |       |           |       |       |           index-AwgwcYie.css
+    |       |           |       |       |           index-hRvO4yU2.js
+    |       |           |       |       |           safari-na3_-uQk.svg
+    |       |           |       |       |           
+    |       |           |       |       +---htmlReport
+    |       |           |       |       |       index.html
+    |       |           |       |       |       report.css
+    |       |           |       |       |       report.js
+    |       |           |       |       |       
+    |       |           |       |       +---recorder
+    |       |           |       |       |   |   index.html
+    |       |           |       |       |   |   playwright-logo.svg
+    |       |           |       |       |   |   
+    |       |           |       |       |   \---assets
+    |       |           |       |       |           codeMirrorModule--QdMvsKi.css
+    |       |           |       |       |           codeMirrorModule-DK72OMRi.js
+    |       |           |       |       |           codicon-DCmgc-ay.ttf
+    |       |           |       |       |           index-BZpYJZ-P.css
+    |       |           |       |       |           index-Cn0mmDuv.js
+    |       |           |       |       |           
+    |       |           |       |       \---traceViewer
+    |       |           |       |           |   codeMirrorModule.-QdMvsKi.css
+    |       |           |       |           |   codicon.DCmgc-ay.ttf
+    |       |           |       |           |   defaultSettingsView.C8BeHuxd.css
+    |       |           |       |           |   index.B_TqY17P.css
+    |       |           |       |           |   index.html
+    |       |           |       |           |   index.oNry3Hjv.js
+    |       |           |       |           |   manifest.webmanifest
+    |       |           |       |           |   playwright-logo.svg
+    |       |           |       |           |   snapshot.B_Jk1wbt.js
+    |       |           |       |           |   snapshot.html
+    |       |           |       |           |   sw.bundle.js
+    |       |           |       |           |   uiMode.CyMfwkXJ.css
+    |       |           |       |           |   uiMode.CYwC_gH1.js
+    |       |           |       |           |   uiMode.html
+    |       |           |       |           |   xtermModule.kHJ-D0s7.css
+    |       |           |       |           |   
+    |       |           |       |           \---assets
+    |       |           |       |                   codeMirrorModule-BEB2e8M3.js
+    |       |           |       |                   defaultSettingsView-D-g2vrvf.js
+    |       |           |       |                   urlMatch-L3liM589.js
+    |       |           |       |                   xtermModule-B794rD2Z.js
+    |       |           |       |                   
+    |       |           |       \---types
+    |       |           |               protocol.d.ts
+    |       |           |               structs.d.ts
+    |       |           |               types.d.ts
+    |       |           |               
+    |       |           +---cs
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       
+    |       |           +---de
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---es
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---fr
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---it
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---ja
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---ko
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---pl
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       
+    |       |           +---pt
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---pt-BR
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       
+    |       |           +---ru
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---runtimes
+    |       |           |   +---unix
+    |       |           |   |   \---lib
+    |       |           |   |       \---net6.0
+    |       |           |   |               System.Drawing.Common.dll
+    |       |           |   |               
+    |       |           |   \---win
+    |       |           |       \---lib
+    |       |           |           \---net6.0
+    |       |           |                   Microsoft.Win32.SystemEvents.dll
+    |       |           |                   System.Drawing.Common.dll
+    |       |           |                   System.Security.Cryptography.ProtectedData.dll
+    |       |           |                   System.Windows.Extensions.dll
+    |       |           |                   
+    |       |           +---sv
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           +---tr
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       
+    |       |           +---zh-Hans
+    |       |           |       Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |           |       Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |           |       Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |           |       Spectre.Console.Cli.resources.dll
+    |       |           |       
+    |       |           \---zh-Hant
+    |       |                   Microsoft.TestPlatform.CommunicationUtilities.resources.dll
+    |       |                   Microsoft.TestPlatform.CoreUtilities.resources.dll
+    |       |                   Microsoft.TestPlatform.CrossPlatEngine.resources.dll
+    |       |                   Microsoft.VisualStudio.TestPlatform.Common.resources.dll
+    |       |                   Microsoft.VisualStudio.TestPlatform.ObjectModel.resources.dll
+    |       |                   
+    |       +---Cli
+    |       |       BeginWaitBehaviorTests.cs
+    |       |       ConsoleUserInterfaceTests.cs
+    |       |       InteractiveSessionTests.cs
+    |       |       
+    |       +---Core
+    |       |   \---Implementation
+    |       |       +---Agent
+    |       |       |       AgentLoopTests.cs
+    |       |       |       ResultFormatterTests.cs
+    |       |       |       SessionStoreTests.cs
+    |       |       |       
+    |       |       +---Browser
+    |       |       |       FakeChatProviderTests.cs
+    |       |       |       ReplyExtractorTests.cs
+    |       |       |       
+    |       |       +---Configuration
+    |       |       |       ConfigurationServiceTests.cs
+    |       |       |       
+    |       |       +---Execution
+    |       |       |       CommandPolicyTests.cs
+    |       |       |       PathSandboxTests.cs
+    |       |       |       WorkspaceCommandExecutorTests.cs
+    |       |       |       
+    |       |       +---Git
+    |       |       |       BranchGuardTests.cs
+    |       |       |       
+    |       |       +---Parsing
+    |       |       |       AgentScriptParserTests.cs
+    |       |       |       ResponseFormatGuardTests.cs
+    |       |       |       
+    |       |       \---Snapshot
+    |       |               SnapshotFilterTests.cs
+    |       |               SnapshotServiceTests.cs
+    |       |               
+    |       +---Fakes
+    |       |       FakeAgentUserInterface.cs
+    |       |       FakeGitService.cs
+    |       |       
+    |       \---obj
+    |           |   ImanSoftware.KeylessAgent.Tests.csproj.nuget.dgspec.json
+    |           |   ImanSoftware.KeylessAgent.Tests.csproj.nuget.g.props
+    |           |   ImanSoftware.KeylessAgent.Tests.csproj.nuget.g.targets
+    |           |   project.assets.json
+    |           |   project.nuget.cache
+    |           |   
+    |           \---Debug
+    |               \---net10.0
+    |                   |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+    |                   |   ImanSoft.406E6FCE.Up2Date
+    |                   |   ImanSoftware.KeylessAgent.Tests.AssemblyInfo.cs
+    |                   |   ImanSoftware.KeylessAgent.Tests.AssemblyInfoInputs.cache
+    |                   |   ImanSoftware.KeylessAgent.Tests.assets.cache
+    |                   |   ImanSoftware.KeylessAgent.Tests.csproj.AssemblyReference.cache
+    |                   |   ImanSoftware.KeylessAgent.Tests.csproj.CoreCompileInputs.cache
+    |                   |   ImanSoftware.KeylessAgent.Tests.csproj.FileListAbsolute.txt
+    |                   |   ImanSoftware.KeylessAgent.Tests.dll
+    |                   |   ImanSoftware.KeylessAgent.Tests.GeneratedMSBuildEditorConfig.editorconfig
+    |                   |   ImanSoftware.KeylessAgent.Tests.genruntimeconfig.cache
+    |                   |   ImanSoftware.KeylessAgent.Tests.GlobalUsings.g.cs
+    |                   |   ImanSoftware.KeylessAgent.Tests.pdb
+    |                   |   ImanSoftware.KeylessAgent.Tests.sourcelink.json
+    |                   |   
+    |                   +---ref
+    |                   |       ImanSoftware.KeylessAgent.Tests.dll
+    |                   |       
+    |                   \---refint
+    |                           ImanSoftware.KeylessAgent.Tests.dll
+    |                           
+    \---UI
+        \---ImanSoftware.KeylessAgent.Cli
+            |   ConsoleUserInterface.cs
+            |   icon.png
+            |   ImanSoftware.KeylessAgent.Cli.csproj
+            |   Program.cs
+            |   publish.bat
+            |   README.md
+            |   
+            +---bin
+            |   +---Debug
+            |   |   \---net10.0
+            |   |       |   ImanSoftware.DateTimeProvider.dll
+            |   |       |   ImanSoftware.Extensions.dll
+            |   |       |   ImanSoftware.FileStorage.dll
+            |   |       |   ImanSoftware.KeylessAgent.Abstractions.dll
+            |   |       |   ImanSoftware.KeylessAgent.Abstractions.pdb
+            |   |       |   ImanSoftware.KeylessAgent.Abstractions.xml
+            |   |       |   ImanSoftware.KeylessAgent.Cli.deps.json
+            |   |       |   ImanSoftware.KeylessAgent.Cli.dll
+            |   |       |   ImanSoftware.KeylessAgent.Cli.exe
+            |   |       |   ImanSoftware.KeylessAgent.Cli.pdb
+            |   |       |   ImanSoftware.KeylessAgent.Cli.runtimeconfig.json
+            |   |       |   ImanSoftware.KeylessAgent.Cli.xml
+            |   |       |   ImanSoftware.KeylessAgent.Core.dll
+            |   |       |   ImanSoftware.KeylessAgent.Core.pdb
+            |   |       |   ImanSoftware.KeylessAgent.Core.xml
+            |   |       |   ImanSoftware.Logging.dll
+            |   |       |   ImanSoftware.Outcome.dll
+            |   |       |   ImanSoftware.Serialization.dll
+            |   |       |   Microsoft.Bcl.AsyncInterfaces.dll
+            |   |       |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+            |   |       |   Microsoft.Extensions.Logging.Abstractions.dll
+            |   |       |   Microsoft.Extensions.Options.dll
+            |   |       |   Microsoft.Extensions.Primitives.dll
+            |   |       |   Microsoft.Playwright.dll
+            |   |       |   Newtonsoft.Json.dll
+            |   |       |   playwright.ps1
+            |   |       |   Spectre.Console.Ansi.dll
+            |   |       |   Spectre.Console.Cli.dll
+            |   |       |   Spectre.Console.dll
+            |   |       |   
+            |   |       +---.playwright
+            |   |       |   +---node
+            |   |       |   |   |   LICENSE
+            |   |       |   |   |   
+            |   |       |   |   \---win32_x64
+            |   |       |   |           node.exe
+            |   |       |   |           
+            |   |       |   \---package
+            |   |       |       |   browsers.json
+            |   |       |       |   cli.js
+            |   |       |       |   index.d.ts
+            |   |       |       |   index.js
+            |   |       |       |   index.mjs
+            |   |       |       |   LICENSE
+            |   |       |       |   NOTICE
+            |   |       |       |   package.json
+            |   |       |       |   README.md
+            |   |       |       |   ThirdPartyNotices.txt
+            |   |       |       |   
+            |   |       |       +---bin
+            |   |       |       |       install_media_pack.ps1
+            |   |       |       |       install_webkit_wsl.ps1
+            |   |       |       |       reinstall_chrome_beta_linux.sh
+            |   |       |       |       reinstall_chrome_beta_mac.sh
+            |   |       |       |       reinstall_chrome_beta_win.ps1
+            |   |       |       |       reinstall_chrome_stable_linux.sh
+            |   |       |       |       reinstall_chrome_stable_mac.sh
+            |   |       |       |       reinstall_chrome_stable_win.ps1
+            |   |       |       |       reinstall_msedge_beta_linux.sh
+            |   |       |       |       reinstall_msedge_beta_mac.sh
+            |   |       |       |       reinstall_msedge_beta_win.ps1
+            |   |       |       |       reinstall_msedge_dev_linux.sh
+            |   |       |       |       reinstall_msedge_dev_mac.sh
+            |   |       |       |       reinstall_msedge_dev_win.ps1
+            |   |       |       |       reinstall_msedge_stable_linux.sh
+            |   |       |       |       reinstall_msedge_stable_mac.sh
+            |   |       |       |       reinstall_msedge_stable_win.ps1
+            |   |       |       |       
+            |   |       |       +---lib
+            |   |       |       |   |   bootstrap.js
+            |   |       |       |   |   coreBundle.js
+            |   |       |       |   |   package.js
+            |   |       |       |   |   serverRegistry.js
+            |   |       |       |   |   serverRegistry.js.LICENSE
+            |   |       |       |   |   utilsBundle.js
+            |   |       |       |   |   utilsBundle.js.LICENSE
+            |   |       |       |   |   webp_codec.LICENSE
+            |   |       |       |   |   webp_codec.wasm
+            |   |       |       |   |   xdg-open
+            |   |       |       |   |   
+            |   |       |       |   +---entry
+            |   |       |       |   |       cliDaemon.js
+            |   |       |       |   |       dashboardApp.js
+            |   |       |       |   |       mcp.js
+            |   |       |       |   |       oopBrowserDownload.js
+            |   |       |       |   |       
+            |   |       |       |   +---server
+            |   |       |       |   |   +---chromium
+            |   |       |       |   |   |       appIcon.png
+            |   |       |       |   |   |       
+            |   |       |       |   |   \---electron
+            |   |       |       |   |           loader.js
+            |   |       |       |   |           
+            |   |       |       |   +---tools
+            |   |       |       |   |   +---cli-client
+            |   |       |       |   |   |       channelSessions.js
+            |   |       |       |   |   |       cli.js
+            |   |       |       |   |   |       help.json
+            |   |       |       |   |   |       minimist.js
+            |   |       |       |   |   |       output.js
+            |   |       |       |   |   |       program.js
+            |   |       |       |   |   |       registry.js
+            |   |       |       |   |   |       session.js
+            |   |       |       |   |   |       
+            |   |       |       |   |   +---dashboard
+            |   |       |       |   |   |       appIcon.png
+            |   |       |       |   |   |       
+            |   |       |       |   |   +---skills
+            |   |       |       |   |   |   +---playwright-cli
+            |   |       |       |   |   |   |   |   SKILL.md
+            |   |       |       |   |   |   |   |   
+            |   |       |       |   |   |   |   \---references
+            |   |       |       |   |   |   |           element-attributes.md
+            |   |       |       |   |   |   |           playwright-tests.md
+            |   |       |       |   |   |   |           pr-attachments.md
+            |   |       |       |   |   |   |           request-mocking.md
+            |   |       |       |   |   |   |           running-code.md
+            |   |       |       |   |   |   |           session-management.md
+            |   |       |       |   |   |   |           storage-state.md
+            |   |       |       |   |   |   |           test-generation.md
+            |   |       |       |   |   |   |           tracing.md
+            |   |       |       |   |   |   |           video-recording.md
+            |   |       |       |   |   |   |           
+            |   |       |       |   |   |   +---playwright-component-testing
+            |   |       |       |   |   |   |   |   SKILL.md
+            |   |       |       |   |   |   |   |   
+            |   |       |       |   |   |   |   \---references
+            |   |       |       |   |   |   |           gallery-spec.md
+            |   |       |       |   |   |   |           migration.md
+            |   |       |       |   |   |   |           react.md
+            |   |       |       |   |   |   |           typing.md
+            |   |       |       |   |   |   |           vue.md
+            |   |       |       |   |   |   |           
+            |   |       |       |   |   |   \---playwright-trace
+            |   |       |       |   |   |           SKILL.md
+            |   |       |       |   |   |           
+            |   |       |       |   |   \---utils
+            |   |       |       |   |           extension.js
+            |   |       |       |   |           socketConnection.js
+            |   |       |       |   |           
+            |   |       |       |   \---vite
+            |   |       |       |       +---dashboard
+            |   |       |       |       |   |   index.html
+            |   |       |       |       |   |   playwright-logo.svg
+            |   |       |       |       |   |   
+            |   |       |       |       |   \---assets
+            |   |       |       |       |           codeMirrorModule--QdMvsKi.css
+            |   |       |       |       |           codeMirrorModule-CQ8RZGBm.js
+            |   |       |       |       |           codicon-DCmgc-ay.ttf
+            |   |       |       |       |           firefox-1bWoP6pv.svg
+            |   |       |       |       |           firefox-beta-k3eOH_eK.svg
+            |   |       |       |       |           firefox-nightly-Cp5nfeDT.svg
+            |   |       |       |       |           index-AwgwcYie.css
+            |   |       |       |       |           index-hRvO4yU2.js
+            |   |       |       |       |           safari-na3_-uQk.svg
+            |   |       |       |       |           
+            |   |       |       |       +---htmlReport
+            |   |       |       |       |       index.html
+            |   |       |       |       |       report.css
+            |   |       |       |       |       report.js
+            |   |       |       |       |       
+            |   |       |       |       +---recorder
+            |   |       |       |       |   |   index.html
+            |   |       |       |       |   |   playwright-logo.svg
+            |   |       |       |       |   |   
+            |   |       |       |       |   \---assets
+            |   |       |       |       |           codeMirrorModule--QdMvsKi.css
+            |   |       |       |       |           codeMirrorModule-DK72OMRi.js
+            |   |       |       |       |           codicon-DCmgc-ay.ttf
+            |   |       |       |       |           index-BZpYJZ-P.css
+            |   |       |       |       |           index-Cn0mmDuv.js
+            |   |       |       |       |           
+            |   |       |       |       \---traceViewer
+            |   |       |       |           |   codeMirrorModule.-QdMvsKi.css
+            |   |       |       |           |   codicon.DCmgc-ay.ttf
+            |   |       |       |           |   defaultSettingsView.C8BeHuxd.css
+            |   |       |       |           |   index.B_TqY17P.css
+            |   |       |       |           |   index.html
+            |   |       |       |           |   index.oNry3Hjv.js
+            |   |       |       |           |   manifest.webmanifest
+            |   |       |       |           |   playwright-logo.svg
+            |   |       |       |           |   snapshot.B_Jk1wbt.js
+            |   |       |       |           |   snapshot.html
+            |   |       |       |           |   sw.bundle.js
+            |   |       |       |           |   uiMode.CyMfwkXJ.css
+            |   |       |       |           |   uiMode.CYwC_gH1.js
+            |   |       |       |           |   uiMode.html
+            |   |       |       |           |   xtermModule.kHJ-D0s7.css
+            |   |       |       |           |   
+            |   |       |       |           \---assets
+            |   |       |       |                   codeMirrorModule-BEB2e8M3.js
+            |   |       |       |                   defaultSettingsView-D-g2vrvf.js
+            |   |       |       |                   urlMatch-L3liM589.js
+            |   |       |       |                   xtermModule-B794rD2Z.js
+            |   |       |       |                   
+            |   |       |       \---types
+            |   |       |               protocol.d.ts
+            |   |       |               structs.d.ts
+            |   |       |               types.d.ts
+            |   |       |               
+            |   |       +---de
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---es
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---fr
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---it
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---ja
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---ko
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---pt
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---ru
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       +---sv
+            |   |       |       Spectre.Console.Cli.resources.dll
+            |   |       |       
+            |   |       \---zh-Hans
+            |   |               Spectre.Console.Cli.resources.dll
+            |   |               
+            |   \---Release
+            |       \---net10.0
+            |           |   ImanSoftware.DateTimeProvider.dll
+            |           |   ImanSoftware.Extensions.dll
+            |           |   ImanSoftware.FileStorage.dll
+            |           |   ImanSoftware.KeylessAgent.Abstractions.dll
+            |           |   ImanSoftware.KeylessAgent.Abstractions.pdb
+            |           |   ImanSoftware.KeylessAgent.Abstractions.xml
+            |           |   ImanSoftware.KeylessAgent.Cli.deps.json
+            |           |   ImanSoftware.KeylessAgent.Cli.dll
+            |           |   ImanSoftware.KeylessAgent.Cli.exe
+            |           |   ImanSoftware.KeylessAgent.Cli.pdb
+            |           |   ImanSoftware.KeylessAgent.Cli.runtimeconfig.json
+            |           |   ImanSoftware.KeylessAgent.Cli.xml
+            |           |   ImanSoftware.KeylessAgent.Core.dll
+            |           |   ImanSoftware.KeylessAgent.Core.pdb
+            |           |   ImanSoftware.KeylessAgent.Core.xml
+            |           |   ImanSoftware.Logging.dll
+            |           |   ImanSoftware.Outcome.dll
+            |           |   ImanSoftware.Serialization.dll
+            |           |   Microsoft.Bcl.AsyncInterfaces.dll
+            |           |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+            |           |   Microsoft.Extensions.Logging.Abstractions.dll
+            |           |   Microsoft.Extensions.Options.dll
+            |           |   Microsoft.Extensions.Primitives.dll
+            |           |   Microsoft.Playwright.dll
+            |           |   Newtonsoft.Json.dll
+            |           |   playwright.ps1
+            |           |   Spectre.Console.Ansi.dll
+            |           |   Spectre.Console.Cli.dll
+            |           |   Spectre.Console.dll
+            |           |   
+            |           +---.playwright
+            |           |   +---node
+            |           |   |   |   LICENSE
+            |           |   |   |   
+            |           |   |   \---win32_x64
+            |           |   |           node.exe
+            |           |   |           
+            |           |   \---package
+            |           |       |   browsers.json
+            |           |       |   cli.js
+            |           |       |   index.d.ts
+            |           |       |   index.js
+            |           |       |   index.mjs
+            |           |       |   LICENSE
+            |           |       |   NOTICE
+            |           |       |   package.json
+            |           |       |   README.md
+            |           |       |   ThirdPartyNotices.txt
+            |           |       |   
+            |           |       +---bin
+            |           |       |       install_media_pack.ps1
+            |           |       |       install_webkit_wsl.ps1
+            |           |       |       reinstall_chrome_beta_linux.sh
+            |           |       |       reinstall_chrome_beta_mac.sh
+            |           |       |       reinstall_chrome_beta_win.ps1
+            |           |       |       reinstall_chrome_stable_linux.sh
+            |           |       |       reinstall_chrome_stable_mac.sh
+            |           |       |       reinstall_chrome_stable_win.ps1
+            |           |       |       reinstall_msedge_beta_linux.sh
+            |           |       |       reinstall_msedge_beta_mac.sh
+            |           |       |       reinstall_msedge_beta_win.ps1
+            |           |       |       reinstall_msedge_dev_linux.sh
+            |           |       |       reinstall_msedge_dev_mac.sh
+            |           |       |       reinstall_msedge_dev_win.ps1
+            |           |       |       reinstall_msedge_stable_linux.sh
+            |           |       |       reinstall_msedge_stable_mac.sh
+            |           |       |       reinstall_msedge_stable_win.ps1
+            |           |       |       
+            |           |       +---lib
+            |           |       |   |   bootstrap.js
+            |           |       |   |   coreBundle.js
+            |           |       |   |   package.js
+            |           |       |   |   serverRegistry.js
+            |           |       |   |   serverRegistry.js.LICENSE
+            |           |       |   |   utilsBundle.js
+            |           |       |   |   utilsBundle.js.LICENSE
+            |           |       |   |   webp_codec.LICENSE
+            |           |       |   |   webp_codec.wasm
+            |           |       |   |   xdg-open
+            |           |       |   |   
+            |           |       |   +---entry
+            |           |       |   |       cliDaemon.js
+            |           |       |   |       dashboardApp.js
+            |           |       |   |       mcp.js
+            |           |       |   |       oopBrowserDownload.js
+            |           |       |   |       
+            |           |       |   +---server
+            |           |       |   |   +---chromium
+            |           |       |   |   |       appIcon.png
+            |           |       |   |   |       
+            |           |       |   |   \---electron
+            |           |       |   |           loader.js
+            |           |       |   |           
+            |           |       |   +---tools
+            |           |       |   |   +---cli-client
+            |           |       |   |   |       channelSessions.js
+            |           |       |   |   |       cli.js
+            |           |       |   |   |       help.json
+            |           |       |   |   |       minimist.js
+            |           |       |   |   |       output.js
+            |           |       |   |   |       program.js
+            |           |       |   |   |       registry.js
+            |           |       |   |   |       session.js
+            |           |       |   |   |       
+            |           |       |   |   +---dashboard
+            |           |       |   |   |       appIcon.png
+            |           |       |   |   |       
+            |           |       |   |   +---skills
+            |           |       |   |   |   +---playwright-cli
+            |           |       |   |   |   |   |   SKILL.md
+            |           |       |   |   |   |   |   
+            |           |       |   |   |   |   \---references
+            |           |       |   |   |   |           element-attributes.md
+            |           |       |   |   |   |           playwright-tests.md
+            |           |       |   |   |   |           pr-attachments.md
+            |           |       |   |   |   |           request-mocking.md
+            |           |       |   |   |   |           running-code.md
+            |           |       |   |   |   |           session-management.md
+            |           |       |   |   |   |           storage-state.md
+            |           |       |   |   |   |           test-generation.md
+            |           |       |   |   |   |           tracing.md
+            |           |       |   |   |   |           video-recording.md
+            |           |       |   |   |   |           
+            |           |       |   |   |   +---playwright-component-testing
+            |           |       |   |   |   |   |   SKILL.md
+            |           |       |   |   |   |   |   
+            |           |       |   |   |   |   \---references
+            |           |       |   |   |   |           gallery-spec.md
+            |           |       |   |   |   |           migration.md
+            |           |       |   |   |   |           react.md
+            |           |       |   |   |   |           typing.md
+            |           |       |   |   |   |           vue.md
+            |           |       |   |   |   |           
+            |           |       |   |   |   \---playwright-trace
+            |           |       |   |   |           SKILL.md
+            |           |       |   |   |           
+            |           |       |   |   \---utils
+            |           |       |   |           extension.js
+            |           |       |   |           socketConnection.js
+            |           |       |   |           
+            |           |       |   \---vite
+            |           |       |       +---dashboard
+            |           |       |       |   |   index.html
+            |           |       |       |   |   playwright-logo.svg
+            |           |       |       |   |   
+            |           |       |       |   \---assets
+            |           |       |       |           codeMirrorModule--QdMvsKi.css
+            |           |       |       |           codeMirrorModule-CQ8RZGBm.js
+            |           |       |       |           codicon-DCmgc-ay.ttf
+            |           |       |       |           firefox-1bWoP6pv.svg
+            |           |       |       |           firefox-beta-k3eOH_eK.svg
+            |           |       |       |           firefox-nightly-Cp5nfeDT.svg
+            |           |       |       |           index-AwgwcYie.css
+            |           |       |       |           index-hRvO4yU2.js
+            |           |       |       |           safari-na3_-uQk.svg
+            |           |       |       |           
+            |           |       |       +---htmlReport
+            |           |       |       |       index.html
+            |           |       |       |       report.css
+            |           |       |       |       report.js
+            |           |       |       |       
+            |           |       |       +---recorder
+            |           |       |       |   |   index.html
+            |           |       |       |   |   playwright-logo.svg
+            |           |       |       |   |   
+            |           |       |       |   \---assets
+            |           |       |       |           codeMirrorModule--QdMvsKi.css
+            |           |       |       |           codeMirrorModule-DK72OMRi.js
+            |           |       |       |           codicon-DCmgc-ay.ttf
+            |           |       |       |           index-BZpYJZ-P.css
+            |           |       |       |           index-Cn0mmDuv.js
+            |           |       |       |           
+            |           |       |       \---traceViewer
+            |           |       |           |   codeMirrorModule.-QdMvsKi.css
+            |           |       |           |   codicon.DCmgc-ay.ttf
+            |           |       |           |   defaultSettingsView.C8BeHuxd.css
+            |           |       |           |   index.B_TqY17P.css
+            |           |       |           |   index.html
+            |           |       |           |   index.oNry3Hjv.js
+            |           |       |           |   manifest.webmanifest
+            |           |       |           |   playwright-logo.svg
+            |           |       |           |   snapshot.B_Jk1wbt.js
+            |           |       |           |   snapshot.html
+            |           |       |           |   sw.bundle.js
+            |           |       |           |   uiMode.CyMfwkXJ.css
+            |           |       |           |   uiMode.CYwC_gH1.js
+            |           |       |           |   uiMode.html
+            |           |       |           |   xtermModule.kHJ-D0s7.css
+            |           |       |           |   
+            |           |       |           \---assets
+            |           |       |                   codeMirrorModule-BEB2e8M3.js
+            |           |       |                   defaultSettingsView-D-g2vrvf.js
+            |           |       |                   urlMatch-L3liM589.js
+            |           |       |                   xtermModule-B794rD2Z.js
+            |           |       |                   
+            |           |       \---types
+            |           |               protocol.d.ts
+            |           |               structs.d.ts
+            |           |               types.d.ts
+            |           |               
+            |           +---de
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---es
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---fr
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---it
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---ja
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---ko
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---pt
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---publish
+            |           |   |   ImanSoftware.DateTimeProvider.dll
+            |           |   |   ImanSoftware.Extensions.dll
+            |           |   |   ImanSoftware.FileStorage.dll
+            |           |   |   ImanSoftware.KeylessAgent.Abstractions.dll
+            |           |   |   ImanSoftware.KeylessAgent.Abstractions.pdb
+            |           |   |   ImanSoftware.KeylessAgent.Abstractions.xml
+            |           |   |   ImanSoftware.KeylessAgent.Cli.deps.json
+            |           |   |   ImanSoftware.KeylessAgent.Cli.dll
+            |           |   |   ImanSoftware.KeylessAgent.Cli.exe
+            |           |   |   ImanSoftware.KeylessAgent.Cli.pdb
+            |           |   |   ImanSoftware.KeylessAgent.Cli.runtimeconfig.json
+            |           |   |   ImanSoftware.KeylessAgent.Cli.xml
+            |           |   |   ImanSoftware.KeylessAgent.Core.dll
+            |           |   |   ImanSoftware.KeylessAgent.Core.pdb
+            |           |   |   ImanSoftware.KeylessAgent.Core.xml
+            |           |   |   ImanSoftware.Logging.dll
+            |           |   |   ImanSoftware.Outcome.dll
+            |           |   |   ImanSoftware.Serialization.dll
+            |           |   |   Microsoft.Bcl.AsyncInterfaces.dll
+            |           |   |   Microsoft.Extensions.DependencyInjection.Abstractions.dll
+            |           |   |   Microsoft.Extensions.Logging.Abstractions.dll
+            |           |   |   Microsoft.Extensions.Options.dll
+            |           |   |   Microsoft.Extensions.Primitives.dll
+            |           |   |   Microsoft.Playwright.dll
+            |           |   |   Newtonsoft.Json.dll
+            |           |   |   playwright.ps1
+            |           |   |   Spectre.Console.Ansi.dll
+            |           |   |   Spectre.Console.Cli.dll
+            |           |   |   Spectre.Console.dll
+            |           |   |   
+            |           |   +---.playwright
+            |           |   |   +---node
+            |           |   |   |   |   LICENSE
+            |           |   |   |   |   
+            |           |   |   |   \---win32_x64
+            |           |   |   |           node.exe
+            |           |   |   |           
+            |           |   |   \---package
+            |           |   |       |   browsers.json
+            |           |   |       |   cli.js
+            |           |   |       |   index.d.ts
+            |           |   |       |   index.js
+            |           |   |       |   index.mjs
+            |           |   |       |   LICENSE
+            |           |   |       |   NOTICE
+            |           |   |       |   package.json
+            |           |   |       |   README.md
+            |           |   |       |   ThirdPartyNotices.txt
+            |           |   |       |   
+            |           |   |       +---bin
+            |           |   |       |       install_media_pack.ps1
+            |           |   |       |       install_webkit_wsl.ps1
+            |           |   |       |       reinstall_chrome_beta_linux.sh
+            |           |   |       |       reinstall_chrome_beta_mac.sh
+            |           |   |       |       reinstall_chrome_beta_win.ps1
+            |           |   |       |       reinstall_chrome_stable_linux.sh
+            |           |   |       |       reinstall_chrome_stable_mac.sh
+            |           |   |       |       reinstall_chrome_stable_win.ps1
+            |           |   |       |       reinstall_msedge_beta_linux.sh
+            |           |   |       |       reinstall_msedge_beta_mac.sh
+            |           |   |       |       reinstall_msedge_beta_win.ps1
+            |           |   |       |       reinstall_msedge_dev_linux.sh
+            |           |   |       |       reinstall_msedge_dev_mac.sh
+            |           |   |       |       reinstall_msedge_dev_win.ps1
+            |           |   |       |       reinstall_msedge_stable_linux.sh
+            |           |   |       |       reinstall_msedge_stable_mac.sh
+            |           |   |       |       reinstall_msedge_stable_win.ps1
+            |           |   |       |       
+            |           |   |       +---lib
+            |           |   |       |   |   bootstrap.js
+            |           |   |       |   |   coreBundle.js
+            |           |   |       |   |   package.js
+            |           |   |       |   |   serverRegistry.js
+            |           |   |       |   |   serverRegistry.js.LICENSE
+            |           |   |       |   |   utilsBundle.js
+            |           |   |       |   |   utilsBundle.js.LICENSE
+            |           |   |       |   |   webp_codec.LICENSE
+            |           |   |       |   |   webp_codec.wasm
+            |           |   |       |   |   xdg-open
+            |           |   |       |   |   
+            |           |   |       |   +---entry
+            |           |   |       |   |       cliDaemon.js
+            |           |   |       |   |       dashboardApp.js
+            |           |   |       |   |       mcp.js
+            |           |   |       |   |       oopBrowserDownload.js
+            |           |   |       |   |       
+            |           |   |       |   +---server
+            |           |   |       |   |   +---chromium
+            |           |   |       |   |   |       appIcon.png
+            |           |   |       |   |   |       
+            |           |   |       |   |   \---electron
+            |           |   |       |   |           loader.js
+            |           |   |       |   |           
+            |           |   |       |   +---tools
+            |           |   |       |   |   +---cli-client
+            |           |   |       |   |   |       channelSessions.js
+            |           |   |       |   |   |       cli.js
+            |           |   |       |   |   |       help.json
+            |           |   |       |   |   |       minimist.js
+            |           |   |       |   |   |       output.js
+            |           |   |       |   |   |       program.js
+            |           |   |       |   |   |       registry.js
+            |           |   |       |   |   |       session.js
+            |           |   |       |   |   |       
+            |           |   |       |   |   +---dashboard
+            |           |   |       |   |   |       appIcon.png
+            |           |   |       |   |   |       
+            |           |   |       |   |   +---skills
+            |           |   |       |   |   |   +---playwright-cli
+            |           |   |       |   |   |   |   |   SKILL.md
+            |           |   |       |   |   |   |   |   
+            |           |   |       |   |   |   |   \---references
+            |           |   |       |   |   |   |           element-attributes.md
+            |           |   |       |   |   |   |           playwright-tests.md
+            |           |   |       |   |   |   |           pr-attachments.md
+            |           |   |       |   |   |   |           request-mocking.md
+            |           |   |       |   |   |   |           running-code.md
+            |           |   |       |   |   |   |           session-management.md
+            |           |   |       |   |   |   |           storage-state.md
+            |           |   |       |   |   |   |           test-generation.md
+            |           |   |       |   |   |   |           tracing.md
+            |           |   |       |   |   |   |           video-recording.md
+            |           |   |       |   |   |   |           
+            |           |   |       |   |   |   +---playwright-component-testing
+            |           |   |       |   |   |   |   |   SKILL.md
+            |           |   |       |   |   |   |   |   
+            |           |   |       |   |   |   |   \---references
+            |           |   |       |   |   |   |           gallery-spec.md
+            |           |   |       |   |   |   |           migration.md
+            |           |   |       |   |   |   |           react.md
+            |           |   |       |   |   |   |           typing.md
+            |           |   |       |   |   |   |           vue.md
+            |           |   |       |   |   |   |           
+            |           |   |       |   |   |   \---playwright-trace
+            |           |   |       |   |   |           SKILL.md
+            |           |   |       |   |   |           
+            |           |   |       |   |   \---utils
+            |           |   |       |   |           extension.js
+            |           |   |       |   |           socketConnection.js
+            |           |   |       |   |           
+            |           |   |       |   \---vite
+            |           |   |       |       +---dashboard
+            |           |   |       |       |   |   index.html
+            |           |   |       |       |   |   playwright-logo.svg
+            |           |   |       |       |   |   
+            |           |   |       |       |   \---assets
+            |           |   |       |       |           codeMirrorModule--QdMvsKi.css
+            |           |   |       |       |           codeMirrorModule-CQ8RZGBm.js
+            |           |   |       |       |           codicon-DCmgc-ay.ttf
+            |           |   |       |       |           firefox-1bWoP6pv.svg
+            |           |   |       |       |           firefox-beta-k3eOH_eK.svg
+            |           |   |       |       |           firefox-nightly-Cp5nfeDT.svg
+            |           |   |       |       |           index-AwgwcYie.css
+            |           |   |       |       |           index-hRvO4yU2.js
+            |           |   |       |       |           safari-na3_-uQk.svg
+            |           |   |       |       |           
+            |           |   |       |       +---htmlReport
+            |           |   |       |       |       index.html
+            |           |   |       |       |       report.css
+            |           |   |       |       |       report.js
+            |           |   |       |       |       
+            |           |   |       |       +---recorder
+            |           |   |       |       |   |   index.html
+            |           |   |       |       |   |   playwright-logo.svg
+            |           |   |       |       |   |   
+            |           |   |       |       |   \---assets
+            |           |   |       |       |           codeMirrorModule--QdMvsKi.css
+            |           |   |       |       |           codeMirrorModule-DK72OMRi.js
+            |           |   |       |       |           codicon-DCmgc-ay.ttf
+            |           |   |       |       |           index-BZpYJZ-P.css
+            |           |   |       |       |           index-Cn0mmDuv.js
+            |           |   |       |       |           
+            |           |   |       |       \---traceViewer
+            |           |   |       |           |   codeMirrorModule.-QdMvsKi.css
+            |           |   |       |           |   codicon.DCmgc-ay.ttf
+            |           |   |       |           |   defaultSettingsView.C8BeHuxd.css
+            |           |   |       |           |   index.B_TqY17P.css
+            |           |   |       |           |   index.html
+            |           |   |       |           |   index.oNry3Hjv.js
+            |           |   |       |           |   manifest.webmanifest
+            |           |   |       |           |   playwright-logo.svg
+            |           |   |       |           |   snapshot.B_Jk1wbt.js
+            |           |   |       |           |   snapshot.html
+            |           |   |       |           |   sw.bundle.js
+            |           |   |       |           |   uiMode.CyMfwkXJ.css
+            |           |   |       |           |   uiMode.CYwC_gH1.js
+            |           |   |       |           |   uiMode.html
+            |           |   |       |           |   xtermModule.kHJ-D0s7.css
+            |           |   |       |           |   
+            |           |   |       |           \---assets
+            |           |   |       |                   codeMirrorModule-BEB2e8M3.js
+            |           |   |       |                   defaultSettingsView-D-g2vrvf.js
+            |           |   |       |                   urlMatch-L3liM589.js
+            |           |   |       |                   xtermModule-B794rD2Z.js
+            |           |   |       |                   
+            |           |   |       \---types
+            |           |   |               protocol.d.ts
+            |           |   |               structs.d.ts
+            |           |   |               types.d.ts
+            |           |   |               
+            |           |   +---de
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---es
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---fr
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---it
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---ja
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---ko
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---pt
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---ru
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   +---sv
+            |           |   |       Spectre.Console.Cli.resources.dll
+            |           |   |       
+            |           |   \---zh-Hans
+            |           |           Spectre.Console.Cli.resources.dll
+            |           |           
+            |           +---ru
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           +---sv
+            |           |       Spectre.Console.Cli.resources.dll
+            |           |       
+            |           \---zh-Hans
+            |                   Spectre.Console.Cli.resources.dll
+            |                   
+            +---Commands
+            |   +---Config
+            |   |       ConfigCommand.cs
+            |   |       
+            |   +---Interactive
+            |   |       InteractiveCommand.cs
+            |   |       InteractiveSettings.cs
+            |   |       
+            |   +---Resume
+            |   |       ResumeCommand.cs
+            |   |       
+            |   +---Run
+            |   |       RunCommand.cs
+            |   |       RunSettings.cs
+            |   |       
+            |   \---Undo
+            |           UndoCommand.cs
+            |           
+            +---Helpers
+            |       AgentCliRunner.cs
+            |       ConsoleWriter.cs
+            |       InteractiveSession.cs
+            |       WorkspacePrompt.cs
+            |       
+            +---obj
+            |   |   ImanSoftware.KeylessAgent.Cli.csproj.nuget.dgspec.json
+            |   |   ImanSoftware.KeylessAgent.Cli.csproj.nuget.g.props
+            |   |   ImanSoftware.KeylessAgent.Cli.csproj.nuget.g.targets
+            |   |   project.assets.json
+            |   |   project.nuget.cache
+            |   |   
+            |   +---Debug
+            |   |   \---net10.0
+            |   |       |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+            |   |       |   apphost.exe
+            |   |       |   ImanSoft.E37D0654.Up2Date
+            |   |       |   ImanSoftware.KeylessAgent.Cli.AssemblyInfo.cs
+            |   |       |   ImanSoftware.KeylessAgent.Cli.AssemblyInfoInputs.cache
+            |   |       |   ImanSoftware.KeylessAgent.Cli.assets.cache
+            |   |       |   ImanSoftware.KeylessAgent.Cli.csproj.AssemblyReference.cache
+            |   |       |   ImanSoftware.KeylessAgent.Cli.csproj.CoreCompileInputs.cache
+            |   |       |   ImanSoftware.KeylessAgent.Cli.csproj.FileListAbsolute.txt
+            |   |       |   ImanSoftware.KeylessAgent.Cli.dll
+            |   |       |   ImanSoftware.KeylessAgent.Cli.GeneratedMSBuildEditorConfig.editorconfig
+            |   |       |   ImanSoftware.KeylessAgent.Cli.genruntimeconfig.cache
+            |   |       |   ImanSoftware.KeylessAgent.Cli.GlobalUsings.g.cs
+            |   |       |   ImanSoftware.KeylessAgent.Cli.pdb
+            |   |       |   ImanSoftware.KeylessAgent.Cli.sourcelink.json
+            |   |       |   ImanSoftware.KeylessAgent.Cli.xml
+            |   |       |   
+            |   |       +---ref
+            |   |       |       ImanSoftware.KeylessAgent.Cli.dll
+            |   |       |       
+            |   |       \---refint
+            |   |               ImanSoftware.KeylessAgent.Cli.dll
+            |   |               
+            |   \---Release
+            |       |   ImanSoftware.KeylessAgent.Cli.1.0.0.nuspec
+            |       |   ImanSoftware.KeylessAgent.Cli.1.0.0.symbols.nuspec
+            |       |   
+            |       \---net10.0
+            |           |   .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
+            |           |   apphost.exe
+            |           |   DotnetToolSettings.xml
+            |           |   ImanSoft.E37D0654.Up2Date
+            |           |   ImanSoftware.KeylessAgent.Cli.AssemblyInfo.cs
+            |           |   ImanSoftware.KeylessAgent.Cli.AssemblyInfoInputs.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.assets.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.csproj.AssemblyReference.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.csproj.CoreCompileInputs.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.csproj.FileListAbsolute.txt
+            |           |   ImanSoftware.KeylessAgent.Cli.deps.json
+            |           |   ImanSoftware.KeylessAgent.Cli.dll
+            |           |   ImanSoftware.KeylessAgent.Cli.GeneratedMSBuildEditorConfig.editorconfig
+            |           |   ImanSoftware.KeylessAgent.Cli.genpublishdeps.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.genruntimeconfig.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.GlobalUsings.g.cs
+            |           |   ImanSoftware.KeylessAgent.Cli.pdb
+            |           |   ImanSoftware.KeylessAgent.Cli.sourcelink.json
+            |           |   ImanSoftware.KeylessAgent.Cli.toolssettingsinput.cache
+            |           |   ImanSoftware.KeylessAgent.Cli.xml
+            |           |   PublishOutputs.85bb4f45e7.txt
+            |           |   
+            |           +---ref
+            |           |       ImanSoftware.KeylessAgent.Cli.dll
+            |           |       
+            |           \---refint
+            |                   ImanSoftware.KeylessAgent.Cli.dll
+            |                   
+            \---Properties
+                    AssemblyInfo.cs
+                    

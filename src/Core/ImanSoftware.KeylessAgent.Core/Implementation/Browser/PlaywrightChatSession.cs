@@ -1,56 +1,57 @@
-using ImanSoftware.DateTimeProvider;
 using ImanSoftware.FileStorage;
+using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.Logging;
 using ImanSoftware.Outcomes;
-using Microsoft.Playwright;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 
 /// <summary>
-/// One live chat in the user's Chrome: rate-limited sends with attachment upload
-/// (paste fallback) and reply waiting that reads only the final-answer element.
+/// One live chat: rate-limited sends with attachment upload (paste fallback) and reply waiting
+/// that can never return the PREVIOUS reply:
+/// before every send the newest assistant message is fingerprinted (message key, or a hash of
+/// the final-answer text plus visible count); after sending, the send itself is confirmed
+/// (a new message item appeared, or the input is empty and the stop indicator is on), and a
+/// reply is accepted only when its fingerprint differs from the pre-send one, its final-answer
+/// element exists and is stable for two reads one poll apart, and the stop indicator is gone.
 /// </summary>
 internal sealed class PlaywrightChatSession : IChatSession
 {
-    private readonly IPage _page;
-    private readonly IBrowser? _browser;
-    private readonly bool _ownsBrowser;
-    private readonly SelectorsCatalog _selectors;
+    private readonly IChatPage _page;
+    private readonly Func<ValueTask> _disposeAsync;
     private readonly ChatSessionOptions _options;
     private readonly IReplyExtractor _replyExtractor;
     private readonly ILoggerAdapter<PlaywrightChatSession> _log;
     private readonly RateLimiter _rateLimiter;
-    private readonly IDateTimeProvider _time;
-    private readonly IFileStorage _storage = ImanFileStorageFactory.CreateStorage();
+    private readonly IFileStorage _storage;
     private readonly Random _random = new();
+    private readonly int _pollDelayMs;
+
+    /// <summary>
+    /// The fingerprint captured before the last send; the reply wait only accepts a newer message.
+    /// </summary>
+    private AssistantStamp? _preSendStamp;
 
     public PlaywrightChatSession(
-        IPage page,
-        IBrowser? browser,
-        bool ownsBrowser,
-        SelectorsCatalog selectors,
+        IChatPage page,
+        Func<ValueTask> disposeAsync,
         ChatSessionOptions options,
         IReplyExtractor replyExtractor,
+        RateLimiter rateLimiter,
         ILoggerAdapter<PlaywrightChatSession> log,
-        IDateTimeProvider time)
+        IFileStorage storage,
+        int pollDelayMs = 1_000)
     {
         _page = page;
-        _browser = browser;
-        _ownsBrowser = ownsBrowser;
-        _selectors = selectors;
+        _disposeAsync = disposeAsync;
         _options = options;
         _replyExtractor = replyExtractor;
+        _rateLimiter = rateLimiter;
         _log = log;
-        _time = time;
-        _rateLimiter = new RateLimiter(
-            options.Browser.MaxMessagesPerMinute,
-            options.Browser.MinDelayMs,
-            options.Browser.MaxDelayMs,
-            _time,
-            _random);
+        _storage = storage;
+        _pollDelayMs = pollDelayMs;
     }
 
     /// <inheritdoc />
@@ -63,40 +64,53 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             await _rateLimiter.WaitAsync(cancellationToken);
 
+            // --- Step 1: fingerprint the current newest assistant message (pre-send baseline) ---
+            _preSendStamp = _page.GetNewestAssistantStamp();
+            var itemCountBefore = _page.GetMessageItemCount();
+
+            // --- Step 2: deliver attachments (upload with wait, paste fallback) ---
             var text = message;
-            var uploadOutcome = await TryUploadAttachmentsAsync(attachments);
-            if (uploadOutcome.IsFailure)
+            var delivery = await DeliverAttachmentsAsync(attachments, cancellationToken);
+            if (delivery.IsFailure)
+                return delivery;
+            if (delivery.Data == AttachmentDelivery.FellBackToPaste)
             {
-                _log.LogWarning("Attachment upload failed ({Error}); pasting content into the message.", uploadOutcome.Error.Message);
+                _log.LogWarning("Attachment upload unavailable; pasting the content into the message.");
                 text = message + "\n\n" + string.Join("\n\n", attachments.Select(a =>
                     $"--- attached: {a.Name} ---\n{a.Content}"));
             }
 
-            var input = await PlaywrightChatProvider.FirstVisible(_page, _selectors.InputBox, timeoutMs: 15_000)
-                ?? throw new InvalidOperationException(
-                    $"Input box not found; none of the selectors matched: {string.Join(", ", _selectors.InputBox)}");
+            // --- Step 3: insert the whole text and send ---
+            _page.InsertText(text);
+            await Task.Delay(_random.Next(
+                _options.Browser.MinDelayMs,
+                Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
 
-            // Fill inserts the whole text at once — never per-character typing.
-            await input.FillAsync(string.Empty);
-            await _page.Keyboard.InsertTextAsync(text);
-            await Task.Delay(_random.Next(_options.Browser.MinDelayMs, Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
+            if (!_page.TryClickSend())
+                _page.PressEnter();
 
-            var send = await PlaywrightChatProvider.FirstVisible(_page, _selectors.SendButton, timeoutMs: 5_000);
-            if (send is not null)
+            // --- Step 4: confirm the send actually happened ---
+            if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
             {
-                await send.ClickAsync();
-            }
-            else
-            {
-                _log.LogInformation("Send button not found; pressing Enter.");
-                await _page.Keyboard.PressAsync("Enter");
+                // One retry: click, then Enter.
+                _log.LogWarning("Send not confirmed within {Seconds}s; retrying once (click + Enter).", _options.Browser.SendConfirmSeconds);
+                if (_page.TryClickSend())
+                    _page.PressEnter();
+
+                if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
+                {
+                    _page.SaveDebugScreenshot("send-not-confirmed");
+                    return Outcome.Failure(new OutcomeError(
+                        $"The message was not sent within {_options.Browser.SendConfirmSeconds + _options.Browser.SendConfirmSeconds}s (no new message item, and no generating indicator).",
+                        ErrorCodes.SendNotConfirmed, OutcomeErrorType.Failure));
+                }
             }
 
             return Outcome.Successful();
         }
         catch (Exception ex)
         {
-            await SaveDebugScreenshotAsync("send-failed");
+            _page.SaveDebugScreenshot("send-failed");
             return Outcome.Failure(new OutcomeError(ex));
         }
     }
@@ -105,138 +119,112 @@ internal sealed class PlaywrightChatSession : IChatSession
     public async Task<Outcome<string>> WaitForReplyAsync(CancellationToken cancellationToken = default)
     {
         var timeout = TimeSpan.FromSeconds(_options.Browser.ReplyTimeoutSeconds);
-        var deadline = _time.Now.ToUniversalTime() + timeout;
+        var deadline = DateTime.UtcNow + timeout;
         var stableReply = (string?)null;
 
-        while (_time.Now.ToUniversalTime() < deadline)
+        while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var stillGenerating = await PlaywrightChatProvider.FirstVisible(_page, _selectors.StopIndicator, timeoutMs: 1_000) is not null;
-
-            var newest = await GetNewestAssistantHtmlAsync();
-            var reply = newest is null ? null : _replyExtractor.ExtractFinalAnswer(newest);
+            var stillGenerating = _page.IsStopIndicatorVisible();
+            var stamp = _page.GetNewestAssistantStamp();
+            var isNewMessage = stamp is not null && stamp.IsDifferentFrom(_preSendStamp);
+            var reply = isNewMessage && _page.GetNewestAssistantHtml() is { } html
+                ? _replyExtractor.ExtractFinalAnswer(html)
+                : null;
 
             if (!stillGenerating &&
+                isNewMessage &&
                 !string.IsNullOrWhiteSpace(reply) &&
                 reply == stableReply)
             {
+                // This accepted message becomes the baseline for the next turn.
+                _preSendStamp = stamp;
                 return Outcome.Successful(reply);
             }
 
-            if (!string.IsNullOrWhiteSpace(reply))
-                stableReply = reply;
-            else
-                stableReply = null;
+            // Only the NEW message's text may accumulate stability; the old reply never counts.
+            stableReply = isNewMessage && !string.IsNullOrWhiteSpace(reply) ? reply : null;
 
-            await Task.Delay(1_000, cancellationToken);
+            await Task.Delay(_pollDelayMs, cancellationToken);
         }
 
-        await SaveDebugScreenshotAsync("reply-timeout");
+        _page.SaveDebugScreenshot("reply-timeout");
         return Outcome.Failure<string>(new OutcomeError(
-            $"No complete reply within {_options.Browser.ReplyTimeoutSeconds}s.",
-            "KA_REPLY_TIMEOUT", OutcomeErrorType.Failure));
+            $"No complete new reply within {_options.Browser.ReplyTimeoutSeconds}s.",
+            ErrorCodes.ReplyTimeout, OutcomeErrorType.Failure));
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync() => await _disposeAsync();
+
+    /// <summary>
+    /// A send is confirmed when a new message item appeared in the DOM, or the input was
+    /// consumed and the stop/generating indicator is on.
+    /// </summary>
+    private async Task<bool> ConfirmSendAsync(int itemCountBefore, CancellationToken cancellationToken)
     {
-        try
+        var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.SendConfirmSeconds);
+        while (DateTime.UtcNow < deadline)
         {
-            if (_ownsBrowser)
-                await _page.Context.CloseAsync();
-            else if (_browser is not null)
-                await _browser.CloseAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (_page.GetMessageItemCount() > itemCountBefore)
+                return true;
+
+            if (_page.IsInputCleared() && _page.IsStopIndicatorVisible())
+                return true;
+
+            await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
-        catch
-        {
-            // Closing the browser must never crash the agent.
-        }
+
+        return false;
     }
 
-    private async Task<Outcome> TryUploadAttachmentsAsync(IReadOnlyList<SnapshotAttachment> attachments)
+    private async Task<Outcome<AttachmentDelivery>> DeliverAttachmentsAsync(IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken)
     {
         if (attachments.Count == 0)
-            return Outcome.Successful();
-
-        var fileInput = await PlaywrightChatProvider.FirstVisible(_page, _selectors.FileInput, timeoutMs: 5_000);
-        if (fileInput is null)
-        {
-            return Outcome.Failure(new OutcomeError(
-                "File input not found.", "KA_ATTACHMENT_UPLOAD_FAILED", OutcomeErrorType.Failure));
-        }
+            return Outcome.Successful(AttachmentDelivery.NothingToAttach);
 
         var directory = Path.Combine(_options.WorkspaceRoot, ".agent", "attachments");
         var created = new List<string>();
         foreach (var attachment in attachments)
         {
             var path = Path.Combine(directory, attachment.Name);
-            var mkdir = await _storage.CreateDirectoryAsync(directory);
+            var mkdir = await _storage.CreateDirectoryAsync(directory, cancellationToken);
             if (mkdir.IsFailure)
-                return mkdir;
+                return Outcome.Failure<AttachmentDelivery>(mkdir.Error);
 
-            var write = await _storage.WriteAllTextAsync(path, attachment.Content);
+            var write = await _storage.WriteAllTextAsync(path, attachment.Content, cancellationToken);
             if (write.IsFailure)
-                return write;
+                return Outcome.Failure<AttachmentDelivery>(write.Error);
 
             created.Add(path);
         }
 
-        try
+        if (!_page.TryUploadFiles(created))
+            return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
+
+        // The send click must wait until the upload landed: chips visible and send enabled.
+        var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.UploadWaitSeconds);
+        while (DateTime.UtcNow < deadline)
         {
-            await fileInput.SetInputFilesAsync(created.Select(p => p.Replace('\\', '/')).ToArray());
-            await _page.WaitForTimeoutAsync(1_000);
-            return Outcome.Successful();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (_page.AreAttachmentChipsVisible() && _page.IsSendEnabled())
+                return Outcome.Successful(AttachmentDelivery.Uploaded);
+
+            await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
-        catch (Exception ex)
-        {
-            return Outcome.Failure(new OutcomeError(ex));
-        }
+
+        _log.LogWarning("Upload did not settle within {Seconds}s; falling back to pasting.", _options.Browser.UploadWaitSeconds);
+        return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
     }
 
-    /// <summary>
-    /// The message list is virtualized: only the newest messages exist in the DOM,
-    /// so the newest assistant message is the last matching element.
-    /// </summary>
-    private async Task<string?> GetNewestAssistantHtmlAsync()
+    private enum AttachmentDelivery
     {
-        foreach (var selector in _selectors.AssistantMessage)
-        {
-            try
-            {
-                var count = await _page.Locator(selector).CountAsync();
-                if (count == 0)
-                    continue;
-
-                var html = await _page.Locator(selector).Nth(count - 1).EvaluateAsync(
-                    "element => element.outerHTML");
-                return html?.ToString();
-            }
-            catch
-            {
-                // The list re-renders constantly; a miss here just means "try again next second".
-            }
-        }
-
-        return null;
-    }
-
-    private async Task SaveDebugScreenshotAsync(string name)
-    {
-        if (!_options.Browser.Debug)
-            return;
-
-        try
-        {
-            var directory = Path.Combine(_options.WorkspaceRoot, ".agent", "logs");
-            Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, $"{name}-{_time.Now:yyyyMMdd-HHmmss}.png");
-            await _page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = false });
-            _log.LogInformation("Debug screenshot saved: {Path}", path);
-        }
-        catch
-        {
-            // Screenshots are best-effort.
-        }
+        NothingToAttach,
+        Uploaded,
+        FellBackToPaste,
     }
 }

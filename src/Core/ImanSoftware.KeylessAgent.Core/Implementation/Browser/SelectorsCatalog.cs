@@ -45,6 +45,9 @@ internal sealed class SelectorsCatalog
     /// <summary>File upload input selectors.</summary>
     public string[] FileInput { get; init; } = [];
 
+    /// <summary>Uploaded-file chip selectors (the upload has landed in the UI).</summary>
+    public string[] AttachmentChips { get; init; } = [];
+
     /// <summary>DeepThink toggle selectors.</summary>
     public string[] DeepThinkToggle { get; init; } = [];
 

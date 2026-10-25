@@ -100,6 +100,9 @@ public static class ErrorCodes
     /// <summary>No reply arrived within the configured timeout.</summary>
     public const string ReplyTimeout = "KA_REPLY_TIMEOUT";
 
+    /// <summary>The message could not be sent (not confirmed in the DOM, retry failed too).</summary>
+    public const string SendNotConfirmed = "KA_SEND_NOT_CONFIRMED";
+
     /// <summary>Uploading attachments to the chat failed.</summary>
     public const string AttachmentUploadFailed = "KA_ATTACHMENT_UPLOAD_FAILED";
 

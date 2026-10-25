@@ -80,10 +80,21 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                 await EnsureToggles(page, selectors.Data, options.Browser);
             }
 
+            var chatPage = new PlaywrightChatPage(
+                page, selectors.Data, options.Browser.Debug,
+                new LoggerAdapter<PlaywrightChatPage>(_loggerFactory));
             IChatSession session = new PlaywrightChatSession(
-                page, browser, ownsBrowser, selectors.Data, options, _replyExtractor,
+                chatPage,
+                () => DisposeConnectionAsync(browser, ownsBrowser),
+                options,
+                _replyExtractor,
+                new RateLimiter(
+                    options.Browser.MaxMessagesPerMinute,
+                    options.Browser.MinDelayMs,
+                    options.Browser.MaxDelayMs,
+                    _time),
                 new LoggerAdapter<PlaywrightChatSession>(_loggerFactory),
-                _time);
+                ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage());
             return Outcome.Successful(session);
         }
         catch (Exception ex)
@@ -133,7 +144,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
     private async Task WaitForLoginIfNeeded(IPage page, SelectorsCatalog selectors)
     {
-        var loginLocator = await FirstVisible(page, selectors.LoginIndicator, timeoutMs: 5_000);
+        var loginLocator = await PlaywrightChatPageFirstVisibleAsync(page, selectors.LoginIndicator, 5_000);
         if (loginLocator is null)
             return;
 
@@ -142,7 +153,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         while (_time.Now.ToUniversalTime() < deadline)
         {
             await page.WaitForTimeoutAsync(2_000);
-            if (await FirstVisible(page, selectors.LoginIndicator, timeoutMs: 1_000) is null)
+            if (await PlaywrightChatPageFirstVisibleAsync(page, selectors.LoginIndicator, 1_000) is null)
                 return;
         }
 
@@ -201,7 +212,29 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         // The DOM sample does not cover every toggle state; a missing toggle is a warning, not an error.
     }
 
-    internal static async Task<ILocator?> FirstVisible(IPage page, string[] selectors, int timeoutMs)
+
+    private static async ValueTask DisposeConnectionAsync(IBrowser? browser, bool ownsBrowser)
+    {
+        try
+        {
+            if (ownsBrowser)
+            {
+                var contexts = browser?.Contexts;
+                if (contexts is { Count: > 0 })
+                    await contexts[0].CloseAsync();
+            }
+            else if (browser is not null)
+            {
+                await browser.CloseAsync();
+            }
+        }
+        catch
+        {
+            // Closing the browser must never crash the agent.
+        }
+    }
+
+    private static async Task<ILocator?> PlaywrightChatPageFirstVisibleAsync(IPage page, string[] selectors, int timeoutMs)
     {
         foreach (var selector in selectors)
         {

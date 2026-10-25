@@ -29,6 +29,29 @@ All selectors live in the workspace `selectors.json` (created from the embedded 
 
 **Not covered by the DOM sample**: the generating/Stop state, the New Chat button, and the login page. Those selectors ship with several fallbacks and log a clear error naming the missing selector — fix them in `selectors.json` when DeepSeek changes.
 
+## Reply identity — never the previous reply
+
+After every send the DOM still shows the PREVIOUS assistant message until the new one renders
+(the list is virtualized; the stop indicator may also lag). To never return the old reply:
+
+1. **Before sending**, the session fingerprints the newest assistant message: its
+   `data-virtual-list-item-key` when present, otherwise a stable hash of its final-answer text,
+   plus the count of visible assistant messages (count alone is never trusted — virtualization).
+2. **The send itself is confirmed** within `Browser.SendConfirmSeconds` (default 15): a new
+   message item appeared in the DOM, or the input is empty and the stop/generating indicator
+   is on. Otherwise the send is retried once (click, then Enter) and then fails with
+   `KA_SEND_NOT_CONFIRMED`.
+3. **A reply is accepted only when all of these hold**: its fingerprint differs from the
+   pre-send one (identical text is valid only with a different message key), the final-answer
+   element exists, the text is stable for two reads one second apart, and the stop indicator
+   is gone.
+
+## Uploads — wait before sending
+
+After uploading attachments the send click waits until the upload settles (`Browser.UploadWaitSeconds`,
+default 60): the file chips are visible and the send button is enabled. On timeout (or when the
+file input cannot be used at all) the content is pasted into the message instead.
+
 ## Reading replies — final answer only
 
 Each assistant message can contain **two** `.ds-markdown` blocks: the reasoning (`.ds-think-content`, headed "Thought for N seconds") and the final answer (`.ds-markdown.ds-assistant-message-main-content`). Only the **final answer of the newest assistant message** is ever read; the reasoning never reaches the parser (it would break it), the logs, or the chat.

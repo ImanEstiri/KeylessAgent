@@ -70,6 +70,18 @@ public sealed record BrowserOptions
     public int ReplyTimeoutSeconds { get; init; } = 300;
 
     /// <summary>
+    /// How long to wait for confirmation that a message was actually sent (new message item,
+    /// or empty input plus generating indicator) before retrying once and failing. Default 15 seconds.
+    /// </summary>
+    public int SendConfirmSeconds { get; init; } = 15;
+
+    /// <summary>
+    /// How long to wait for attachment uploads to settle (chips visible, send enabled)
+    /// before falling back to pasting the content. Default 60 seconds.
+    /// </summary>
+    public int UploadWaitSeconds { get; init; } = 60;
+
+    /// <summary>
     /// Minimum artificial delay between browser actions. Default 400 ms.
     /// </summary>
     public int MinDelayMs { get; init; } = 400;

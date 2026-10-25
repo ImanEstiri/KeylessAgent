@@ -38,6 +38,11 @@
     "input[type=\"file\"][multiple]",
     "input[type=\"file\"]"
   ],
+  "AttachmentChips": [
+    "[class*='file-chip']",
+    "[class*='chips']",
+    "[data-testid='file-chip']"
+  ],
   "DeepThinkToggle": [
     ".ds-toggle-button:has-text(\"DeepThink\")",
     "[role=\"button\"][aria-pressed]:has-text(\"DeepThink\")"
