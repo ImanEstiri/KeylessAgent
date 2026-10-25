@@ -1,3 +1,4 @@
+using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
@@ -39,7 +40,7 @@ internal sealed class WorkspaceCommandExecutor : IWorkspaceCommandExecutor
         if (!_executors.TryGetValue(command.Kind, out var executor))
         {
             return CommandExecutionResult.Fail(command,
-                "KA_INTERNAL", $"No executor is registered for {command.Kind}.");
+                ErrorCodes.Internal, $"No executor is registered for {command.Kind}.");
         }
 
         try
@@ -53,7 +54,7 @@ internal sealed class WorkspaceCommandExecutor : IWorkspaceCommandExecutor
         catch (Exception ex)
         {
             return CommandExecutionResult.Fail(command,
-                "KA_INTERNAL", $"Unexpected failure: {ex.Message}");
+                ErrorCodes.Internal, $"Unexpected failure: {ex.Message}");
         }
     }
 }

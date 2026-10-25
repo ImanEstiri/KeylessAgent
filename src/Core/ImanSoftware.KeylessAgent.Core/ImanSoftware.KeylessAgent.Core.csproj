@@ -15,6 +15,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\format-correction.txt" />
     <EmbeddedResource Include="Resources\selectors.json" />
+    <EmbeddedResource Include="Resources\system-prompt.md" />
   </ItemGroup>
 
 </Project>

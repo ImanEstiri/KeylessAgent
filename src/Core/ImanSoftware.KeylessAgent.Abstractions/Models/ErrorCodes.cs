@@ -119,4 +119,10 @@ public static class ErrorCodes
 
     /// <summary>A snapshot bat file run failed.</summary>
     public const string SnapshotRunFailed = "KA_SNAPSHOT_RUN_FAILED";
+
+    /// <summary>An unexpected internal failure (bug guard); reported to the model and the user as-is.</summary>
+    public const string Internal = "KA_INTERNAL";
+
+    /// <summary>No saved session exists yet (expected on the first run).</summary>
+    public const string SessionNotFound = "KA_SESSION_NOT_FOUND";
 }
