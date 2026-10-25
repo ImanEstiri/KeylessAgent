@@ -8,21 +8,17 @@ namespace ImanSoftware.KeylessAgent.Cli.Commands.Undo;
 
 internal sealed class UndoSettings : CommandSettings
 {
-    [CommandOption("-w|--workspace <PATH>")]
-    [Description("Workspace directory (defaults to the current directory).")]
+    [CommandArgument(0, "[workspace]")]
+    [Description("Path of the workspace (prompted when omitted).")]
     public string? Workspace { get; init; }
-
-    public string GetWorkspaceRoot()
-        => string.IsNullOrWhiteSpace(Workspace)
-            ? Directory.GetCurrentDirectory()
-            : Path.GetFullPath(Workspace);
 }
 
 internal sealed class UndoCommand : AsyncCommand<UndoSettings>
 {
     public override async Task<int> ExecuteAsync(CommandContext context, UndoSettings settings, CancellationToken cancellationToken)
     {
-        var workspace = settings.GetWorkspaceRoot();
+        // First input: the workspace path — never a silent current-directory assumption.
+        var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
         ConsoleWriter.Header(workspace);
 
         var backup = KeylessAgentServiceFactory.CreateBackupService();

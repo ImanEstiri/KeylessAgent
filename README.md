@@ -48,16 +48,17 @@ keyless --help
 
 ## Usage
 
-Run one task:
+The workspace path is always the **first input** — the agent never silently assumes the current directory. Pass it as the first argument, or the CLI asks for it (validated, current directory only as the shown default) as the very first prompt:
 
 ```bash
-keyless run "Add xUnit tests for the markdown parser"
+keyless run "G:\Projects\MyApp" "Add xUnit tests for the markdown parser"
 ```
 
-Or start an interactive session (each finished turn reuses the same chat):
+Or start an interactive session — the first prompt is the workspace path, then one request per turn (each finished turn reuses the same chat):
 
 ```bash
 keyless
+keyless "G:\Projects\MyApp"
 ```
 
 Example output of one turn:
@@ -76,14 +77,14 @@ Commits:
   • 3f2a9b1 Add MarkdownParserTests
 ```
 
-Other commands:
+Other commands (all workspace-first):
 
 ```bash
-keyless resume "continue with the failing test"   # next request in the saved chat
-keyless undo                                      # restore the newest .agent/backups batch
-keyless config                                    # show / create keyless.json
-keyless run "..." --dry-run                       # print what would happen, execute nothing
-keyless run "..." -v                              # write .agent/logs/diagnostics.log
+keyless resume "G:\Projects\MyApp" "continue with the failing test"   # next request in the saved chat
+keyless undo "G:\Projects\MyApp"                                      # restore the newest .agent/backups batch
+keyless config "G:\Projects\MyApp"                                    # show / create keyless.json
+keyless run "G:\Projects\MyApp" "..." --dry-run                       # print what would happen, execute nothing
+keyless run "G:\Projects\MyApp" "..." -v                              # write .agent/logs/diagnostics.log
 ```
 
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
@@ -92,7 +93,7 @@ The first time a command runs in a workspace it creates `keyless.json` (configur
 
 ```mermaid
 flowchart TD
-    A[keyless run '<request>'] --> B[Load keyless.json]
+    A["keyless run '<workspace>' '<request>'"] --> B[Load keyless.json]
     B --> C{Git preconditions}
     C -->|not a repo| Z[Stop]
     C -->|dirty tree| D{{continue / stash / cancel}}
@@ -202,7 +203,7 @@ Run the CLI from source (no browser needed for the fake-provider harness):
 
 ```bash
 dotnet run --project src/Playground/ImanSoftware.KeylessAgent.Playground
-dotnet run --project src/UI/ImanSoftware.KeylessAgent.Cli -- run "Add a README section"
+dotnet run --project src/UI/ImanSoftware.KeylessAgent.Cli -- run "G:\Projects\MyApp" "Add a README section"
 ```
 
 ## Contributing

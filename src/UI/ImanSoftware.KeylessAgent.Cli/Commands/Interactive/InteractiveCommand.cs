@@ -5,14 +5,15 @@ using Spectre.Console.Cli;
 namespace ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 
 /// <summary>
-/// The default command (<c>keyless</c> with no arguments): an interactive session that
-/// prompts for the next request after each finished turn, reusing the same chat.
+/// The default command (<c>keyless</c> with no arguments): asks for the workspace path first,
+/// then prompts for requests after each finished turn, reusing the same chat.
 /// </summary>
 internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
 {
     public override async Task<int> ExecuteAsync(CommandContext context, InteractiveSettings settings, CancellationToken cancellationToken)
     {
-        var workspace = settings.GetWorkspaceRoot();
+        // First input: the workspace path — never a silent current-directory assumption.
+        var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
         ConsoleWriter.Header(workspace);
         AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Each finished turn keeps the same chat.[/]");
 

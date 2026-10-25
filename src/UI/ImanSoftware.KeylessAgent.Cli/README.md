@@ -16,12 +16,14 @@ dotnet tool install --global ImanSoftware.KeylessAgent.Cli
 
 ## Usage
 
+The workspace path is always the first input — pass it as the first argument or answer the first prompt. The agent never silently assumes the current directory.
+
 ```bash
-keyless run "Add xUnit tests for the markdown parser"
-keyless                              # interactive session, one chat reused
-keyless resume "continue with the failing test"
-keyless undo                         # restore the newest backup batch
-keyless config                       # show / create keyless.json
+keyless run "G:\Projects\MyApp" "Add xUnit tests for the markdown parser"
+keyless                              # prompts for the workspace path first; one chat reused
+keyless resume "G:\Projects\MyApp" "continue with the failing test"
+keyless undo "G:\Projects\MyApp"     # restore the newest backup batch
+keyless config "G:\Projects\MyApp"   # show / create keyless.json
 ```
 
 Start Chrome with `chrome --remote-debugging-port=9222` and make sure you are logged in to chat.deepseek.com, or let KeylessAgent launch a persistent profile for you.

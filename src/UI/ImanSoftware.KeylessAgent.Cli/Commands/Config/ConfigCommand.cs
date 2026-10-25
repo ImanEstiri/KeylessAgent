@@ -8,21 +8,17 @@ namespace ImanSoftware.KeylessAgent.Cli.Commands.Config;
 
 internal sealed class ConfigSettings : CommandSettings
 {
-    [CommandOption("-w|--workspace <PATH>")]
-    [Description("Workspace directory (defaults to the current directory).")]
+    [CommandArgument(0, "[workspace]")]
+    [Description("Path of the workspace (prompted when omitted).")]
     public string? Workspace { get; init; }
-
-    public string GetWorkspaceRoot()
-        => string.IsNullOrWhiteSpace(Workspace)
-            ? Directory.GetCurrentDirectory()
-            : Path.GetFullPath(Workspace);
 }
 
 internal sealed class ConfigCommand : AsyncCommand<ConfigSettings>
 {
     public override async Task<int> ExecuteAsync(CommandContext context, ConfigSettings settings, CancellationToken cancellationToken)
     {
-        var workspace = settings.GetWorkspaceRoot();
+        // First input: the workspace path — never a silent current-directory assumption.
+        var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
         ConsoleWriter.Header(workspace);
 
         var configuration = KeylessAgentServiceFactory.CreateConfigurationService();
@@ -35,7 +31,7 @@ internal sealed class ConfigCommand : AsyncCommand<ConfigSettings>
         }
 
         var options = outcome.Data;
-        ConsoleWriter.Success($"Effective configuration (keyless.json, created with defaults when missing):");
+        ConsoleWriter.Success("Effective configuration (keyless.json, created with defaults when missing):");
 
         var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
         table.AddColumn("[grey]Section[/]");

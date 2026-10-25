@@ -1,18 +1,17 @@
 using System.ComponentModel;
-using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace ImanSoftware.KeylessAgent.Cli.Commands.Run;
 
 internal sealed class RunSettings : CommandSettings
 {
-    [CommandArgument(0, "<request>")]
-    [Description("What the agent should do, in one sentence.")]
-    public string Request { get; init; } = string.Empty;
-
-    [CommandOption("-w|--workspace <PATH>")]
-    [Description("Workspace directory (defaults to the current directory).")]
+    [CommandArgument(0, "[workspace]")]
+    [Description("Path of the git repository the agent will work on (prompted when omitted).")]
     public string? Workspace { get; init; }
+
+    [CommandArgument(1, "[request]")]
+    [Description("What the agent should do, in one sentence (prompted when omitted).")]
+    public string? Request { get; init; }
 
     [CommandOption("--dry-run")]
     [Description("Print what would happen and execute nothing.")]
@@ -21,17 +20,4 @@ internal sealed class RunSettings : CommandSettings
     [CommandOption("-v|--verbose")]
     [Description("Write browser diagnostics to .agent/logs/diagnostics.log.")]
     public bool Verbose { get; init; }
-
-    public override ValidationResult Validate()
-    {
-        if (string.IsNullOrWhiteSpace(Request))
-            return ValidationResult.Error("The request cannot be empty.");
-
-        return ValidationResult.Success();
-    }
-
-    public string GetWorkspaceRoot()
-        => string.IsNullOrWhiteSpace(Workspace)
-            ? Directory.GetCurrentDirectory()
-            : Path.GetFullPath(Workspace);
 }
