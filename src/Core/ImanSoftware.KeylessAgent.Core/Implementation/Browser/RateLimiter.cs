@@ -12,15 +12,19 @@ internal sealed class RateLimiter
     private readonly int _minDelayMs;
     private readonly int _maxDelayMs;
     private readonly Random _random;
+    private readonly IDateTimeProvider _time;
     private readonly Queue<DateTime> _sentAt = [];
 
-    public RateLimiter(int maxPerMinute, int minDelayMs, int maxDelayMs, Random? random = null)
+    public RateLimiter(int maxPerMinute, int minDelayMs, int maxDelayMs, IDateTimeProvider time, Random? random = null)
     {
         _maxPerMinute = Math.Max(1, maxPerMinute);
         _minDelayMs = Math.Max(0, minDelayMs);
         _maxDelayMs = Math.Max(_minDelayMs, maxDelayMs);
+        _time = time;
         _random = random ?? new Random();
     }
+
+    private DateTime UtcNow => _time.Now.ToUniversalTime();
 
     /// <summary>
     /// Waits until sending one more message is allowed, then records it.
@@ -28,7 +32,7 @@ internal sealed class RateLimiter
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task WaitAsync(CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
+        var now = UtcNow;
         while (_sentAt.Count >= _maxPerMinute)
         {
             var oldest = _sentAt.Peek();
@@ -36,7 +40,7 @@ internal sealed class RateLimiter
             if (release > now)
             {
                 await Task.Delay(release - now, cancellationToken);
-                now = DateTime.UtcNow;
+                now = UtcNow;
             }
 
             while (_sentAt.Count > 0 && _sentAt.Peek().AddMinutes(1) <= now)
@@ -47,6 +51,6 @@ internal sealed class RateLimiter
         if (jitter > 0)
             await Task.Delay(jitter, cancellationToken);
 
-        _sentAt.Enqueue(DateTime.UtcNow);
+        _sentAt.Enqueue(UtcNow);
     }
 }

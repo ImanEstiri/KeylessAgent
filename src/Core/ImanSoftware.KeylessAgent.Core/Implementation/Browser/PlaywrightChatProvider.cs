@@ -1,3 +1,4 @@
+using ImanSoftware.DateTimeProvider;
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
@@ -25,6 +26,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     private readonly LoggerAdapter<PlaywrightChatProvider> _log;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IReplyExtractor _replyExtractor;
+    private readonly DefaultDateTimeProvider _time = new();
 
     public PlaywrightChatProvider()
         : this(null, null)
@@ -80,7 +82,8 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             IChatSession session = new PlaywrightChatSession(
                 page, browser, ownsBrowser, selectors.Data, options, _replyExtractor,
-                new LoggerAdapter<PlaywrightChatSession>(_loggerFactory));
+                new LoggerAdapter<PlaywrightChatSession>(_loggerFactory),
+                _time);
             return Outcome.Successful(session);
         }
         catch (Exception ex)
@@ -135,8 +138,8 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             return;
 
         _log.LogWarning("Login page detected; waiting up to {Seconds}s for a manual login…", LoginWaitSeconds);
-        var deadline = DateTime.UtcNow.AddSeconds(LoginWaitSeconds);
-        while (DateTime.UtcNow < deadline)
+        var deadline = _time.Now.ToUniversalTime().AddSeconds(LoginWaitSeconds);
+        while (_time.Now.ToUniversalTime() < deadline)
         {
             await page.WaitForTimeoutAsync(2_000);
             if (await FirstVisible(page, selectors.LoginIndicator, timeoutMs: 1_000) is null)

@@ -1,3 +1,4 @@
+using ImanSoftware.DateTimeProvider;
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
@@ -22,6 +23,7 @@ internal sealed class PlaywrightChatSession : IChatSession
     private readonly IReplyExtractor _replyExtractor;
     private readonly ILoggerAdapter<PlaywrightChatSession> _log;
     private readonly RateLimiter _rateLimiter;
+    private readonly IDateTimeProvider _time;
     private readonly IFileStorage _storage = ImanFileStorageFactory.CreateStorage();
     private readonly Random _random = new();
 
@@ -32,7 +34,8 @@ internal sealed class PlaywrightChatSession : IChatSession
         SelectorsCatalog selectors,
         ChatSessionOptions options,
         IReplyExtractor replyExtractor,
-        ILoggerAdapter<PlaywrightChatSession> log)
+        ILoggerAdapter<PlaywrightChatSession> log,
+        IDateTimeProvider time)
     {
         _page = page;
         _browser = browser;
@@ -41,10 +44,12 @@ internal sealed class PlaywrightChatSession : IChatSession
         _options = options;
         _replyExtractor = replyExtractor;
         _log = log;
+        _time = time;
         _rateLimiter = new RateLimiter(
             options.Browser.MaxMessagesPerMinute,
             options.Browser.MinDelayMs,
             options.Browser.MaxDelayMs,
+            _time,
             _random);
     }
 
@@ -100,10 +105,10 @@ internal sealed class PlaywrightChatSession : IChatSession
     public async Task<Outcome<string>> WaitForReplyAsync(CancellationToken cancellationToken = default)
     {
         var timeout = TimeSpan.FromSeconds(_options.Browser.ReplyTimeoutSeconds);
-        var deadline = DateTime.UtcNow + timeout;
+        var deadline = _time.Now.ToUniversalTime() + timeout;
         var stableReply = (string?)null;
 
-        while (DateTime.UtcNow < deadline)
+        while (_time.Now.ToUniversalTime() < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -225,7 +230,7 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             var directory = Path.Combine(_options.WorkspaceRoot, ".agent", "logs");
             Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, $"{name}-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+            var path = Path.Combine(directory, $"{name}-{_time.Now:yyyyMMdd-HHmmss}.png");
             await _page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = false });
             _log.LogInformation("Debug screenshot saved: {Path}", path);
         }
