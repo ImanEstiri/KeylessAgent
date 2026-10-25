@@ -63,9 +63,13 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         }
 
         var (program, arguments) = SplitCommandLine(run.CommandLine);
-        var result = await _runner.RunAsync(
-            program, arguments, context.WorkspaceRoot,
-            context.Options.Commands.TimeoutSeconds, context.CancellationToken);
+        ProcessResult result;
+        using (context.Ui.BeginWait($"running: {run.CommandLine}"))
+        {
+            result = await _runner.RunAsync(
+                program, arguments, context.WorkspaceRoot,
+                context.Options.Commands.TimeoutSeconds, context.CancellationToken);
+        }
 
         if (result.TimedOut)
         {

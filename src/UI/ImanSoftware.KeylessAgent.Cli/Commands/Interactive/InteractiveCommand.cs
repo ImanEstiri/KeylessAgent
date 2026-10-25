@@ -5,8 +5,9 @@ using Spectre.Console.Cli;
 namespace ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 
 /// <summary>
-/// The default command (<c>keyless</c> with no arguments): asks for the workspace path first,
-/// then prompts for requests after each finished turn, reusing the same chat.
+/// The default command (<c>keyless</c>): asks for the workspace path first, then prompts for
+/// requests after each finished turn, reusing the same chat. Ctrl+C cancels only the current
+/// turn; the process exits for an empty request or a startup error.
 /// </summary>
 internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
 {
@@ -15,23 +16,13 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
         // First input: the workspace path — never a silent current-directory assumption.
         var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
         ConsoleWriter.Header(workspace);
-        AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Each finished turn keeps the same chat.[/]");
+        AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Ctrl+C cancels only the current turn.[/]");
 
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var request = await AnsiConsole.PromptAsync(
-                new TextPrompt<string>("[cyan]keyless>[/]").AllowEmpty(),
-                cancellationToken);
-            if (string.IsNullOrWhiteSpace(request))
-                break;
+        var session = new InteractiveSession(
+            AnsiConsole.Console,
+            (request, turnCancellationToken) =>
+                AgentCliRunner.RunTurnAsync(workspace, request, dryRun: false, settings.Verbose, turnCancellationToken));
 
-            var exitCode = await AgentCliRunner.RunTurnAsync(workspace, request.Trim(), dryRun: false, settings.Verbose, cancellationToken);
-            if (exitCode != 0)
-                return exitCode;
-
-            AnsiConsole.WriteLine();
-        }
-
-        return 0;
+        return await session.RunAsync(cancellationToken);
     }
 }

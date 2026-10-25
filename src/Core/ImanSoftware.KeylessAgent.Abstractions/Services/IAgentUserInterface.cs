@@ -39,4 +39,14 @@ public interface IAgentUserInterface
     /// </summary>
     /// <param name="change">The change about to be applied.</param>
     void ShowDiff(FileChange change);
+
+    /// <summary>
+    /// Marks a waiting phase (chat reply, running process, snapshot scripts) so the UI can show
+    /// a spinner. The returned scope is disposed when the wait ends; any other UI call
+    /// (Say, Ask, Confirm, ShowDiff, ShowProgress) stops the wait display first.
+    /// Never wraps a whole turn — only actual waits.
+    /// </summary>
+    /// <param name="message">What is being waited for.</param>
+    /// <returns>A disposable scope; dispose it when the wait ends.</returns>
+    IDisposable BeginWait(string message);
 }

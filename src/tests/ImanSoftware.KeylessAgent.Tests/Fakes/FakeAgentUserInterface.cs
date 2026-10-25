@@ -39,4 +39,20 @@ internal sealed class FakeAgentUserInterface : IAgentUserInterface
     }
 
     public void ShowDiff(FileChange change) => Diffs.Add(change);
+
+    public List<string> Waits { get; } = [];
+
+    public IDisposable BeginWait(string message)
+    {
+        Waits.Add(message);
+        return new NoOpScope();
+
+    }
+
+    private sealed class NoOpScope : IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
 }

@@ -16,7 +16,23 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
 
         ConsoleWriter.Header(workspace);
 
-        return await AgentCliRunner.RunTurnAsync(
-            workspace, request, settings.DryRun, settings.Verbose, cancellationToken);
+        using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Console.CancelKeyPress += OnCancelKeyPress;
+        try
+        {
+            return await AgentCliRunner.RunTurnAsync(
+                workspace, request, settings.DryRun, settings.Verbose, turnCts.Token);
+        }
+        finally
+        {
+            Console.CancelKeyPress -= OnCancelKeyPress;
+        }
+
+        void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs eventArgs)
+        {
+            // Cancel only the current turn; do not kill the process mid-write.
+            eventArgs.Cancel = true;
+            turnCts.Cancel();
+        }
     }
 }

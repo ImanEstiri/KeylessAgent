@@ -3,7 +3,8 @@ using Spectre.Console;
 namespace ImanSoftware.KeylessAgent.Cli.Helpers;
 
 /// <summary>
-/// Consistent console output helpers. All dynamic text is escaped.
+/// Consistent console output helpers. Plain ASCII markers render on every console,
+/// including legacy code pages; all dynamic text is escaped.
 /// </summary>
 internal static class ConsoleWriter
 {
@@ -15,14 +16,14 @@ internal static class ConsoleWriter
     }
 
     public static void Success(string message)
-        => AnsiConsole.MarkupLine($"[green]✓[/] {message.EscapeMarkup()}");
+        => AnsiConsole.MarkupLine($"[green][[ok]][/] {message.EscapeMarkup()}");
 
     public static void Warning(string message)
-        => AnsiConsole.MarkupLine($"[yellow]⚠[/] {message.EscapeMarkup()}");
+        => AnsiConsole.MarkupLine($"[yellow][[!]][/] {message.EscapeMarkup()}");
 
     public static void Error(string message)
-        => AnsiConsole.MarkupLine($"[red]✗[/] {message.EscapeMarkup()}");
+        => AnsiConsole.MarkupLine($"[red][[x]][/] {message.EscapeMarkup()}");
 
     public static void Info(string message)
-        => AnsiConsole.MarkupLine($"[grey]ℹ[/] {message.EscapeMarkup()}");
+        => AnsiConsole.MarkupLine($"[grey][[i]][/] {message.EscapeMarkup()}");
 }

@@ -6,6 +6,18 @@ using ImanSoftware.KeylessAgent.Cli.Commands.Undo;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
+// UTF-8 in and out so panels, diffs and file content render; no-ops when redirected
+// or on consoles that refuse the switch.
+if (!Console.IsOutputRedirected)
+{
+    try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { /* legacy console */ }
+}
+
+if (!Console.IsInputRedirected)
+{
+    try { Console.InputEncoding = System.Text.Encoding.UTF8; } catch { /* legacy console */ }
+}
+
 var app = new CommandApp<InteractiveCommand>();
 
 app.Configure(config =>

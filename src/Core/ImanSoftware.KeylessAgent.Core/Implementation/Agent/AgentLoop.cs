@@ -220,7 +220,12 @@ internal sealed class AgentLoop : IAgentLoop
             logger.Append("message-sent", new { Turn = turn, Batch = 0, SystemPrompt = sendSystemPrompt, Attachments = attachments.Select(a => a.Name).ToList() });
             if (!dryRun)
             {
-                var sent = await chatSession.SendMessageAsync(message, attachments, cancellationToken);
+                Outcome sent;
+                using (ui.BeginWait("Sending the request to DeepSeek"))
+                {
+                    sent = await chatSession.SendMessageAsync(message, attachments, cancellationToken);
+                }
+
                 if (sent.IsFailure)
                     return Failed(sent.Error.Message, dryRun);
                 savedSession = new AgentSession
@@ -243,7 +248,11 @@ internal sealed class AgentLoop : IAgentLoop
                 cancellationToken.ThrowIfCancellationRequested();
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.WaitingForReply, $"Waiting for reply {batch}"));
-                var replyOutcome = await chatSession.WaitForReplyAsync(cancellationToken);
+                Outcome<string> replyOutcome;
+                using (ui.BeginWait($"Waiting for reply {batch}"))
+                {
+                    replyOutcome = await chatSession.WaitForReplyAsync(cancellationToken);
+                }
                 if (replyOutcome.IsFailure)
                 {
                     stoppedReason = $"no reply: {replyOutcome.Error.Message}";
@@ -285,7 +294,12 @@ internal sealed class AgentLoop : IAgentLoop
                     logger.Append("correction-sent", new { Turn = turn, Problems = verdict.Problems.Select(p => p.ToDisplayString()).ToList() });
                     if (!dryRun)
                     {
-                        var resent = await chatSession.SendMessageAsync(correction.Data, [], cancellationToken);
+                        Outcome resent;
+                        using (ui.BeginWait("Sending the format correction"))
+                        {
+                            resent = await chatSession.SendMessageAsync(correction.Data, [], cancellationToken);
+                        }
+
                         if (resent.IsFailure)
                         {
                             stoppedReason = $"cannot send correction: {resent.Error.Message}";
@@ -362,7 +376,12 @@ internal sealed class AgentLoop : IAgentLoop
                 logger.Append("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count });
                 if (!dryRun)
                 {
-                    var sent = await chatSession.SendMessageAsync(resultsMessage, feedbackAttachments, cancellationToken);
+                    Outcome sent;
+                    using (ui.BeginWait("Sending the results to DeepSeek"))
+                    {
+                        sent = await chatSession.SendMessageAsync(resultsMessage, feedbackAttachments, cancellationToken);
+                    }
+
                     if (sent.IsFailure)
                     {
                         stoppedReason = $"cannot send results: {sent.Error.Message}";
@@ -432,7 +451,11 @@ internal sealed class AgentLoop : IAgentLoop
     private async Task RefreshSnapshotAsync(IAgentUserInterface ui, string workspaceRoot, TurnLogger logger)
     {
         ui.ShowProgress(new AgentProgressEvent(AgentEventType.RefreshingSnapshot, "Refreshing workspace snapshot"));
-        var refreshed = await _snapshot.RefreshAsync(workspaceRoot);
+        Outcome refreshed;
+        using (ui.BeginWait("Running tree-view.bat and code-dump.bat"))
+        {
+            refreshed = await _snapshot.RefreshAsync(workspaceRoot);
+        }
         if (refreshed.IsFailure)
         {
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.RefreshingSnapshot,
