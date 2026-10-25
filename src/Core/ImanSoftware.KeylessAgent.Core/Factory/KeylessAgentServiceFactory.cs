@@ -66,6 +66,27 @@ public static class KeylessAgentServiceFactory
         => new SnapshotService();
 
     /// <summary>
+    /// Creates a logger factory that appends diagnostics to <c>.agent/logs/diagnostics.log</c>
+    /// (used by the CLI in verbose/debug mode).
+    /// </summary>
+    /// <param name="workspaceRoot">The workspace directory.</param>
+    /// <returns>The logger factory.</returns>
+    public static ILoggerFactory CreateFileLoggerFactory(string workspaceRoot)
+    {
+        var storage = ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage();
+        var provider = new ImanSoftware.KeylessAgent.Core.Implementation.Diagnostics.FileLoggerProvider(
+            workspaceRoot, storage, new ImanSoftware.DateTimeProvider.DefaultDateTimeProvider());
+        return new SingleProviderLoggerFactory(provider);
+    }
+
+    /// <summary>
+    /// Creates the session store (<c>.agent/session.json</c>, powers <c>keyless resume</c>).
+    /// </summary>
+    /// <returns>The session store.</returns>
+    public static ISessionStore CreateSessionStore()
+        => new SessionStore();
+
+    /// <summary>
     /// Creates the AgentScript parser.
     /// </summary>
     /// <returns>The parser.</returns>
