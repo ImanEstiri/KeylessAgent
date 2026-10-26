@@ -57,7 +57,8 @@ internal sealed class DeleteFileExecutor : ICommandExecutor
         if (context.DryRun)
             return NewFileExecutor.DryRunResult(command);
 
-        if (context.Options.Mode == ApprovalMode.Ask)
+        // Deletion is confirmed in Ask AND AutoSafe; only Auto skips it. A backup is always made.
+        if (context.Options.Mode != ApprovalMode.Auto)
         {
             context.Ui.ShowDiff(new FileChange(delete.Path, FileChangeKind.Delete, null, null));
             var confirmed = await context.Ui.ConfirmAsync(new ConfirmRequest(

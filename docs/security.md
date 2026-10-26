@@ -35,8 +35,10 @@ Every process runs with a hard timeout and captured output.
 | Mode | runcommand | deletefile | file writes |
 | --- | --- | --- | --- |
 | `Ask` *(default)* | confirm each | confirm each | diff shown first |
-| `AutoSafe` | auto when allow-listed | auto (backed up first) | auto |
-| `Auto` | auto | auto | auto |
+| `AutoSafe` | auto when allow-listed, otherwise confirm | confirm each | auto |
+| `Auto` | auto | auto (the only confirmation Auto skips) | auto |
+
+In `AutoSafe` and `Auto` the agent warns at turn start: **AutoSafe is not a security boundary** — allow-listed programs (dotnet, node, python, …) can execute arbitrary code.
 
 `--dry-run` executes nothing and prints what would happen. Declined-by-user commands are reported to the model as `KA_COMMAND_DECLINED` results — the model sees the refusal and can adapt.
 

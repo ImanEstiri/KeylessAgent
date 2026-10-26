@@ -148,7 +148,7 @@ Commands: `say`, `newfile`, `updatefile`, `editfile` (FIND/REPLACE, must match e
 | Protected branches | `main`, `master`, `release*` are blocked in code before any file change, commit or push ([tests](src/tests/ImanSoftware.KeylessAgent.Tests)) |
 | Path sandbox | workspace-relative only; no `..`, no absolute paths, `.git`/`.agent` blocked, symlink escapes rejected |
 | Command policy | deny list (format, shutdown, force-push, `git config --global`, `curl \| sh`, …) plus configurable allow list |
-| Approval modes | `Ask` (confirm every runcommand/deletefile), `AutoSafe` (allow-listed only), `Auto` |
+| Approval modes | `Ask` (confirm every runcommand and deletefile), `AutoSafe` (allow-listed runcommands auto, deletefile still asks), `Auto` (everything; deletefile is the only confirmation skipped) — with a one-time "AutoSafe is not a security boundary" warning |
 | Backups & undo | every changed file is backed up to `.agent/backups`; `keyless undo` restores the newest batch |
 | Dry run | `--dry-run` executes nothing |
 | Transparency | full per-turn transcript in `.agent/logs`, diffs before file changes in Ask mode |

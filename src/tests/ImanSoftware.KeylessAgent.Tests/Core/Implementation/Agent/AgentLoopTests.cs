@@ -179,6 +179,20 @@ public class AgentLoopTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_InAutoSafe_ShowsSecurityBoundaryWarning()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Mode": "AutoSafe" }""");
+        var chat = new FakeChatProvider(DoneReply("done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "auto task", ui);
+
+        ui.Said.Should().Contain(s => s.Contains("AutoSafe is not a security boundary"));
+    }
+
+    [Fact]
     public async Task RunAsync_DryRun_ExecutesNothing()
     {
         var chat = new FakeChatProvider(

@@ -56,9 +56,9 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
 
 ### Mode (approval)
 
-- **Ask** *(default)* — every `runcommand` and `deletefile` needs your confirmation; file changes show a colored diff first.
-- **AutoSafe** — allow-listed commands run automatically; everything else still asks.
-- **Auto** — everything runs automatically (the deny list still applies), with a warning.
+- **Ask** *(default)* — every `runcommand` and every `deletefile` needs your confirmation; file changes show a colored diff first.
+- **AutoSafe** — allow-listed `runcommand`s run automatically, everything else (including every `deletefile`) still asks. A warning is shown at turn start: **AutoSafe is not a security boundary** — allow-listed programs (dotnet, node, python, …) can execute arbitrary code.
+- **Auto** — everything runs automatically, including `deletefile` (the deny list still applies); `deletefile` is the only confirmation Auto skips. Backups are always made.
 
 ### Browser
 

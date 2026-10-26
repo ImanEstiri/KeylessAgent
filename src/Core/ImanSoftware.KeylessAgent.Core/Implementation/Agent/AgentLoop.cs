@@ -108,6 +108,13 @@ internal sealed class AgentLoop : IAgentLoop
                 return Failed(configOutcome.Error.Message, dryRun);
             options = configOutcome.Data;
 
+            if (options.Mode is ApprovalMode.AutoSafe or ApprovalMode.Auto)
+            {
+                // Programs like dotnet/node/python execute arbitrary code; the allow list is
+                // convenience, not a security boundary. Shown once per turn in these modes.
+                ui.Say("[!] AutoSafe is not a security boundary: allow-listed programs (dotnet, node, python, ...) can execute arbitrary code on this machine.");
+            }
+
             // --- Step 2: Git preconditions ---
             var repoOutcome = await _git.GetRepositoryInfoAsync(workspaceRoot);
             if (repoOutcome.IsFailure)
