@@ -54,24 +54,29 @@ internal sealed class NewFileExecutor : ICommandExecutor
 
         if (context.DryRun)
         {
-            context.Ui.ShowDiff(new FileChange(newFile.Path, FileChangeKind.Create, null, newFile.Content));
+            context.Ui.ShowDiff(NormalizedChange(newFile.Path, FileChangeKind.Create, null, newFile.Content));
             return DryRunResult(command);
         }
 
         if (context.Options.Mode == ApprovalMode.Ask)
-            context.Ui.ShowDiff(new FileChange(newFile.Path, FileChangeKind.Create, null, newFile.Content));
+            context.Ui.ShowDiff(NormalizedChange(newFile.Path, FileChangeKind.Create, null, newFile.Content));
 
         // The storage does not create parent directories implicitly.
         var directory = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(resolve.Data)!, context.CancellationToken);
         if (directory.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, directory.Error.Message);
 
-        var write = await _storage.WriteAllTextAsync(resolve.Data, newFile.Content, context.CancellationToken);
+        var ending = LineEndings.ResolveNewFileEnding(context.WorkspaceRoot, resolve.Data);
+        var write = await _storage.WriteAllTextAsync(
+            resolve.Data, LineEndings.Apply(LineEndings.NormalizeToLf(newFile.Content), ending), context.CancellationToken);
         if (write.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, write.Error.Message);
 
         return CommandExecutionResult.Ok(command);
     }
+
+    private static FileChange NormalizedChange(string path, FileChangeKind kind, string? oldContent, string newContent)
+        => new(path, kind, oldContent is null ? null : LineEndings.NormalizeToLf(oldContent), LineEndings.NormalizeToLf(newContent));
 
     internal static CommandExecutionResult DryRunResult(AgentScriptCommand command)
         => new()

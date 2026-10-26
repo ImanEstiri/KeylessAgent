@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Agent;
 
@@ -46,7 +47,8 @@ internal sealed class ResultFormatter : IResultFormatter
 
             if (!string.IsNullOrEmpty(result.Output))
             {
-                var output = CapOutput(result.Output, limits.MaxCommandOutputChars);
+                // Caps count characters of the normalized text: CRLF files must not double-count.
+                var output = CapOutput(LineEndings.NormalizeToLf(result.Output), limits.MaxCommandOutputChars);
                 builder.AppendLine("<<<OUTPUT");
                 builder.AppendLine(output);
                 builder.AppendLine("OUTPUT>>>");

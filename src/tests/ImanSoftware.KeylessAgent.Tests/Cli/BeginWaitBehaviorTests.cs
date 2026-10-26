@@ -80,6 +80,23 @@ public class BeginWaitBehaviorTests
     }
 
     [Fact]
+    public void ShowDiff_WithCrlfContent_ShowsNoStrayCarriageReturns()
+    {
+        var console = new TestConsole();
+        var ui = CreateUi(console);
+
+        ui.ShowDiff(new ImanSoftware.KeylessAgent.Abstractions.Models.Agent.FileChange(
+            "src/a.cs",
+            ImanSoftware.KeylessAgent.Abstractions.Models.Agent.FileChangeKind.Edit,
+            "line one\r\nold line\r\n",
+            "line one\r\nnew line\r\n"));
+
+        console.Output.Should().NotContain("\r");
+        console.Output.Should().Contain("old line");
+        console.Output.Should().Contain("new line");
+    }
+
+    [Fact]
     public async Task AskAsync_AfterADisposedWait_PromptsNormally()
     {
         var console = new TestConsole();

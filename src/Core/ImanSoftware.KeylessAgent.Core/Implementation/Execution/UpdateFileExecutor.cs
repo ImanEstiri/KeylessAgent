@@ -34,6 +34,9 @@ internal sealed class UpdateFileExecutor : ICommandExecutor
     /// <inheritdoc />
     public CommandKind Kind => CommandKind.UpdateFile;
 
+    private static FileChange NormalizedChange(string path, FileChangeKind kind, string? oldContent, string newContent)
+        => new(path, kind, oldContent is null ? null : LineEndings.NormalizeToLf(oldContent), LineEndings.NormalizeToLf(newContent));
+
     /// <inheritdoc />
     public async Task<CommandExecutionResult> ExecuteAsync(AgentScriptCommand command, AgentExecutionContext context)
     {
@@ -60,18 +63,21 @@ internal sealed class UpdateFileExecutor : ICommandExecutor
 
         if (context.DryRun)
         {
-            context.Ui.ShowDiff(new FileChange(update.Path, FileChangeKind.Update, oldContent.Data, update.Content));
+            context.Ui.ShowDiff(NormalizedChange(update.Path, FileChangeKind.Update, oldContent.Data, update.Content));
             return NewFileExecutor.DryRunResult(command);
         }
 
         if (context.Options.Mode == ApprovalMode.Ask)
-            context.Ui.ShowDiff(new FileChange(update.Path, FileChangeKind.Update, oldContent.Data, update.Content));
+            context.Ui.ShowDiff(NormalizedChange(update.Path, FileChangeKind.Update, oldContent.Data, update.Content));
 
         var backup = await _backup.BackupAsync(context.WorkspaceRoot, resolve.Data);
         if (backup.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, backup.Error.Message);
 
-        var write = await FileWriteHelpers.WritePreservingBomAsync(_storage, resolve.Data, update.Content);
+        // The model's content is LF; the existing file keeps its own dominant ending.
+        var ending = LineEndings.Detect(oldContent.Data);
+        var write = await FileWriteHelpers.WritePreservingBomAsync(
+            _storage, resolve.Data, LineEndings.Apply(LineEndings.NormalizeToLf(update.Content), ending));
         if (write.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, write.Error.Message);
 

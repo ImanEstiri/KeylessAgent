@@ -35,6 +35,9 @@ internal sealed class EditFileExecutor : ICommandExecutor
     /// <inheritdoc />
     public CommandKind Kind => CommandKind.EditFile;
 
+    private static FileChange NormalizedChange(string path, FileChangeKind kind, string? oldContent, string newContent)
+        => new(path, kind, oldContent is null ? null : LineEndings.NormalizeToLf(oldContent), LineEndings.NormalizeToLf(newContent));
+
     /// <inheritdoc />
     public async Task<CommandExecutionResult> ExecuteAsync(AgentScriptCommand command, AgentExecutionContext context)
     {
@@ -59,23 +62,30 @@ internal sealed class EditFileExecutor : ICommandExecutor
         if (content.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, content.Error.Message);
 
-        var count = CountOccurrences(content.Data, edit.Find);
+        // Workspace files are usually CRLF, model text is LF: match and count on normalized text.
+        var ending = LineEndings.Detect(content.Data);
+        var normalized = LineEndings.NormalizeToLf(content.Data);
+        var find = LineEndings.NormalizeToLf(edit.Find);
+
+        var count = CountOccurrences(normalized, find);
         if (count != 1)
         {
             return CommandExecutionResult.Fail(command, ErrorCodes.FindNotUnique,
                 $"FIND text matched {count} times (must match exactly once) in {edit.Path}.");
         }
 
-        var newContent = ReplaceOnce(content.Data, edit.Find, edit.Replace);
+        var newContent = LineEndings.Apply(
+            ReplaceOnce(normalized, find, LineEndings.NormalizeToLf(edit.Replace)),
+            ending);
 
         if (context.DryRun)
         {
-            context.Ui.ShowDiff(new FileChange(edit.Path, FileChangeKind.Edit, content.Data, newContent));
+            context.Ui.ShowDiff(NormalizedChange(edit.Path, FileChangeKind.Edit, content.Data, newContent));
             return NewFileExecutor.DryRunResult(command);
         }
 
         if (context.Options.Mode == ApprovalMode.Ask)
-            context.Ui.ShowDiff(new FileChange(edit.Path, FileChangeKind.Edit, content.Data, newContent));
+            context.Ui.ShowDiff(NormalizedChange(edit.Path, FileChangeKind.Edit, content.Data, newContent));
 
         var backup = await _backup.BackupAsync(context.WorkspaceRoot, resolve.Data);
         if (backup.IsFailure)
