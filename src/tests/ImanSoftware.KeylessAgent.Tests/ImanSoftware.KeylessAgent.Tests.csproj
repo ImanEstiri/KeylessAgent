@@ -5,6 +5,7 @@
     <!-- Tests are not a shipped library; XML docs and full analyzer strictness are not required. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AnalysisMode>None</AnalysisMode>
+    <NoWarn>$(NoWarn);xUnit1031</NoWarn>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
   </PropertyGroup>
 

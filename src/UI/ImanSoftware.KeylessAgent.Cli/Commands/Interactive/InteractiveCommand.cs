@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Cli.Helpers;
+using ImanSoftware.KeylessAgent.Core.Factory;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -6,8 +7,8 @@ namespace ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 
 /// <summary>
 /// The default command (<c>keyless</c>): asks for the workspace path first, then prompts for
-/// requests after each finished turn, reusing the same chat. Ctrl+C cancels only the current
-/// turn; the process exits for an empty request or a startup error.
+/// requests after each finished turn, reusing the same chat. Supports /workspace and /help.
+/// Ctrl+C cancels only the current turn; the process exits for an empty request or a startup error.
 /// </summary>
 internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
 {
@@ -16,13 +17,33 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
         // First input: the workspace path — never a silent current-directory assumption.
         var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
         ConsoleWriter.Shared.Header(workspace);
-        AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Ctrl+C cancels only the current turn.[/]");
+        AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Ctrl+C cancels only the current turn. /help lists slash commands.[/]");
+
+        var sessions = KeylessAgentServiceFactory.CreateSessionStore();
+
+        // /workspace re-runs the git preconditions for the new workspace and starts a fresh
+        // chat session for it (its own .agent/session.json); a failure keeps the old workspace.
+        string? SwitchWorkspace(string oldWorkspace, string newWorkspace)
+        {
+            var git = KeylessAgentServiceFactory.CreateGitService();
+            var repo = git.GetRepositoryInfoAsync(newWorkspace).GetAwaiter().GetResult();
+            if (repo.IsFailure || !repo.Data.IsRepository)
+                return "The new workspace is not a git repository.";
+
+            var cleared = sessions.ClearAsync(newWorkspace).GetAwaiter().GetResult();
+            if (cleared.IsFailure)
+                return $"Cannot reset the session file: {cleared.Error.Message}";
+
+            return null;
+        }
 
         var session = new InteractiveSession(
             AnsiConsole.Console,
-            (request, turnCancellationToken) =>
-                AgentCliRunner.RunTurnAsync(workspace, request, dryRun: false, settings.Verbose, turnCancellationToken));
+            (currentWorkspace, request, turnCancellationToken) =>
+                AgentCliRunner.RunTurnAsync(currentWorkspace, request, dryRun: false, settings.Verbose, turnCancellationToken),
+            SwitchWorkspace);
 
-        return await session.RunAsync(cancellationToken);
+        var (exitCode, _) = await session.RunAsync(workspace, cancellationToken);
+        return exitCode;
     }
 }

@@ -89,10 +89,11 @@ public class ConsoleHardeningTests
         console.Input.PushTextWithEnter("request");
         console.Input.PushTextWithEnter("");
 
-        var session = new InteractiveSession(console, (_, _) =>
-            throw new PlaywrightTimeoutExceptionStub("Chrome did not answer"));
+        var session = new InteractiveSession(console,
+            (_, _, _) => throw new PlaywrightTimeoutExceptionStub("Chrome did not answer"),
+            (_, _) => null);
 
-        await session.RunAsync(CancellationToken.None);
+        await session.RunAsync(@"C:\ws", CancellationToken.None);
 
         console.Output.Should().Contain("PlaywrightTimeoutExceptionStub");
         console.Output.Should().Contain("Chrome did not answer");

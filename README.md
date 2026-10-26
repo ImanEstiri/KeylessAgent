@@ -87,6 +87,8 @@ keyless run "G:\Projects\MyApp" "..." --dry-run                       # print wh
 keyless run "G:\Projects\MyApp" "..." -v                              # write .agent/logs/diagnostics.log
 ```
 
+The interactive session understands two slash commands: `/workspace <path>` (switch to another workspace — validated, with a fresh chat session for it) and `/help`. Any other input starting with `/` is rejected with a hint instead of being sent to the model.
+
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
 
 ## How it works

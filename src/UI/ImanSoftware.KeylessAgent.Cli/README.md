@@ -21,6 +21,11 @@ The workspace path is always the first input — pass it as the first argument o
 ```bash
 keyless run "G:\Projects\MyApp" "Add xUnit tests for the markdown parser"
 keyless                              # prompts for the workspace path first; one chat reused
+
+# Inside the interactive session:
+#   /workspace <path>   switch to another workspace (validated; fresh chat session)
+#   /help               list slash commands
+#   any other /-input   rejected with a hint (never sent to the model)
 keyless resume "G:\Projects\MyApp" "continue with the failing test"
 keyless undo "G:\Projects\MyApp"     # restore the newest backup batch
 keyless config "G:\Projects\MyApp"   # show / create keyless.json

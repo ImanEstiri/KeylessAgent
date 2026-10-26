@@ -18,13 +18,15 @@ public class InteractiveSessionTests
         console.Input.PushTextWithEnter(""); // quit
         var turns = 0;
 
-        var session = new InteractiveSession(console, (request, _) =>
-        {
-            turns++;
-            throw new InvalidOperationException("KA_BROWSER_CONNECTION_FAILED: Chrome is not running");
-        });
+        var session = new InteractiveSession(console,
+            (_, _, _) =>
+            {
+                turns++;
+                throw new InvalidOperationException("KA_BROWSER_CONNECTION_FAILED: Chrome is not running");
+            },
+            (_, _) => null);
 
-        var exitCode = await session.RunAsync(CancellationToken.None);
+        var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 
         turns.Should().Be(1);
         exitCode.Should().Be(0, "a failed turn is not a process failure");
@@ -42,13 +44,15 @@ public class InteractiveSessionTests
         console.Input.PushTextWithEnter(""); // quit
         var turns = 0;
 
-        var session = new InteractiveSession(console, (request, ct) =>
-        {
-            turns++;
-            throw new OperationCanceledException(ct);
-        });
+        var session = new InteractiveSession(console,
+            (_, _, ct) =>
+            {
+                turns++;
+                throw new OperationCanceledException(ct);
+            },
+            (_, _) => null);
 
-        var exitCode = await session.RunAsync(CancellationToken.None);
+        var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 
         turns.Should().Be(1);
         exitCode.Should().Be(0);
@@ -62,13 +66,15 @@ public class InteractiveSessionTests
         console.Input.PushTextWithEnter("");
         var turns = 0;
 
-        var session = new InteractiveSession(console, (_, _) =>
-        {
-            turns++;
-            return Task.FromResult(0);
-        });
+        var session = new InteractiveSession(console,
+            (_, _, _) =>
+            {
+                turns++;
+                return Task.FromResult(0);
+            },
+            (_, _) => null);
 
-        var exitCode = await session.RunAsync(CancellationToken.None);
+        var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 
         turns.Should().Be(0);
         exitCode.Should().Be(0);
