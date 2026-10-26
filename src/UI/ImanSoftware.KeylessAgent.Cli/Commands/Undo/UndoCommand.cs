@@ -19,18 +19,18 @@ internal sealed class UndoCommand : AsyncCommand<UndoSettings>
     {
         // First input: the workspace path — never a silent current-directory assumption.
         var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
-        ConsoleWriter.Header(workspace);
+        ConsoleWriter.Shared.Header(workspace);
 
         var backup = KeylessAgentServiceFactory.CreateBackupService();
         var outcome = await backup.UndoLatestAsync(workspace);
 
         if (outcome.IsFailure)
         {
-            ConsoleWriter.Error(outcome.Error.Message);
+            ConsoleWriter.Shared.Error(outcome.Error.Message);
             return 1;
         }
 
-        ConsoleWriter.Success($"Restored {outcome.Data.Count} file(s) from the newest backup batch:");
+        ConsoleWriter.Shared.Success($"Restored {outcome.Data.Count} file(s) from the newest backup batch:");
         foreach (var file in outcome.Data)
             AnsiConsole.MarkupLine($"  [grey]•[/] {file.EscapeMarkup()}");
 

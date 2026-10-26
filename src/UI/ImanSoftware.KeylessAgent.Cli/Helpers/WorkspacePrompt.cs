@@ -23,7 +23,7 @@ internal static class WorkspacePrompt
             if (Directory.Exists(full))
                 return full;
 
-            AnsiConsole.MarkupLine($"[red]✗[/] Directory not found: {full.EscapeMarkup()}");
+            AnsiConsole.MarkupLine($"[red][[x]][/] Directory not found: {full.EscapeMarkup()}");
         }
 
         return AnsiConsole.Prompt(

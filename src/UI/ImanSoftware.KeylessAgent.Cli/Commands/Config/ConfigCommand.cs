@@ -19,19 +19,19 @@ internal sealed class ConfigCommand : AsyncCommand<ConfigSettings>
     {
         // First input: the workspace path — never a silent current-directory assumption.
         var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
-        ConsoleWriter.Header(workspace);
+        ConsoleWriter.Shared.Header(workspace);
 
         var configuration = KeylessAgentServiceFactory.CreateConfigurationService();
         var outcome = await configuration.LoadAsync(workspace);
 
         if (outcome.IsFailure)
         {
-            ConsoleWriter.Error(outcome.Error.Message);
+            ConsoleWriter.Shared.Error(outcome.Error.Message);
             return 1;
         }
 
         var options = outcome.Data;
-        ConsoleWriter.Success("Effective configuration (keyless.json, created with defaults when missing):");
+        ConsoleWriter.Shared.Success("Effective configuration (keyless.json, created with defaults when missing):");
 
         var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
         table.AddColumn("[grey]Section[/]");

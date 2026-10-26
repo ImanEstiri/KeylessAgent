@@ -4,26 +4,30 @@ namespace ImanSoftware.KeylessAgent.Cli.Helpers;
 
 /// <summary>
 /// Consistent console output helpers. Plain ASCII markers render on every console,
-/// including legacy code pages; all dynamic text is escaped.
+/// including legacy code pages; all dynamic text is escaped. During a turn, all output
+/// goes through the same IAnsiConsole as the agent UI (never a second live surface).
 /// </summary>
-internal static class ConsoleWriter
+internal sealed class ConsoleWriter(IAnsiConsole console)
 {
-    public static void Header(string workspace)
+    /// <summary>The process-wide writer bound to the active console.</summary>
+    public static ConsoleWriter Shared { get; } = new(AnsiConsole.Console);
+
+    public void Header(string workspace)
     {
-        AnsiConsole.Write(new Rule("[cyan bold]KeylessAgent[/]").RuleStyle("grey").LeftJustified());
-        AnsiConsole.MarkupLine($"[grey]Workspace:[/] [white]{workspace.EscapeMarkup()}[/]");
-        AnsiConsole.WriteLine();
+        console.Write(new Rule("[cyan bold]KeylessAgent[/]").RuleStyle("grey").LeftJustified());
+        console.MarkupLine($"[grey]Workspace:[/] [white]{workspace.EscapeMarkup()}[/]");
+        console.WriteLine();
     }
 
-    public static void Success(string message)
-        => AnsiConsole.MarkupLine($"[green][[ok]][/] {message.EscapeMarkup()}");
+    public void Success(string message)
+        => console.MarkupLine($"[green][[ok]][/] {message.EscapeMarkup()}");
 
-    public static void Warning(string message)
-        => AnsiConsole.MarkupLine($"[yellow][[!]][/] {message.EscapeMarkup()}");
+    public void Warning(string message)
+        => console.MarkupLine($"[yellow][[!]][/] {message.EscapeMarkup()}");
 
-    public static void Error(string message)
-        => AnsiConsole.MarkupLine($"[red][[x]][/] {message.EscapeMarkup()}");
+    public void Error(string message)
+        => console.MarkupLine($"[red][[x]][/] {message.EscapeMarkup()}");
 
-    public static void Info(string message)
-        => AnsiConsole.MarkupLine($"[grey][[i]][/] {message.EscapeMarkup()}");
+    public void Info(string message)
+        => console.MarkupLine($"[grey][[i]][/] {message.EscapeMarkup()}");
 }

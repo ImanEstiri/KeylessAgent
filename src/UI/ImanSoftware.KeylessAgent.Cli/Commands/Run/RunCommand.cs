@@ -14,7 +14,7 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
             ? AnsiConsole.Prompt(new TextPrompt<string>("[cyan]request>[/] What should the agent do?"))
             : settings.Request.Trim();
 
-        ConsoleWriter.Header(workspace);
+        ConsoleWriter.Shared.Header(workspace);
 
         using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Console.CancelKeyPress += OnCancelKeyPress;

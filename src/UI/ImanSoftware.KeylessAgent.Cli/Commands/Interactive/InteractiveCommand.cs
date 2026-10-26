@@ -15,7 +15,7 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
     {
         // First input: the workspace path — never a silent current-directory assumption.
         var workspace = WorkspacePrompt.ResolveOrPrompt(settings.Workspace);
-        ConsoleWriter.Header(workspace);
+        ConsoleWriter.Shared.Header(workspace);
         AnsiConsole.MarkupLine("[grey]Type a request, or press Enter on an empty line to quit. Ctrl+C cancels only the current turn.[/]");
 
         var session = new InteractiveSession(

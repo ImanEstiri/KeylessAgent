@@ -35,8 +35,10 @@ internal static class AgentCliRunner
 
         var loop = KeylessAgentServiceFactory.CreateAgentLoop(loggerFactory);
         var ui = new ConsoleUserInterface();
-        ConsoleWriter.Info(verbose
-            ? "Verbose diagnostics: .agent/logs/diagnostics.log"
+        var writer = ConsoleWriter.Shared;
+        var logPath = System.IO.Path.Combine(workspaceRoot, ".agent", "logs");
+        writer.Info(verbose
+            ? "Verbose diagnostics: " + System.IO.Path.Combine(logPath, "diagnostics.log")
             : "Ctrl+C cancels this turn.");
 
         try
@@ -46,14 +48,14 @@ internal static class AgentCliRunner
             AnsiConsole.WriteLine();
             if (result.ErrorMessage is not null)
             {
-                ConsoleWriter.Error(result.ErrorMessage);
+                writer.Error(result.ErrorMessage);
                 return 1;
             }
 
             if (result.StoppedReason is not null)
-                ConsoleWriter.Warning($"Turn stopped early: {result.StoppedReason}");
+                writer.Warning($"Turn stopped early: {result.StoppedReason}");
 
-            ConsoleWriter.Success($"Turn {result.Turn} finished on branch {result.Branch}");
+            writer.Success($"Turn {result.Turn} finished on branch {result.Branch}");
 
             if (result.Commits.Count > 0)
             {
@@ -63,20 +65,45 @@ internal static class AgentCliRunner
             }
 
             if (result.Summary is not null)
-                ConsoleWriter.Info(result.Summary);
+                writer.Info(result.Summary);
 
             return 0;
         }
         catch (OperationCanceledException)
         {
-            ConsoleWriter.Warning("Turn cancelled.");
+            writer.Warning("Turn cancelled.");
             return 130;
         }
         catch (Exception ex)
         {
-            ConsoleWriter.Error($"Turn failed: {ex.Message}");
-            ConsoleWriter.Info("Details are in .agent/logs (turn transcript; diagnostics.log with -v).");
+            writer.Error($"{ex.GetType().Name}: {ex.Message}");
+            if (verbose)
+            {
+                AnsiConsole.MarkupLine($"[grey]{ex.ToString().EscapeMarkup()}[/]");
+                WriteDiagnostics(workspaceRoot, ex);
+            }
+
+            writer.Info($"Details: turn transcript in {logPath}" + (verbose ? ", full stack trace in diagnostics.log" : string.Empty) + ".");
             return 1;
+        }
+    }
+
+    /// <summary>
+    /// Appends the full exception (with stack trace) to .agent/logs/diagnostics.log so a
+    /// failed turn is diagnosable after the fact.
+    /// </summary>
+    private static void WriteDiagnostics(string workspaceRoot, Exception exception)
+    {
+        try
+        {
+            var directory = System.IO.Path.Combine(workspaceRoot, ".agent", "logs");
+            System.IO.Directory.CreateDirectory(directory);
+            var line = $"{DateTime.UtcNow:O} {exception.GetType().FullName}: {exception}{Environment.NewLine}";
+            System.IO.File.AppendAllText(System.IO.Path.Combine(directory, "diagnostics.log"), line);
+        }
+        catch
+        {
+            // Diagnostics are best-effort.
         }
     }
 }

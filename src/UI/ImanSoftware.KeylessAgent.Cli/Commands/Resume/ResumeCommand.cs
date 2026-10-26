@@ -31,17 +31,17 @@ internal sealed class ResumeCommand : AsyncCommand<ResumeSettings>
             ? AnsiConsole.Prompt(new TextPrompt<string>("[cyan]request>[/] The next request for the existing chat:"))
             : settings.Request.Trim();
 
-        ConsoleWriter.Header(workspace);
+        ConsoleWriter.Shared.Header(workspace);
 
         var sessionStore = KeylessAgentServiceFactory.CreateSessionStore();
         var session = await sessionStore.LoadAsync(workspace);
         if (session.IsFailure)
         {
-            ConsoleWriter.Error("No saved session in .agent/session.json. Run 'keyless run <workspace> <request>' first.");
+            ConsoleWriter.Shared.Error("No saved session in .agent/session.json. Run 'keyless run <workspace> <request>' first.");
             return 1;
         }
 
-        ConsoleWriter.Success($"Resuming chat {session.Data.ChatUrl}");
+        ConsoleWriter.Shared.Success($"Resuming chat {session.Data.ChatUrl}");
 
         return await AgentCliRunner.RunTurnAsync(
             workspace, request, dryRun: false, settings.Verbose, cancellationToken);

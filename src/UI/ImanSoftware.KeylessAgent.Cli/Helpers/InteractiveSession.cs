@@ -48,7 +48,7 @@ internal sealed class InteractiveSession(IAnsiConsole console, Func<string, Canc
             }
             catch (Exception ex)
             {
-                console.MarkupLine($"[red][[x]][/] Turn failed: {ex.Message.EscapeMarkup()}");
+                console.MarkupLine($"[red][[x]][/] Turn failed: {ex.GetType().Name}: {ex.Message.EscapeMarkup()}");
                 console.MarkupLine("[grey]Details are in .agent/logs (turn transcript; diagnostics.log with -v).[/]");
             }
 

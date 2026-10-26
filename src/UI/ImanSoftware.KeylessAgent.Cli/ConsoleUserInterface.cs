@@ -6,16 +6,23 @@ namespace ImanSoftware.KeylessAgent.Cli;
 
 /// <summary>
 /// The CLI implementation of the UI contract. All console access goes through one gate
-/// (<see cref="_gate"/>); the wait spinner is a background task started by <see cref="BeginWait"/>
-/// and stopped by every other method (and by disposing the wait scope) before any prompt or
-/// output runs — a live display and a prompt are never active at the same time.
+/// (<see cref="_gate"/>); the wait spinner is a background task started by <see cref="BeginWait"/>,
+/// which returns only after the Status display has actually started, so a prompt can never run
+/// in the gap between the two. Every other method stops and FULLY joins the spinner (no short
+/// timeout) before any prompt or output — a live display and a prompt are never active at the
+/// same time, on any console speed.
 /// </summary>
 internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
 {
+    /// <summary>
+    /// Upper bound for joining a dying spinner. Normally milliseconds; a stuck console gets
+    /// a warning after this long instead of an endless block.
+    /// </summary>
+    private static readonly TimeSpan SpinnerJoinUpperBound = TimeSpan.FromSeconds(30);
+
     private readonly IAnsiConsole _console;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private CancellationTokenSource? _spinnerCts;
-    private Task? _spinnerTask;
+    private SpinnerRun? _spinner;
 
     public ConsoleUserInterface(IAnsiConsole? console = null)
     {
@@ -25,26 +32,30 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
     /// <summary>
     /// Whether a wait display (spinner) is currently active — for tests.
     /// </summary>
-    internal bool IsSpinnerActive => Volatile.Read(ref _spinnerCts) is not null;
+    internal bool IsSpinnerActive => Volatile.Read(ref _spinner) is not null;
 
     /// <inheritdoc />
     public IDisposable BeginWait(string message)
     {
+        SpinnerRun run;
         _gate.Wait(CancellationToken.None);
         try
         {
             // Overlapping or nested BeginWait: the previous spinner is stopped first.
-            StopSpinner();
-            var cts = new CancellationTokenSource();
-            var task = Task.Run(() => SpinAsync(message, cts.Token), cts.Token);
-            Volatile.Write(ref _spinnerCts, cts);
-            Volatile.Write(ref _spinnerTask, task);
-            return new WaitScope(this, cts, task);
+            StopSpinnerLocked();
+            run = SpinnerRun.Start(_console, message);
+            Volatile.Write(ref _spinner, run);
         }
         finally
         {
             _gate.Release();
         }
+
+        // Do not return until the Status display is really up: otherwise a prompt could start
+        // in the gap before the display acquires the console.
+        run.Started.Wait(TimeSpan.FromSeconds(10));
+
+        return new WaitScope(this);
     }
 
     /// <inheritdoc />
@@ -106,8 +117,8 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
 
             if (change.OldContent is not null || change.NewContent is not null)
             {
-                var oldLines = (change.OldContent ?? string.Empty).Split('\n');
-                var newLines = (change.NewContent ?? string.Empty).Split('\n');
+                var oldLines = (change.OldContent ?? string.Empty).Replace("\r\n", "\n").Split('\n');
+                var newLines = (change.NewContent ?? string.Empty).Replace("\r\n", "\n").Split('\n');
                 var max = Math.Max(oldLines.Length, newLines.Length);
                 for (var i = 0; i < max && i < 40; i++)
                 {
@@ -130,49 +141,41 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
         });
     }
 
-    private async Task SpinAsync(string message, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public void Dispose()
     {
+        _gate.Wait(CancellationToken.None);
         try
         {
-            await _console.Status()
-                .Spinner(Spinner.Known.Dots)
-                .StartAsync(message.EscapeMarkup(), async _ =>
-                {
-                    // The scope's Dispose (or any other UI call) cancels this token.
-                    await Task.Delay(Timeout.Infinite, cancellationToken);
-                });
+            StopSpinnerLocked();
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // Normal stop.
+            _gate.Release();
         }
-        catch (Exception)
-        {
-            // A dying spinner must never kill an agent turn (legacy consoles, redirect pipes).
-        }
+
+        _gate.Dispose();
     }
 
     /// <summary>
-    /// Stops and joins the active spinner. The caller must hold <see cref="_gate"/>.
+    /// Stops and FULLY joins the active spinner. The caller must hold <see cref="_gate"/>.
     /// </summary>
-    private void StopSpinner()
+    private void StopSpinnerLocked()
     {
-        var cts = Interlocked.Exchange(ref _spinnerCts, null);
-        var task = Interlocked.Exchange(ref _spinnerTask, null);
-        if (cts is null)
+        var run = Interlocked.Exchange(ref _spinner, null);
+        if (run is null)
             return;
 
-        cts.Cancel();
-        try
+        run.Cancellation.Cancel();
+
+        var finished = Task.WaitAny([run.Task], SpinnerJoinUpperBound);
+        if (finished != 0)
         {
-            task?.Wait(TimeSpan.FromSeconds(3), CancellationToken.None);
-        }
-        catch (AggregateException)
-        {
-            // The spinner swallows its own failures; ignore join noise.
+            // Practically unreachable; a warning beats an unresponsive console.
+            _console.MarkupLine("[yellow][[!]][/] The wait display took unusually long to stop; continuing.");
         }
 
-        cts.Dispose();
+        run.Cancellation.Dispose();
     }
 
     private void WithGate(Action action)
@@ -180,7 +183,7 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
         _gate.Wait(CancellationToken.None);
         try
         {
-            StopSpinner();
+            StopSpinnerLocked();
             action();
         }
         finally
@@ -194,7 +197,7 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
         _gate.Wait(CancellationToken.None);
         try
         {
-            StopSpinner();
+            StopSpinnerLocked();
             return action();
         }
         finally
@@ -203,23 +206,71 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
         }
     }
 
-    /// <inheritdoc />
-    public void Dispose()
+    /// <summary>One running spinner: its task, cancel source and start signal.</summary>
+    private sealed class SpinnerRun
     {
-        _gate.Wait(CancellationToken.None);
-        try
+        private SpinnerRun(string message, CancellationTokenSource cancellation, ManualResetEventSlim started, Task task)
         {
-            StopSpinner();
-        }
-        finally
-        {
-            _gate.Release();
+            Message = message;
+            Cancellation = cancellation;
+            Started = started;
+            Task = task;
         }
 
-        _gate.Dispose();
+        public string Message { get; }
+
+        public CancellationTokenSource Cancellation { get; }
+
+        public ManualResetEventSlim Started { get; }
+
+        public Task Task { get; }
+
+        /// <summary>
+        /// Starts the spinner task. <see cref="Started"/> is set from inside the running
+        /// Status display, so callers can wait for the display to be really up.
+        /// </summary>
+        public static SpinnerRun Start(IAnsiConsole console, string message)
+        {
+            var cancellation = new CancellationTokenSource();
+            var started = new ManualResetEventSlim(false);
+            var task = Task.Run(() => SpinAsync(console, message, started, cancellation.Token));
+            return new SpinnerRun(message, cancellation, started, task);
+        }
+
+        private static async Task SpinAsync(
+            IAnsiConsole console,
+            string message,
+            ManualResetEventSlim started,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await console.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .StartAsync(message, async _ =>
+                    {
+                        // The display is up: whoever waits on Started may proceed.
+                        started.Set();
+                        await Task.Delay(Timeout.Infinite, cancellationToken);
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal stop.
+            }
+            catch (Exception ex)
+            {
+                // A dying spinner must never kill an agent turn (legacy consoles, redirect pipes).
+                console.MarkupLineInterpolated($"[grey][[i]] spinner unavailable ({ex.Message.EscapeMarkup()})[/]");
+            }
+            finally
+            {
+                started.Set();
+            }
+        }
     }
 
-    private sealed class WaitScope(ConsoleUserInterface owner, CancellationTokenSource cts, Task task) : IDisposable
+    private sealed class WaitScope(ConsoleUserInterface owner) : IDisposable
     {
         private int _disposed;
 
@@ -231,34 +282,12 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
             owner._gate.Wait(CancellationToken.None);
             try
             {
-                owner.StopSpinner();
+                owner.StopSpinnerLocked();
             }
             finally
             {
                 owner._gate.Release();
             }
-
-            // When another UI call (or a newer BeginWait) already stopped this spinner,
-            // the cts was cancelled and disposed there — cancelling again must not throw.
-            try
-            {
-                cts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                return;
-            }
-
-            try
-            {
-                task.Wait(TimeSpan.FromSeconds(3), CancellationToken.None);
-            }
-            catch (AggregateException)
-            {
-                // Join noise from an already-cancelled spinner is irrelevant here.
-            }
-
-            cts.Dispose();
         }
     }
 }
