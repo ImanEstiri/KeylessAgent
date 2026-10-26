@@ -86,22 +86,37 @@ internal sealed class PlaywrightChatSession : IChatSession
                 _options.Browser.MinDelayMs,
                 Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
 
+            // One send attempt = the send button when clickable, otherwise Enter — never both.
             if (!_page.TryClickSend())
                 _page.PressEnter();
 
             // --- Step 4: confirm the send actually happened ---
             if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
             {
-                // One retry: click, then Enter.
-                _log.LogWarning("Send not confirmed within {Seconds}s; retrying once (click + Enter).", _options.Browser.SendConfirmSeconds);
-                if (_page.TryClickSend())
+                // The list is virtualized: a constant item count proves nothing. An emptied input
+                // means the text left the composer — the message was sent.
+                if (_page.IsInputCleared())
+                {
+                    _log.LogInformation("Send not confirmed by the message list, but the input was cleared; treating the message as sent.");
+                    return Outcome.Successful();
+                }
+
+                // The text is still in the composer: exactly one retry (button, else Enter).
+                _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once.", _options.Browser.SendConfirmSeconds);
+                if (!_page.TryClickSend())
                     _page.PressEnter();
 
                 if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
                 {
+                    if (_page.IsInputCleared())
+                    {
+                        _log.LogInformation("Send confirmed after retry by the cleared input.");
+                        return Outcome.Successful();
+                    }
+
                     _page.SaveDebugScreenshot("send-not-confirmed");
                     return Outcome.Failure(new OutcomeError(
-                        $"The message was not sent within {_options.Browser.SendConfirmSeconds + _options.Browser.SendConfirmSeconds}s (no new message item, and no generating indicator).",
+                        $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator).",
                         ErrorCodes.SendNotConfirmed, OutcomeErrorType.Failure));
                 }
             }
@@ -203,22 +218,48 @@ internal sealed class PlaywrightChatSession : IChatSession
         }
 
         if (!_page.TryUploadFiles(created))
+        {
+            _log.LogWarning("SetInputFiles failed; pasting the attachment content instead.");
             return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
+        }
 
-        // The send click must wait until the upload landed: chips visible and send enabled.
+        // SetInputFiles succeeded. The chips may never appear (UI differences), so the upload
+        // is judged by several signals; pasting on top of a working upload would duplicate the
+        // content. Positive sign: the file input reports the files, a chip shows a file name,
+        // or chips are visible at all. Uncertain counts as attached (with a warning).
+        var uploadNames = attachments.Select(a => a.Name).ToList();
         var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.UploadWaitSeconds);
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (_page.AreAttachmentChipsVisible() && _page.IsSendEnabled())
+            if (HasUploadSign(uploadNames))
                 return Outcome.Successful(AttachmentDelivery.Uploaded);
 
             await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
 
-        _log.LogWarning("Upload did not settle within {Seconds}s; falling back to pasting.", _options.Browser.UploadWaitSeconds);
+        if (HasUploadSign(uploadNames))
+            return Outcome.Successful(AttachmentDelivery.Uploaded);
+
+        _log.LogWarning("No sign of the uploaded files within {Seconds}s; pasting the content instead.", _options.Browser.UploadWaitSeconds);
         return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
+    }
+
+    /// <summary>
+    /// Whether the page shows any sign that the upload landed: the hidden file input reports
+    /// one of the files, a composer-near element shows a file name, or chips are visible.
+    /// </summary>
+    private bool HasUploadSign(List<string> uploadNames)
+    {
+        var inputFiles = _page.GetInputFileNames();
+        if (inputFiles.Any(file => uploadNames.Contains(file, StringComparer.OrdinalIgnoreCase)))
+            return true;
+
+        if (uploadNames.Any(name => _page.IsFileNameVisible(name)))
+            return true;
+
+        return _page.AreAttachmentChipsVisible();
     }
 
     private enum AttachmentDelivery

@@ -145,6 +145,49 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<string> GetInputFileNames()
+    {
+        foreach (var selector in _selectors.FileInput)
+        {
+            try
+            {
+                var locator = _page.Locator(selector).First;
+                var raw = Evaluate(locator,
+                    "element => Array.from(element.files || []).map(f => f.name).join('|')");
+                if (string.IsNullOrEmpty(raw))
+                    continue;
+
+                return raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+            catch
+            {
+                // Try the next fallback selector.
+            }
+        }
+
+        return [];
+    }
+
+    /// <inheritdoc />
+    public bool IsFileNameVisible(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return false;
+
+        try
+        {
+            // Chips render the file name next to the composer; a page-wide text probe is
+            // enough as a positive signal (the composer area is where uploads render).
+            var count = _page.GetByText(fileName).CountAsync().GetAwaiter().GetResult();
+            return count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
     public void InsertText(string text)
     {
         for (var index = 0; index < _selectors.InputBox.Length; index++)

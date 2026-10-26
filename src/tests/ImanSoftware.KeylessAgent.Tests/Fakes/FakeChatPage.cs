@@ -31,6 +31,18 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     /// <summary>When true, TryUploadFiles pretends the file input cannot be used.</summary>
     public bool FailUpload { get; set; }
 
+    /// <summary>When true, TryClickSend cannot find the button (returns false, no send).</summary>
+    public bool FailClick { get; set; }
+
+    /// <summary>File names the hidden file input reports.</summary>
+    public List<string> InputFileNames { get; } = new();
+
+    /// <summary>File names visible in composer-near chip elements.</summary>
+    public HashSet<string> VisibleFileNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The last text handed to InsertText (paste detection in tests).</summary>
+    public string? LastInsertedText { get; private set; }
+
     /// <summary>Records ("click" | "enter") in order, plus whether chips were visible at send time.</summary>
     public List<(string Method, bool ChipsVisible)> Sends { get; } = [];
 
@@ -96,12 +108,38 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
         }
     }
 
-    public void InsertText(string text) => InputHasText = true;
+    public IReadOnlyList<string> GetInputFileNames()
+    {
+        lock (_lock)
+        {
+            return InputFileNames.ToList();
+        }
+    }
+
+    public bool IsFileNameVisible(string fileName)
+    {
+        lock (_lock)
+        {
+            return VisibleFileNames.Contains(fileName);
+        }
+    }
+
+    public void InsertText(string text)
+    {
+        InputHasText = true;
+        LastInsertedText = text;
+    }
 
     public bool TryClickSend()
     {
         lock (_lock)
         {
+            if (FailClick)
+            {
+                Sends.Add(("click-failed", ChipsVisible));
+                return false;
+            }
+
             Sends.Add(("click", ChipsVisible));
             if (!SendEnabled)
                 return false;

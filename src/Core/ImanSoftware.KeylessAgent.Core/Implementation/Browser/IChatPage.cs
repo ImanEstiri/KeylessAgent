@@ -58,6 +58,12 @@ internal interface IChatPage
     /// <summary>Whether uploaded-file chips are visible (the upload has landed in the UI).</summary>
     bool AreAttachmentChipsVisible();
 
+    /// <summary>The file names the hidden file input currently reports (the upload was registered).</summary>
+    IReadOnlyList<string> GetInputFileNames();
+
+    /// <summary>Whether an element near the composer (a chip or its label) shows the given file name.</summary>
+    bool IsFileNameVisible(string fileName);
+
     /// <summary>Inserts the whole text into the input at once — never per-character typing.</summary>
     void InsertText(string text);
 

@@ -61,7 +61,7 @@ internal sealed class InteractiveSession
 
             var input = request.Trim();
 
-            if (input.StartsWith("/", StringComparison.Ordinal))
+            if (input.StartsWith('/'))
             {
                 var switched = await HandleSlashCommandAsync(input, workspace);
                 if (switched is not null)

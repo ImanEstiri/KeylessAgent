@@ -114,8 +114,8 @@ public class PlaywrightChatSessionTests : IDisposable
         outcome.IsFailure.Should().BeTrue();
         outcome.Error.Code.Should().Be("KA_SEND_NOT_CONFIRMED");
 
-        // primary attempt (click) + one retry (click, then Enter)
-        page.Sends.Select(s => s.Method).Should().Equal("click", "click", "enter");
+        // primary attempt (click) + one retry (click; Enter only when the click cannot happen)
+        page.Sends.Select(s => s.Method).Should().Equal("click", "click");
     }
 
     [Fact]
@@ -145,6 +145,123 @@ public class PlaywrightChatSessionTests : IDisposable
         page.Sends.Should().NotBeEmpty();
         page.Sends[0].ChipsVisible.Should().BeTrue("the send click must wait until the upload settled");
         (await session.WaitForReplyAsync()).Data.Should().Be("reply after upload");
+    }
+
+    // ---------- send-logic risk tests ----------
+
+    [Fact]
+    public async Task SendA_ConfirmedByClearedInputWithUnchangedCount_NoSecondSend()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () =>
+        {
+            // The message left the composer, but the virtualized list did not grow.
+            page.InputHasText = false;
+            page.StopVisible = true;
+            // ItemCount intentionally unchanged; the new reply arrives after a delay.
+            _ = Task.Delay(150).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "second reply", 2));
+        };
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+
+        var outcome = await session.SendMessageAsync("request", []);
+        var reply = await session.WaitForReplyAsync();
+
+        outcome.IsSuccess.Should().BeTrue("a cleared input means the message was sent");
+        page.Sends.Should().ContainSingle("exactly one send attempt — no duplicate");
+        page.Sends[0].Method.Should().Be("click");
+        reply.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendB_InputStillHoldsText_ExactlyOneRetry()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => { }; // nothing lands: input keeps the text, no list change
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+
+        var outcome = await session.SendMessageAsync("request", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be("KA_SEND_NOT_CONFIRMED");
+        page.Sends.Select(s => s.Method).Should().Equal("click", "click");
+        page.LastInsertedText.Should().Be("request", "the text is not duplicated");
+    }
+
+    [Fact]
+    public async Task SendC_ClickImpossible_EnterPressedOnce()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.FailClick = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply via enter", 2));
+        };
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("request", []);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.Sends.Select(s => s.Method).Should().Equal("click-failed", "enter");
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply via enter");
+    }
+
+    [Fact]
+    public async Task SendD_UploadOkButChipsUndetectable_FileNameVisible_NoPaste()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.FailUpload = false;
+        page.ChipsVisible = false; // chips never render
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply", 2));
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 1);
+        var attachment = new SnapshotAttachment("tree-view-result.txt", SnapshotAttachmentKind.TreeView, "tree");
+
+        // The file input registers the upload right away, even though no chip renders.
+        page.InputFileNames.Add("tree-view-result.txt");
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply", 2));
+        };
+
+        var outcome = await session.SendMessageAsync("request", [attachment]);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.LastInsertedText.Should().Be("request", "the content must not be pasted on top of a working upload");
+    }
+
+    [Fact]
+    public async Task SendE_UploadFailed_ContentIsPasted()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.FailUpload = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply", 2));
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 1);
+        var attachment = new SnapshotAttachment("code-dump-result.md", SnapshotAttachmentKind.CodeDump, "dump content");
+
+        var outcome = await session.SendMessageAsync("request", [attachment]);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.LastInsertedText.Should().Contain("--- attached: code-dump-result.md ---");
+        page.LastInsertedText.Should().Contain("dump content");
     }
 
     public void Dispose()
