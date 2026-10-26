@@ -58,10 +58,12 @@ internal sealed class PlaywrightChatPage : IChatPage
     /// <inheritdoc />
     public int GetMessageItemCount()
     {
-        foreach (var selector in _selectors.MessageItems)
+        for (var index = 0; index < _selectors.MessageItems.Length; index++)
         {
+            var selector = _selectors.MessageItems[index];
             try
             {
+                _log.LogDebug("MessageItems matched selector #{Index}: {Selector}", index, selector);
                 return _page.Locator(selector).CountAsync().GetAwaiter().GetResult();
             }
             catch
@@ -145,11 +147,13 @@ internal sealed class PlaywrightChatPage : IChatPage
     /// <inheritdoc />
     public void InsertText(string text)
     {
-        foreach (var selector in _selectors.InputBox)
+        for (var index = 0; index < _selectors.InputBox.Length; index++)
         {
+            var selector = _selectors.InputBox[index];
             try
             {
                 var input = _page.Locator(selector).First;
+                _log.LogDebug("InputBox matched selector #{Index}: {Selector}", index, selector);
                 input.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 })
                     .GetAwaiter().GetResult();
                 input.FillAsync(string.Empty).GetAwaiter().GetResult();
@@ -169,20 +173,42 @@ internal sealed class PlaywrightChatPage : IChatPage
     /// <inheritdoc />
     public bool TryClickSend()
     {
-        var send = FirstVisible(_page, _selectors.SendButton, timeoutMs: 3_000);
-        if (send is null)
-            return false;
+        // Pick the first visible candidate that is not aria-disabled; Enter stays the last fallback.
+        for (var index = 0; index < _selectors.SendButton.Length; index++)
+        {
+            try
+            {
+                var locator = _page.Locator(_selectors.SendButton[index]).First;
+                locator.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = 3_000,
+                }).GetAwaiter().GetResult();
 
-        try
-        {
-            send.ClickAsync().GetAwaiter().GetResult();
-            return true;
+                var disabled = Evaluate(locator,
+                    "element => element.getAttribute('aria-disabled') === 'true' || (element.className && String(element.className).includes('ds-button--disabled'))");
+                if (disabled == "true")
+                {
+                    _log.LogDebug("SendButton #{Index} matched but is disabled; trying next", index);
+                    continue;
+                }
+
+                _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
+                locator.ClickAsync().GetAwaiter().GetResult();
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                // Try the next fallback selector.
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("Send click failed on #{Index}: {Message}", index, ex.Message);
+            }
         }
-        catch (Exception ex)
-        {
-            _log.LogWarning("Send click failed: {Message}", ex.Message);
-            return false;
-        }
+
+        _log.LogDebug("No SendButton selector matched");
+        return false;
     }
 
     /// <inheritdoc />
@@ -229,14 +255,16 @@ internal sealed class PlaywrightChatPage : IChatPage
 
     private ILocator? GetNewestAssistantLocator()
     {
-        foreach (var selector in _selectors.AssistantMessage)
+        for (var index = 0; index < _selectors.AssistantMessage.Length; index++)
         {
+            var selector = _selectors.AssistantMessage[index];
             try
             {
                 var count = _page.Locator(selector).CountAsync().GetAwaiter().GetResult();
                 if (count == 0)
                     continue;
 
+                _log.LogDebug("AssistantMessage matched selector #{Index}: {Selector}", index, selector);
                 return _page.Locator(selector).Nth(count - 1);
             }
             catch
@@ -280,11 +308,11 @@ internal sealed class PlaywrightChatPage : IChatPage
 
     internal static ILocator? FirstVisible(IPage page, string[] selectors, int timeoutMs)
     {
-        foreach (var selector in selectors)
+        for (var index = 0; index < selectors.Length; index++)
         {
             try
             {
-                var locator = page.Locator(selector).First;
+                var locator = page.Locator(selectors[index]).First;
                 locator.WaitForAsync(new LocatorWaitForOptions
                 {
                     State = WaitForSelectorState.Visible,
