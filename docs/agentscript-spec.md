@@ -33,9 +33,9 @@ Rules:
 | Command | Argument | Payloads | Semantics |
 | --- | --- | --- | --- |
 | `say` | — | `MSG` | Prints the message to the user. The only way the model talks. Does **not** count toward the batch limit. |
-| `newfile` | path | `CONTENT` | Creates the file. Fails (`KA_FILE_ALREADY_EXISTS`) if it exists. Missing parent folders are created. |
-| `updatefile` | path | `CONTENT` | Replaces the whole file. Fails if missing. BOM is preserved. |
-| `editfile` | path | `FIND`, `REPLACE` | Replaces the single occurrence of FIND. Fails unless FIND matches exactly once. BOM is preserved. |
+| `newfile` | path | `CONTENT` | Creates the file. Fails (`KA_FILE_ALREADY_EXISTS`) if it exists. Missing parent folders are created. The line ending comes from .editorconfig (end_of_line) for that path, else .gitattributes (eol=…), else the dominant ending of sibling files, else the platform default. |
+| `updatefile` | path | `CONTENT` | Replaces the whole file. Fails if missing. BOM and the file's own line ending are preserved (the model's LF content is converted). |
+| `editfile` | path | `FIND`, `REPLACE` | Replaces the single occurrence of FIND. Fails unless FIND matches exactly once. BOM is preserved. Matching and counting run on LF-normalized text, and the written file keeps its original (dominant) line ending — a CRLF file stays 100% CRLF. |
 | `deletefile` | path | — | Backs up, then deletes (confirmed in Ask mode). |
 | `readfile` | path | — | Returns the file content as that command's result. |
 | `runcommand` | — | `CMD` | Runs one command line. Every segment split on `&&`, `||`, `;`, `|` is checked against the policy. |

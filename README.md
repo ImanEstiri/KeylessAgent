@@ -158,6 +158,7 @@ Details: [docs/security.md](docs/security.md) and [docs/git-workflow.md](docs/gi
 ## Known limitations
 
 - **Windows only** for now (snapshot `.bat` scripts, `tree` command). The engine itself is portable.
+- Line endings are preserved per file (dominant ending wins for mixed files); a file with a truly 50/50 mix keeps LF.
 - **Web-UI automation is brittle**: DeepSeek can change its DOM at any time; selectors live in `selectors.json` so they can be fixed without recompiling, but they will need fixing. See [docs/browser-automation.md](docs/browser-automation.md).
 - **Reply reading has not yet been verified against a live chat** (indentation of code blocks, toggle behavior, stop indicator). This is the top item to validate manually.
 - No captcha solving: if a captcha appears, the agent waits for you to solve it in the browser.
