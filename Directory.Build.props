@@ -22,7 +22,7 @@
 		     CA1822: stateless runners stay instance methods for injection symmetry.
 		     S3267: "simplify loop" suggestions fight legitimate async loops with early returns.
 		     CA1707, S1135, CA1861: style choices mirrored from the reference repository. -->
-		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1307;CA1308;CA1822;S3267;CA1707;S1135;CA1861;CA1056;CA2000;CA5394;S1075;S2245</NoWarn>
+		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1307;CA1308;CA1822;S3267;CA1707;S1135;CA1861;CA1056;CA1054;CA2000;CA5394;S1075;S2245</NoWarn>
 	</PropertyGroup>
     <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj' and '$(MSBuildProjectName)' != 'ImanSoftware.KeylessAgent.Tests'">
         <PackageReference Include="SonarAnalyzer.CSharp">

@@ -87,6 +87,13 @@ public static class KeylessAgentServiceFactory
         => new SessionStore();
 
     /// <summary>
+    /// Creates the chat diagnostics service (powers <c>keyless doctor</c>; a future GUI can reuse it).
+    /// </summary>
+    /// <returns>The diagnostics service.</returns>
+    public static IChatDiagnostics CreateChatDiagnostics()
+        => new ChatDiagnosticsService();
+
+    /// <summary>
     /// Creates the AgentScript parser.
     /// </summary>
     /// <returns>The parser.</returns>

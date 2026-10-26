@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
+using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 using ImanSoftware.KeylessAgent.Cli.Commands.Resume;
 using ImanSoftware.KeylessAgent.Cli.Commands.Run;
@@ -39,6 +40,12 @@ app.Configure(config =>
     config.AddCommand<UndoCommand>("undo")
         .WithDescription("Restore the newest backup batch from <workspace>/.agent/backups.")
         .WithExample("undo", @"G:\Projects\MyApp");
+
+    config.AddCommand<DoctorCommand>("doctor")
+        .WithDescription("Live selector check: attaches to Chrome and reports every selector's state without sending anything.")
+        .WithExample("doctor", @"G:\Projects\MyApp")
+        .WithExample("doctor", @"G:\Projects\MyApp", "--capture", @".\doctor-capture")
+        .WithExample("doctor", @"G:\Projects\MyApp", "--watch");
 
     config.AddCommand<ConfigCommand>("config")
         .WithDescription("Show the effective configuration of a workspace (keyless.json is created with defaults when missing).")

@@ -29,6 +29,35 @@ All selectors live in the workspace `selectors.json` (created from the embedded 
 
 **Not covered by the DOM sample**: the generating/Stop state, the New Chat button, and the login page. Those selectors ship with several fallbacks and log a clear error naming the missing selector — fix them in `selectors.json` when DeepSeek changes.
 
+## How to verify selectors: keyless doctor
+
+`keyless doctor [<workspace>]` attaches to Chrome exactly like `run`, opens chat.deepseek.com
+in a **new tab**, and reports every selectors.json key without sending a message or changing
+the chat:
+
+- **MATCHED** (with which fallback index and the element count) — the selector works.
+- **NOT FOUND** — no fallback matched although the element is required; fix selectors.json.
+- **NOT APPLICABLE NOW** — the element legitimately cannot exist in the current state
+  (Stop while nothing generates, chips with nothing attached, Reasoning without a thinking
+  message, FinalAnswer on a fresh chat, LoginIndicator while logged in).
+
+It also prints the logged-in state, the DeepThink/Search `aria-pressed` values, whether the
+input accepts text, and the page URL. **Exit code 0 only when every required selector for the
+current state matched** (InputBox, SendButton, FileInput, NewChatButton, MessageItems,
+AssistantMessage, DeepThinkToggle, SearchToggle).
+
+Options:
+
+- `--capture <dir>` writes trimmed HTML snapshots (scripts, styles, svg removed; message text
+  replaced with "...") of the composer, the newest message, the sidebar and any attachment
+  chips — attach them to bug reports instead of screenshots of real content.
+- `--watch` waits while you type a prompt and send it manually, then captures the generating
+  state (stop indicator) and the finished state once each — the two states the unit tests
+  cannot see.
+
+Run `keyless doctor` after every DeepSeek UI update: a NOT FOUND line points at exactly which
+fallback list to fix.
+
 ## Reply identity — never the previous reply
 
 After every send the DOM still shows the PREVIOUS assistant message until the new one renders

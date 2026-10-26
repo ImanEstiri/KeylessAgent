@@ -103,7 +103,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         }
     }
 
-    private static async Task<Outcome<(IBrowser? Browser, IBrowserContext Context, bool OwnsBrowser)>> ConnectAsync(
+    internal static async Task<Outcome<(IBrowser? Browser, IBrowserContext Context, bool OwnsBrowser)>> ConnectAsync(
         IPlaywright playwright, BrowserOptions options)
     {
         // --- Default: attach to the user's running Chrome (started with --remote-debugging-port) ---
@@ -142,7 +142,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         return Outcome.Successful(fallback);
     }
 
-    private async Task WaitForLoginIfNeeded(IPage page, SelectorsCatalog selectors)
+    internal async Task WaitForLoginIfNeeded(IPage page, SelectorsCatalog selectors)
     {
         var loginLocator = await PlaywrightChatPageFirstVisibleAsync(page, selectors.LoginIndicator, 5_000);
         if (loginLocator is null)
