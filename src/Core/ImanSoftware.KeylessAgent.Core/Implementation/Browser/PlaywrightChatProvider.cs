@@ -52,11 +52,23 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             var (attachment, rawPage) = connected.Data;
             var page = (IPage)rawPage;
 
+            // Resume: when a saved chat URL exists and the current tab is not already on it,
+            // navigate the tab there so the conversation continues in the same chat.
+            if (!string.IsNullOrEmpty(options.ResumeChatUrl) &&
+                !page.Url.StartsWith(options.ResumeChatUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                await page.GotoAsync(options.ResumeChatUrl, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.DOMContentLoaded,
+                    Timeout = 60_000,
+                });
+            }
+
             var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken);
             if (selectors.IsFailure)
                 return Outcome.Failure<IChatSession>(selectors.Error);
 
-            await WaitForLoginIfNeeded(page, selectors.Data, options.Browser, cancellationToken);
+            await WaitForLoginIfNeeded(page, selectors.Data, options.Browser, minimizeAfterLogin: true, cancellationToken);
 
             IChatPage chatPage = new PlaywrightChatPage(
                 page, selectors.Data, options.Browser.Debug,
@@ -89,11 +101,18 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     /// Brings the tab to front and waits until the login indicator disappears
     /// (the user logs in manually; the agent continues automatically).
     /// </summary>
-    internal async Task WaitForLoginIfNeeded(IPage page, SelectorsCatalog selectors, BrowserOptions browserOptions, CancellationToken cancellationToken)
+    internal async Task WaitForLoginIfNeeded(
+        IPage page, SelectorsCatalog selectors, BrowserOptions browserOptions,
+        bool minimizeAfterLogin = false, CancellationToken cancellationToken = default)
     {
         var loginLocator = await PlaywrightChatPage.FirstVisibleAsync(page, selectors.LoginIndicator, 5_000, cancellationToken);
         if (loginLocator is null)
+        {
+            // Already logged in: get the window out of the user's way.
+            if (minimizeAfterLogin)
+                await MinimizeWindowAsync(page, cancellationToken);
             return;
+        }
 
         // Focus the tab so the user sees the login page.
         try
@@ -117,28 +136,61 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             cancellationToken.ThrowIfCancellationRequested();
             await page.WaitForTimeoutAsync(2_000);
             if (await PlaywrightChatPage.FirstVisibleAsync(page, selectors.LoginIndicator, 1_000, cancellationToken) is null)
+            {
+                // Login done: get the window out of the user's way.
+                if (minimizeAfterLogin)
+                    await MinimizeWindowAsync(page, cancellationToken);
                 return;
+            }
         }
 
         throw new TimeoutException("The chat was still not logged in after 5 minutes.");
     }
 
     /// <summary>
-    /// Dispose policy: close ONLY the tab we opened; leave the Chrome process running so the
-    /// login persists (Browser.CloseChromeOnExit closes the whole context we launched).
+    /// Minimizes the browser window via CDP (Browser.setWindowBounds) so a successful launch
+    /// does not steal the user's focus. Best-effort.
     /// </summary>
-    private static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions)
+    internal static async Task MinimizeWindowAsync(IPage page, CancellationToken cancellationToken = default)
     {
         try
         {
-            await page.CloseAsync();
-
-            if (browserOptions.CloseChromeOnExit)
+            cancellationToken.ThrowIfCancellationRequested();
+            var session = await page.Context.NewCDPSessionAsync(page);
+            var window = await session.SendAsync("Browser.getWindowForTarget");
+            var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
+            await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
             {
-                var pages = page.Context.Pages;
-                if (pages.Count == 0)
-                    await page.Context.CloseAsync();
-            }
+                ["windowId"] = windowId,
+                ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
+            });
+            await session.DetachAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Minimizing is best-effort.
+        }
+    }
+
+    /// <summary>
+    /// Dispose policy: the chat tab STAYS OPEN by default — the conversation continues across
+    /// turns and across runs (the next run reuses the tab and the saved chat URL). Only
+    /// Browser.CloseChromeOnExit closes the window/context when the session ends.
+    /// </summary>
+    private static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions)
+    {
+        if (!browserOptions.CloseChromeOnExit)
+            return;
+
+        try
+        {
+            var pages = page.Context.Pages;
+            if (pages.Count == 0)
+                await page.Context.CloseAsync();
         }
         catch
         {

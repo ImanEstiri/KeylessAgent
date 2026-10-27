@@ -26,11 +26,14 @@ window (`Target.createTarget … newWindow:false`). The chosen tab is focused
 to front again and the agent waits (up to `LoginWaitSeconds` = 5 minutes), continuing
 automatically once the login indicator disappears.
 
-Dispose policy: only the tab the agent opened is closed; the Chrome window stays running
-(`Browser.CloseChromeOnExit: false`) so the next run reuses the warm session. `run`, `doctor`
-and `keyless chrome` all go through the same connection service (`IBrowserConnector`), so
-doctor reports which path was taken (attached / auto-launched / failed) and why. `keyless
-chrome <workspace>` starts only the dedicated Chrome for a first login.
+Dispose policy: **the chat tab stays open after every turn and after exit** — the
+conversation continues across turns and across runs (the next run reuses the tab and the saved
+chat URL). Only `Browser.CloseChromeOnExit: true` closes the window when the session ends.
+When the window was launched (or already logged in), it is **minimized automatically** via CDP
+(`Browser.setWindowBounds → minimized`) so it does not steal focus. `run`, `doctor` and
+`keyless chrome` all go through the same connection service (`IBrowserConnector`), so doctor
+reports which path was taken (attached / auto-launched / failed) and why. `keyless chrome
+<workspace>` starts only the dedicated Chrome for a first login.
 
 ## Selectors
 

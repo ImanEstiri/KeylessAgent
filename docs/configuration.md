@@ -14,7 +14,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "ChromePath": "",               // explicit chrome.exe path; empty = registry + common locations
     "ReuseExistingTab": true,       // reuse an open chat.deepseek.com tab instead of opening one
     "AllowPlaywrightLaunch": false, // opt-in automated fallback browser (NOT your Chrome)
-    "CloseChromeOnExit": false,     // close the launched Chrome window when the session ends
+    "CloseChromeOnExit": false,     // false = keep the chat tab/window open across turns and runs
     "EnableDeepThink": true,        // DeepThink toggle before the first message
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",

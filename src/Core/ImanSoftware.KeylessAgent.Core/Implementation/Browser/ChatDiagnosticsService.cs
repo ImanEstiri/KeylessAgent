@@ -103,7 +103,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             return Outcome.Failure<(IChatPageInspector, Func<ValueTask>, IChatPage)>(selectors.Error);
 
         var provider = new PlaywrightChatProvider();
-        await provider.WaitForLoginIfNeeded(page, selectors.Data, session.Browser, cancellationToken);
+        await provider.WaitForLoginIfNeeded(page, selectors.Data, session.Browser, minimizeAfterLogin: false, cancellationToken);
 
         IChatPage chatPage = new PlaywrightChatPage(
             page, selectors.Data, session.Browser.Debug,
