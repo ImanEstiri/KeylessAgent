@@ -100,10 +100,12 @@ public class AgentLoopTests : IDisposable
         var tree = await _storage.ReadAllTextAsync(Path.Combine(_root, "tree-view-result.txt"));
         tree.Data.Should().Contain("Generated.cs");
 
-        // The first message contains the system prompt and the user request.
-        chat.Sent.First().Text.Should().Contain("[USER REQUEST]");
-        chat.Sent.First().Text.Should().Contain("add a generated class");
-        chat.Sent.First().Text.Should().Contain("AgentScript v1");
+        // Message 1 = the AgentScript rules alone; message 2 = the user request + attachments.
+        chat.Sent.Should().HaveCount(2);
+        chat.Sent[0].Text.Should().Contain("AgentScript v1");
+        chat.Sent[0].Text.Should().NotContain("add a generated class");
+        chat.Sent[1].Text.Should().Contain("add a generated class");
+        chat.Sent[1].AttachmentNames.Should().Contain("tree-view-result.txt");
         ui.Said.Should().Contain("creating the file");
     }
 

@@ -300,24 +300,32 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<bool> TryUploadFilesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var input = await FirstVisibleAsync(_page, _selectors.FileInput, timeoutMs: 5_000, cancellationToken);
-        if (input is null)
-            return false;
 
-        try
+        // The chat's file input is display:none — waiting for VISIBLE always times out and made
+        // every upload fall back to pasting. SetInputFiles works on hidden inputs; each fallback
+        // selector is tried directly.
+        foreach (var selector in _selectors.FileInput)
         {
-            await input.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray());
-            return true;
+            try
+            {
+                var locator = _page.Locator(selector).First;
+                await locator.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray());
+                cancellationToken.ThrowIfCancellationRequested();
+                _log.LogDebug("FileInput matched selector: {Selector}", selector);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug("FileInput {Selector} failed: {Message}", selector, ex.Message);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning("File upload failed: {Message}", ex.Message);
-            return false;
-        }
+
+        _log.LogWarning("No FileInput selector accepted the upload");
+        return false;
     }
 
     /// <inheritdoc />

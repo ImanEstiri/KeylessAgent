@@ -301,17 +301,45 @@ internal sealed class AgentLoop : IAgentLoop
                     $"Snapshot unavailable: {attachmentsOutcome.Error.Message}"));
 
             var message = request;
+
+            // Message 1 of a new chat: the AgentScript rules ALONE, with the instruction that
+            // they apply to the whole conversation. Mixing them into the request made the model
+            // skim the grammar and invent formats ("@@command", JSON blocks).
             var sendSystemPrompt = session is null || !session.SystemPromptSent;
             if (sendSystemPrompt)
             {
                 var prompt = SystemPromptBuilder.Build(options);
                 if (prompt.IsFailure)
                     return Failed(prompt.Error.Message, dryRun);
-                message = prompt.Data + "\n\n@@say\n<<<MSG\nSystem prompt delivered. Waiting for the user's request.\nMSG>>>\n@@end\n@@eof\n\n[USER REQUEST]\n" + request;
+
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingMessage, "Sending the AgentScript rules (first message of this chat)"));
+                if (!dryRun)
+                {
+                    Outcome sentPrompt;
+                    using (ui.BeginWait("Sending the AgentScript rules to DeepSeek"))
+                    {
+                        sentPrompt = await chatSession.SendMessageAsync(prompt.Data, [], cancellationToken);
+                    }
+
+                    if (sentPrompt.IsFailure)
+                        return Failed(sentPrompt.Error.Message, dryRun);
+
+                    savedSession = new AgentSession
+                    {
+                        ChatUrl = chatSession.ChatUrl,
+                        Branch = branch,
+                        Turn = turn,
+                        SystemPromptSent = true,
+                        CreatedAtUtc = session?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
+                    };
+                    await _sessions.SaveAsync(workspaceRoot, savedSession);
+                    await logger.AppendAsync("system-prompt-sent", new { Turn = turn }, cancellationToken);
+                }
             }
 
+            // Message 2: the user's request + the workspace snapshot attachments.
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingMessage, "Sending the request"));
-            await logger.AppendAsync("message-sent", new { Turn = turn, Batch = 0, SystemPrompt = sendSystemPrompt, Attachments = attachments.Select(a => a.Name).ToList() }, cancellationToken);
+            await logger.AppendAsync("message-sent", new { Turn = turn, Batch = 0, Attachments = attachments.Select(a => a.Name).ToList() }, cancellationToken);
             if (!dryRun)
             {
                 Outcome sent;
@@ -322,15 +350,6 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (sent.IsFailure)
                     return Failed(sent.Error.Message, dryRun);
-                savedSession = new AgentSession
-                {
-                    ChatUrl = chatSession.ChatUrl,
-                    Branch = branch,
-                    Turn = turn,
-                    SystemPromptSent = true,
-                    CreatedAtUtc = session?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
-                };
-                await _sessions.SaveAsync(workspaceRoot, savedSession);
             }
 
             // --- Step 8: The conversation loop ---
@@ -355,6 +374,15 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 var reply = replyOutcome.Data;
+
+                // Visible trail: what the model actually returned (truncated here; the full
+                // text is in .agent/logs/turn-N.jsonl). If the browser dies mid-turn, the user
+                // still sees every reply and whether it was usable.
+                const int MaxConsoleReplyChars = 2000;
+                var visibleReply = reply.Length <= MaxConsoleReplyChars
+                    ? reply
+                    : reply[..MaxConsoleReplyChars] + $"… ({reply.Length - MaxConsoleReplyChars} more characters; full text in .agent/logs)";
+                ui.Say($"[raw reply]\n{visibleReply}");
                 await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply }, cancellationToken);
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply, "Validating AgentScript"));
