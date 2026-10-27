@@ -19,33 +19,27 @@ public class SnapshotServiceTests : IDisposable
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(Path.Combine(_root, "obj"));
         File.WriteAllText(Path.Combine(_root, "Program.cs"), "class Program {}");
-        _service = new SnapshotService(_storage, new ImanSoftware.KeylessAgent.Core.Implementation.Execution.ProcessRunner());
-        // Minimal stand-ins for the two workspace bat files; the real ones end with `pause`,
-        // these end with a `pause` that also blocks, proving stdin-closing handles it.
-        File.WriteAllText(Path.Combine(_root, "tree-view.bat"), "@echo off\r\ntree /F /A > tree-view-result.txt\r\n");
-        File.WriteAllText(Path.Combine(_root, "code-dump.bat"), "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\necho ### README >> code-dump-result.md\r\necho. >> code-dump-result.md\r\necho ```markdown >> code-dump-result.md\r\necho hi >> code-dump-result.md\r\necho ``` >> code-dump-result.md\r\npause\r\n");
+        // No bat files anywhere: the snapshots are generated natively by WorkspaceAnalyzer.
+        _service = new SnapshotService(_storage, new WorkspaceAnalyzer(_storage));
     }
 
     [Fact]
-    public async Task RefreshAsync_MissingBatFile_FailsWithSnapshotMissing()
+    public async Task RefreshAsync_WorksWithoutAnyBatFiles()
     {
-        File.Delete(Path.Combine(_root, "code-dump.bat"));
-
         var outcome = await _service.RefreshAsync(_root);
 
-        outcome.IsFailure.Should().BeTrue();
-        outcome.Error.Code.Should().Be("KA_SNAPSHOT_MISSING");
+        outcome.IsSuccess.Should().BeTrue("the native analyzer needs no workspace scripts");
+        _storage.FileExists(Path.Combine(_root, "tree-view-result.txt")).Should().BeTrue();
+        _storage.FileExists(Path.Combine(_root, "code-dump-result.md")).Should().BeTrue();
     }
 
     [Fact]
-    public async Task RefreshAsync_RunsBatsWithoutHangingOnPause()
+    public async Task RefreshAsync_CompletesQuickly()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-
         var task = _service.RefreshAsync(_root);
-        var completed = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, cts.Token));
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(30)));
 
-        completed.Should().Be(task, "the trailing pause must not hang the run (stdin is closed)");
+        completed.Should().Be(task, "native generation must not hang");
         (await task).IsSuccess.Should().BeTrue();
         _storage.FileExists(Path.Combine(_root, "tree-view-result.txt")).Should().BeTrue();
         _storage.FileExists(Path.Combine(_root, "code-dump-result.md")).Should().BeTrue();
@@ -63,7 +57,7 @@ public class SnapshotServiceTests : IDisposable
         tree.Content.Should().Contain("Program.cs");
         tree.Content.Should().NotContain("obj");
         var dump = outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.CodeDump);
-        dump.Content.Should().Contain("### README");
+        dump.Content.Should().Contain("### Program.cs");
         dump.Content.Should().NotContain("### code-dump-result");
     }
 
@@ -103,6 +97,12 @@ public class SnapshotServiceTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, System.IO.FileAttributes.Normal);
+            Directory.Delete(_root, recursive: true);
+        }
+        catch { /* best-effort */ }
     }
 }

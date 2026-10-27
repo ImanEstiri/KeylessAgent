@@ -10,54 +10,47 @@ using ImanSoftware.Outcomes;
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 
 /// <summary>
-/// Runs the two workspace bat files and produces filtered, chunked attachments.
-/// Bat files run through <c>cmd /c</c> without a window, stdin closed, hard timeout —
-/// the final <c>pause</c> can never hang the agent.
+/// Produces the workspace snapshots natively in C# (no .bat files required) and turns
+/// them into filtered, chunked attachments.
 /// </summary>
 internal sealed class SnapshotService : ISnapshotService
 {
-    private const string TreeBatName = "tree-view.bat";
-    private const string CodeDumpBatName = "code-dump.bat";
     private const string TreeResultName = "tree-view-result.txt";
     private const string CodeDumpResultName = "code-dump-result.md";
     private const int MaxAttachmentChars = 240_000;
 
     private readonly IFileStorage _storage;
-    private readonly ProcessRunner _runner;
+    private readonly WorkspaceAnalyzer _analyzer;
 
     public SnapshotService()
-        : this(ImanFileStorageFactory.CreateStorage(), new ProcessRunner())
+        : this(ImanFileStorageFactory.CreateStorage(), new WorkspaceAnalyzer(ImanFileStorageFactory.CreateStorage()))
     {
     }
 
-    internal SnapshotService(IFileStorage storage, ProcessRunner runner)
+    internal SnapshotService(IFileStorage storage, WorkspaceAnalyzer analyzer)
     {
         _storage = storage;
-        _runner = runner;
+        _analyzer = analyzer;
     }
 
     /// <inheritdoc />
     public async Task<Outcome> RefreshAsync(string workspaceRoot)
     {
-        foreach (var bat in (string[])[TreeBatName, CodeDumpBatName])
+        // The snapshots are generated natively in C# (WorkspaceAnalyzer): no .bat files needed.
+        try
         {
-            var batPath = Path.Combine(workspaceRoot, bat);
-            if (!_storage.FileExists(batPath))
-            {
-                return Outcome.Failure(new OutcomeError(
-                    $"Workspace snapshot script not found: {bat}. It must sit in the workspace root.",
-                    ErrorCodes.SnapshotMissing, OutcomeErrorType.NotFound));
-            }
+            await _analyzer.WriteTreeViewAsync(workspaceRoot);
+            await _analyzer.WriteCodeDumpAsync(workspaceRoot);
         }
-
-        var tree = await _runner.RunAsync("cmd.exe", $"/c \"{TreeBatName}\"", workspaceRoot, timeoutSeconds: 120);
-        var dump = await _runner.RunAsync("cmd.exe", $"/c \"{CodeDumpBatName}\"", workspaceRoot, timeoutSeconds: 600);
-
-        if (tree.TimedOut || dump.TimedOut)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             return Outcome.Failure(new OutcomeError(
-                "A snapshot bat file timed out and was terminated.",
-                ErrorCodes.Timeout, OutcomeErrorType.Failure));
+                $"Snapshot generation failed: {ex.Message}",
+                ErrorCodes.SnapshotRunFailed, OutcomeErrorType.Failure));
         }
 
         foreach (var result in (string[])[TreeResultName, CodeDumpResultName])

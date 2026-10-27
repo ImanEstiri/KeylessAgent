@@ -43,16 +43,25 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
 {
     public async Task<bool> IsDebugPortOpenAsync(int port, CancellationToken cancellationToken = default)
     {
+        // A closed port must read as "port closed" (false), never as cancellation: HttpClient's
+        // own timeout surfaces as TaskCanceledException (an OCE subclass) which the agent loop
+        // would misreport as "cancelled by the user". Only the CALLER's token cancels.
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+            using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             using var response = await client.GetAsync(
-                $"http://127.0.0.1:{port}/json/version", cancellationToken);
+                $"http://127.0.0.1:{port}/json/version", timeoutCts.Token);
             return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false; // probe timeout: port closed or silently dropped
         }
         catch (OperationCanceledException)
         {
-            throw;
+            throw; // the caller really cancelled
         }
         catch
         {

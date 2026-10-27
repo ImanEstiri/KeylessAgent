@@ -42,7 +42,11 @@ internal sealed class GitService : IGitService
         if (root.IsFailure)
             return Outcome.Failure<GitRepositoryInfo>(root.Error);
 
-        var branch = await RunAsync(workspaceRoot, "rev-parse --abbrev-ref HEAD");
+        // `rev-parse --abbrev-ref HEAD` returns "HEAD" on an UNBORN branch (no commits yet);
+        // `branch --show-current` returns the real name there, so prefer it.
+        var branch = await RunAsync(workspaceRoot, "branch --show-current");
+        if (branch.IsFailure || branch.Data.Output.Trim().Length == 0)
+            branch = await RunAsync(workspaceRoot, "rev-parse --abbrev-ref HEAD");
         if (branch.IsFailure)
             return Outcome.Failure<GitRepositoryInfo>(branch.Error);
 

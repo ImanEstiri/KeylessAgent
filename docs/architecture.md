@@ -34,7 +34,7 @@ KeylessAgent mirrors the layout of [DepLens](https://github.com/ImanEstiri/DepLe
 | `IGitService` | `Git/GitService` | short-lived `git` processes; never force/reset/branch-delete/merge |
 | `IBranchGuard` | `Git/BranchGuard` | protected-branch patterns enforced in code |
 | — | `Git/BranchNameBuilder` | `agent/<yyyyMMdd-HHmm>-<slug>` |
-| `ISnapshotService` | `Snapshot/SnapshotService` + `SnapshotFilter` | runs the two `.bat` files; filters/chunks attachments |
+| `ISnapshotService` | `Snapshot/SnapshotService` + `SnapshotFilter` + `WorkspaceAnalyzer` | generates the tree/code-dump snapshots natively in C# (no workspace scripts needed); filters/chunks attachments |
 | `IResultFormatter` | `Agent/ResultFormatter` | `[KEYLESSAGENT RESULTS]` messages |
 | `IChatProvider` / `IChatSession` | `Browser/PlaywrightChatProvider` / `PlaywrightChatSession`, `Browser/FakeChatProvider` | the browser behind an interface; fake for tests/Playground |
 | `ISessionStore` | `Agent/SessionStore` | `.agent/session.json` (chat URL, branch, turn) |

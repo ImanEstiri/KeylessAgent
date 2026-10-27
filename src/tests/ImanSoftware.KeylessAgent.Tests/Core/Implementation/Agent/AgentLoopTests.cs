@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Agent;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
+using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
@@ -50,7 +51,7 @@ public class AgentLoopTests : IDisposable
             new ConfigurationService(),
             new GitService(),
             new BranchGuard(),
-            new SnapshotService(ImanFileStorageFactory.CreateStorage(), new ProcessRunner()),
+            new SnapshotService(ImanFileStorageFactory.CreateStorage(), new WorkspaceAnalyzer(ImanFileStorageFactory.CreateStorage())),
             new ResponseFormatGuard(),
             new WorkspaceCommandExecutor(),
             new ResultFormatter(),
