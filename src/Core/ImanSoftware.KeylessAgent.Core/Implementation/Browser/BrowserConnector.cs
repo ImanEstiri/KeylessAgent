@@ -111,7 +111,8 @@ internal sealed class BrowserConnector : IBrowserConnector
                     LaunchedProcess = true,
                     UserDataDir = userDataDir,
                 };
-                return Outcome.Successful((attachment, (object)fallback.Pages.FirstOrDefault() ?? await fallback.NewPageAsync()));
+                var fallbackPage = fallback.Pages.Count > 0 ? fallback.Pages[0] : await fallback.NewPageAsync();
+                return Outcome.Successful((attachment, (object)fallbackPage));
             }
 
             return Outcome.Failure<(BrowserAttachment, object)>(new OutcomeError(

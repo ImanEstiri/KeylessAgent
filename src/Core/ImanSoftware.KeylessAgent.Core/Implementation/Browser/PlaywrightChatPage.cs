@@ -121,10 +121,6 @@ internal sealed class PlaywrightChatPage : IChatPage
                     "element => element.getAttribute('aria-disabled') === 'true' || element.className.includes('ds-button--disabled')", cancellationToken);
                 return disabled != "true";
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
             catch (TimeoutException)
             {
                 // Try the next fallback selector.
@@ -150,10 +146,6 @@ internal sealed class PlaywrightChatPage : IChatPage
                     Timeout = 300,
                 });
                 return true;
-            }
-            catch (Exception) when (false)
-            {
-                throw;
             }
             catch (TimeoutException)
             {
@@ -228,10 +220,6 @@ internal sealed class PlaywrightChatPage : IChatPage
                 await _page.Keyboard.InsertTextAsync(text);
                 return;
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
             catch (TimeoutException)
             {
                 // Try the next fallback selector.
@@ -286,10 +274,6 @@ internal sealed class PlaywrightChatPage : IChatPage
                 _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
                 await locator.ClickAsync();
                 return true;
-            }
-            catch (Exception) when (false)
-            {
-                throw;
             }
             catch (TimeoutException)
             {
@@ -691,10 +675,6 @@ internal sealed class PlaywrightChatPage : IChatPage
                     Timeout = timeoutMs,
                 });
                 return locator;
-            }
-            catch (Exception) when (false)
-            {
-                throw;
             }
             catch (TimeoutException)
             {
