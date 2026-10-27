@@ -17,9 +17,46 @@ internal sealed class FakeGitService : IGitService
 
     public bool Dirty { get; set; }
 
+    public bool GitInstalled { get; set; } = true;
+
+    public bool HasOrigin { get; set; }
+
+    public bool InitCalled { get; private set; }
+
+    public bool GitignoreCreated { get; private set; }
+
+    public bool InitialCommitCalled { get; private set; }
+
     public List<string> Calls { get; } = [];
 
     public Func<string, Outcome>? PushResult { get; set; }
+
+    public Task<Outcome<bool>> IsInstalledAsync()
+        => Task.FromResult(Outcome.Successful(GitInstalled));
+
+    public Task<Outcome> InitRepositoryAsync(string workspaceRoot)
+    {
+        InitCalled = true;
+        IsRepository = true;
+        CurrentBranch = "main";
+        return Task.FromResult(Outcome.Successful());
+    }
+
+    public Task<Outcome> EnsureDotnetGitignoreAsync(string workspaceRoot)
+    {
+        GitignoreCreated = true;
+        return Task.FromResult(Outcome.Successful());
+    }
+
+    public Task<Outcome> CreateInitialCommitAsync(string workspaceRoot)
+    {
+        InitialCommitCalled = true;
+        Dirty = false;
+        return Task.FromResult(Outcome.Successful());
+    }
+
+    public Task<Outcome<bool>> HasOriginRemoteAsync(string workspaceRoot)
+        => Task.FromResult(Outcome.Successful(HasOrigin));
 
     public Task<Outcome<GitRepositoryInfo>> GetRepositoryInfoAsync(string workspaceRoot)
     {

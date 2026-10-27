@@ -24,8 +24,7 @@ public class AgentLoopTests : IDisposable
         RunGit("config user.name keyless-agent");
         File.WriteAllText(Path.Combine(_root, "README.md"), "# workspace");
         File.WriteAllText(Path.Combine(_root, "tree-view.bat"), "@echo off\r\ntree /F /A > tree-view-result.txt\r\n");
-        File.WriteAllText(Path.Combine(_root, "code-dump.bat"),
-            "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\necho done >> code-dump-result.md\r\n");
+        File.WriteAllText(Path.Combine(_root, "code-dump.bat"), "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\n");
         RunGit("add -A");
         RunGit("commit -m init");
     }
@@ -220,22 +219,67 @@ public class AgentLoopTests : IDisposable
     }
 
     [Fact]
-    public async Task RunAsync_OutsideGitRepository_FailsFast()
+    public async Task RunAsync_OutsideGitRepository_WithAutoInitDisabled_FailsFast()
     {
         var notARepo = Path.Combine(Path.GetTempPath(), "ka-norepo-" + Guid.CreateVersion7().ToString("N"));
         Directory.CreateDirectory(notARepo);
         try
         {
+            File.WriteAllText(Path.Combine(notARepo, "keyless.json"),
+                "{ \"Git\": { \"AutoInit\": false } }");
             var loop = CreateLoop(new FakeChatProvider(DoneReply("x")));
             var ui = new FakeAgentUserInterface();
 
             var result = await loop.RunAsync(notARepo, "task", ui);
 
             result.ErrorMessage.Should().Contain("not a git repository");
+            result.ErrorCode.Should().Be("KA_NOT_A_GIT_REPOSITORY");
         }
         finally
         {
             Directory.Delete(notARepo, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_OutsideGitRepository_WithAutoInit_InitializesAndContinues()
+    {
+        var notARepo = Path.Combine(Path.GetTempPath(), "ka-autoinit-" + Guid.CreateVersion7().ToString("N"));
+        Directory.CreateDirectory(notARepo);
+        File.WriteAllText(Path.Combine(notARepo, "tree-view.bat"), "@echo off\r\ntree /F /A > tree-view-result.txt\r\n");
+        File.WriteAllText(Path.Combine(notARepo, "code-dump.bat"), "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\n");
+        try
+        {
+            var chat = new FakeChatProvider(DoneReply("initialized and done"));
+            var loop = CreateLoop(chat);
+            var ui = new FakeAgentUserInterface();
+
+            var result = await loop.RunAsync(notARepo, "init me", ui);
+
+            result.ErrorMessage.Should().BeNull();
+            result.CompletedByDone.Should().BeTrue();
+            result.Branch.Should().StartWith("agent/");
+            // The agent branch was created from the fresh initial commit.
+            result.Commits.Should().NotBeEmpty();
+        }
+        finally
+        {
+            TryDelete(notARepo);
+        }
+    }
+
+    /// <summary>git object files are read-only; delete best-effort.</summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, System.IO.FileAttributes.Normal);
+            Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Temp cleanup is best-effort.
         }
     }
 

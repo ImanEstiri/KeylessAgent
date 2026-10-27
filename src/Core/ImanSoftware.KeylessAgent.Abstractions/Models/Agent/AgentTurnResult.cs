@@ -41,6 +41,11 @@ public sealed record AgentTurnResult
     public string? ErrorMessage { get; init; }
 
     /// <summary>
+    /// The stable KA_ code for the failure, when known.
+    /// </summary>
+    public string? ErrorCode { get; init; }
+
+    /// <summary>
     /// True when the turn ran in dry-run mode (nothing was executed).
     /// </summary>
     public bool DryRun { get; init; }

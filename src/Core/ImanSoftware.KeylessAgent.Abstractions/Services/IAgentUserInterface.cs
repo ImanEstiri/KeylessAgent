@@ -41,6 +41,16 @@ public interface IAgentUserInterface
     void ShowDiff(FileChange change);
 
     /// <summary>
+    /// Shows a numbered choice menu and waits for the selection. Arrow keys (or digits) move,
+    /// Enter confirms the highlighted option, Esc/Ctrl+C cancels. Non-interactive hosts return
+    /// the default option.
+    /// </summary>
+    /// <param name="request">The menu (title, options, default).</param>
+    /// <param name="cancellationToken">Cancellation token (a cancelled token counts as cancelled).</param>
+    /// <returns>The selection result.</returns>
+    Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks a waiting phase (chat reply, running process, snapshot scripts) so the UI can show
     /// a spinner. The returned scope is disposed when the wait ends; any other UI call
     /// (Say, Ask, Confirm, ShowDiff, ShowProgress) stops the wait display first.

@@ -16,7 +16,7 @@ public class WorkspaceCommandExecutorTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ka-exec-" + Guid.CreateVersion7().ToString("N"));
     private readonly IFileStorage _storage = ImanFileStorageFactory.CreateStorage();
-    private readonly FakeGitService _git = new() { CurrentBranch = "agent/test" };
+    private readonly FakeGitService _git = new() { CurrentBranch = "agent/test", HasOrigin = true };
     private readonly FakeAgentUserInterface _ui = new();
     private readonly WorkspaceCommandExecutor _executor;
 

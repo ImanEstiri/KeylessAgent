@@ -20,6 +20,8 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
     /// </summary>
     private static readonly TimeSpan SpinnerJoinUpperBound = TimeSpan.FromSeconds(30);
 
+    private const string Esc = "";
+
     private readonly IAnsiConsole _console;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private SpinnerRun? _spinner;
@@ -76,6 +78,116 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
     {
         WithGate(() => _console.MarkupLine(
             $"[grey]{progressEvent.Type}[/] {progressEvent.Detail.EscapeMarkup()}"));
+    }
+
+    /// <inheritdoc />
+    public Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = WithGate(() => RunChoiceMenu(request, cancellationToken));
+        return Task.FromResult(result);
+    }
+
+    private ChoiceResult RunChoiceMenu(ChoiceRequest request, CancellationToken cancellationToken)
+    {
+        var defaultIndex = FindDefaultIndex(request);
+
+        // Non-interactive input must not block: return the default and tell the user.
+        if (!_console.Profile.Capabilities.Interactive || Console.IsInputRedirected)
+        {
+            var chosen = request.Options[defaultIndex];
+            _console.MarkupLine($"[grey]Non-interactive input: selecting [{defaultIndex + 1}] {chosen.Label.EscapeMarkup()} (default)[/]");
+            return new ChoiceResult(chosen.Id, Cancelled: false);
+        }
+
+        var highlight = defaultIndex;
+        var renderedLines = 0;
+        RenderMenu(request, highlight, ref renderedLines);
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var key = _console.Input.ReadKey(true);
+            if (key is null)
+                return new ChoiceResult(request.Options[highlight].Id, Cancelled: false);
+
+            if (key.Value.Key is ConsoleKey.UpArrow)
+            {
+                highlight = (highlight + request.Options.Count - 1) % request.Options.Count;
+                RedrawMenu(request, highlight, renderedLines);
+                continue;
+            }
+
+            if (key.Value.Key is ConsoleKey.DownArrow)
+            {
+                highlight = (highlight + 1) % request.Options.Count;
+                RedrawMenu(request, highlight, renderedLines);
+                continue;
+            }
+
+            if (key.Value.Key is ConsoleKey.Enter)
+                return new ChoiceResult(request.Options[highlight].Id, Cancelled: false);
+
+            if (key.Value.Key is ConsoleKey.Escape ||
+                (key.Value.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Value.Key is ConsoleKey.C))
+                return ChoiceResult.CancelledMenu();
+
+            if (key.Value.KeyChar is >= '1' and <= '9')
+            {
+                var index = key.Value.KeyChar - '1';
+                if (index < request.Options.Count)
+                    return new ChoiceResult(request.Options[index].Id, Cancelled: false);
+            }
+        }
+    }
+
+    private static int FindDefaultIndex(ChoiceRequest request)
+    {
+        for (var i = 0; i < request.Options.Count; i++)
+        {
+            if (request.Options[i].Id == request.DefaultId)
+                return i;
+        }
+
+        return 0;
+    }
+
+    private void RenderMenu(ChoiceRequest request, int highlight, ref int renderedLines)
+    {
+        _console.MarkupLine($"[cyan]?[/] [white]{request.Title.EscapeMarkup()}[/]");
+        WriteMenuBody(request, highlight);
+        renderedLines = request.Options.Count + 2;
+    }
+
+    private void RedrawMenu(ChoiceRequest request, int highlight, int renderedLines)
+    {
+        // Move the cursor to the first menu line and overwrite every line (raw ANSI).
+        _console.Write($"{Esc}[{renderedLines}A");
+        _console.MarkupLine($"[cyan]?[/] [white]{request.Title.EscapeMarkup()}[/]");
+        for (var i = 0; i < request.Options.Count; i++)
+        {
+            _console.Write($"{Esc}[2K");
+            WriteOptionLine(request, i, highlight);
+        }
+
+        _console.Write($"{Esc}[2K");
+        _console.Markup("[grey]↑/↓ move · 1-9 pick · Enter confirm · Esc cancel[/]");
+        _console.Write($"{Esc}[0K\n");
+    }
+
+    private void WriteMenuBody(ChoiceRequest request, int highlight)
+    {
+        for (var i = 0; i < request.Options.Count; i++)
+            WriteOptionLine(request, i, highlight);
+        _console.MarkupLine("[grey]↑/↓ move · 1-9 pick · Enter confirm · Esc cancel[/]");
+    }
+
+    private void WriteOptionLine(ChoiceRequest request, int index, int highlight)
+    {
+        var option = request.Options[index];
+        var marker = index == highlight ? "[cyan]>[/]" : " ";
+        var isDefault = option.Id == request.DefaultId ? " [grey](default)[/]" : string.Empty;
+        var description = option.Description is null ? string.Empty : $" [grey]— {option.Description.EscapeMarkup()}[/]";
+        _console.MarkupLine($"{marker} [white]{index + 1}[/]) {option.Label.EscapeMarkup()}{isDefault}{description}");
     }
 
     /// <inheritdoc />

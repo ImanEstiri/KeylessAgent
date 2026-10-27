@@ -117,6 +117,91 @@ internal sealed class GitService : IGitService
     }
 
     /// <inheritdoc />
+    public async Task<Outcome<bool>> IsInstalledAsync()
+    {
+        var result = await RunAsync(Directory.GetCurrentDirectory(), "--version");
+        return result.IsSuccess && result.Data.ExitCode == 0
+            ? Outcome.Successful(true)
+            : Outcome.Successful(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<Outcome> InitRepositoryAsync(string workspaceRoot)
+    {
+        var init = await RunAsync(workspaceRoot, "init -b main");
+        if (init.IsFailure || init.Data.ExitCode != 0)
+        {
+            // Old git without -b: init then rename the branch.
+            var plain = await RunAsync(workspaceRoot, "init");
+            if (plain.IsFailure || plain.Data.ExitCode != 0)
+                return plain;
+
+            var rename = await RunAsync(workspaceRoot, "branch -M main");
+            if (rename.IsFailure || rename.Data.ExitCode != 0)
+                return rename;
+        }
+
+        return Outcome.Successful();
+    }
+
+    /// <inheritdoc />
+    public async Task<Outcome> EnsureDotnetGitignoreAsync(string workspaceRoot)
+    {
+        var gitignorePath = Path.Combine(workspaceRoot, ".gitignore");
+        if (File.Exists(gitignorePath))
+            return Outcome.Successful();
+
+        var hasProject = Directory.EnumerateFiles(workspaceRoot, "*.sln", SearchOption.TopDirectoryOnly).Any()
+            || Directory.EnumerateFiles(workspaceRoot, "*.slnx", SearchOption.TopDirectoryOnly).Any()
+            || Directory.EnumerateFiles(workspaceRoot, "*.csproj", SearchOption.AllDirectories).Any();
+        if (!hasProject)
+            return Outcome.Successful();
+
+        // `dotnet new gitignore` is a dotnet-template command, not a git command.
+        var template = await _runner.RunAsync("dotnet", "new gitignore --force", workspaceRoot, timeoutSeconds: 120);
+        if (template.ExitCode == 0 && File.Exists(gitignorePath))
+            return Outcome.Successful();
+
+        var content = string.Join(Environment.NewLine,
+            "bin/", "obj/", ".vs/", "*.user", ".idea/", "artifacts/", "TestResults/") + Environment.NewLine;
+        var write = await ImanFileStorageFactory.CreateStorage().WriteAllTextAsync(gitignorePath, content);
+        return write.IsFailure ? write : Outcome.Successful();
+    }
+
+    /// <inheritdoc />
+    public async Task<Outcome> CreateInitialCommitAsync(string workspaceRoot)
+    {
+        var stage = await RunAsync(workspaceRoot, "add -A");
+        if (stage.IsFailure || stage.Data.ExitCode != 0)
+            return stage;
+
+        var identity = await RunAsync(workspaceRoot, "config user.name");
+        var hasName = identity.IsSuccess && identity.Data.ExitCode == 0 && identity.Data.Output.Trim().Length > 0;
+        var email = await RunAsync(workspaceRoot, "config user.email");
+        var hasEmail = email.IsSuccess && email.Data.ExitCode == 0 && email.Data.Output.Trim().Length > 0;
+
+        var configPrefix = hasName && hasEmail
+            ? string.Empty
+            : "-c user.name=\"KeylessAgent\" -c user.email=\"keyless@localhost\" ";
+
+        return await RunToOutcomeAsync(workspaceRoot,
+            $"{configPrefix}commit -m {Quote("Initial commit (created by KeylessAgent)")}");
+    }
+
+    /// <inheritdoc />
+    public async Task<Outcome<bool>> HasOriginRemoteAsync(string workspaceRoot)
+    {
+        var remotes = await RunAsync(workspaceRoot, "remote");
+        if (remotes.IsFailure)
+            return Outcome.Failure<bool>(remotes.Error);
+
+        var hasOrigin = remotes.Data.Output
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(r => r.Equals("origin", StringComparison.OrdinalIgnoreCase));
+        return Outcome.Successful(hasOrigin);
+    }
+
+    /// <inheritdoc />
     public async Task<Outcome> EnsureAgentPathsExcludedAsync(string workspaceRoot)
     {
         var excludePath = Path.Combine(workspaceRoot, ".git", "info", "exclude");

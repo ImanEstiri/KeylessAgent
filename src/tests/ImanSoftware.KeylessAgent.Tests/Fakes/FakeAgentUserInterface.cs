@@ -49,6 +49,25 @@ internal sealed class FakeAgentUserInterface : IAgentUserInterface
 
     }
 
+    /// <summary>Choice answers returned by ChooseAsync in order (by option id); an empty queue picks the default.</summary>
+    public Queue<string> ChoiceAnswers { get; } = new();
+
+    /// <summary>Every menu shown, for assertions.</summary>
+    public List<ChoiceRequest> Menus { get; } = new();
+
+    public Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default)
+    {
+        Menus.Add(request);
+        if (ChoiceAnswers.Count > 0)
+        {
+            var id = ChoiceAnswers.Dequeue();
+            return Task.FromResult(new ChoiceResult(id, Cancelled: false));
+        }
+
+        var fallback = request.Options.FirstOrDefault(o => o.Id == request.DefaultId);
+        return Task.FromResult(new ChoiceResult(fallback?.Id, Cancelled: false));
+    }
+
     private sealed class NoOpScope : IDisposable
     {
         public void Dispose()

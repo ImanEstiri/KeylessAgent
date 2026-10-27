@@ -70,6 +70,36 @@ public interface IGitService : IService
     Task<Outcome<IReadOnlyList<string>>> ListCommitsAsync(string workspaceRoot, int maxCount);
 
     /// <summary>
+    /// Whether the git executable is installed and callable (<c>git --version</c>).
+    /// </summary>
+    Task<Outcome<bool>> IsInstalledAsync();
+
+    /// <summary>
+    /// Initializes a repository: <c>git init -b main</c>, falling back to
+    /// <c>git init</c> + <c>git branch -M main</c> on old git versions.
+    /// </summary>
+    Task<Outcome> InitRepositoryAsync(string workspaceRoot);
+
+    /// <summary>
+    /// When the workspace contains a .sln/.slnx/.csproj and has no .gitignore yet, creates a
+    /// standard .NET .gitignore (<c>dotnet new gitignore</c> when dotnet works, else a
+    /// built-in minimal template).
+    /// </summary>
+    Task<Outcome> EnsureDotnetGitignoreAsync(string workspaceRoot);
+
+    /// <summary>
+    /// Creates the initial commit (<c>git add -A</c> + commit "Initial commit (created by
+    /// KeylessAgent)"). When git user.name/user.email are not configured, a one-shot identity
+    /// is passed via <c>-c</c> for this commit only (git config is never changed).
+    /// </summary>
+    Task<Outcome> CreateInitialCommitAsync(string workspaceRoot);
+
+    /// <summary>
+    /// Whether a remote named "origin" exists.
+    /// </summary>
+    Task<Outcome<bool>> HasOriginRemoteAsync(string workspaceRoot);
+
+    /// <summary>
     /// Adds <c>.agent/</c>, <c>tree-view-result.txt</c> and <c>code-dump-result.md</c> to
     /// <c>.git/info/exclude</c> when missing, so agent artifacts never show up as dirty state.
     /// </summary>

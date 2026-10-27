@@ -55,6 +55,21 @@ internal sealed class CommitExecutor : ICommandExecutor
         if (info.IsFailure)
             return CommandExecutionResult.Fail(command, info.Error.Code, info.Error.Message);
 
+        var hasOrigin = await _git.HasOriginRemoteAsync(context.WorkspaceRoot);
+        if (hasOrigin.IsFailure || !hasOrigin.Data)
+        {
+            // No 'origin' remote: committing locally is the whole job; the push is skipped with
+            // a notice (the result tells the model, too) instead of failing.
+            return new CommandExecutionResult
+            {
+                Number = command.Number,
+                Kind = command.Kind,
+                Target = command.Target,
+                Status = CommandStatus.Ok,
+                Output = "Committed locally. No 'origin' remote; committed locally (skipped push).",
+            };
+        }
+
         var push = await _git.PushBranchAsync(context.WorkspaceRoot, info.Data.CurrentBranch);
         if (push.IsFailure)
         {

@@ -97,6 +97,7 @@ internal sealed class AgentLoop : IAgentLoop
         string? summary = null;
         string? stoppedReason = null;
         string? errorMessage = null;
+        string? lastDirtyChoice = null;
         AgentSession? savedSession = null;
 
         try
@@ -121,32 +122,95 @@ internal sealed class AgentLoop : IAgentLoop
                 return Failed(repoOutcome.Error.Message, dryRun);
             var repo = repoOutcome.Data;
             if (!repo.IsRepository)
-                return Failed("The workspace is not a git repository. Initialize one first (git init).", dryRun);
+            {
+                // --- Step 2b: automatic repository initialization ---
+                if (!options.Git.AutoInit)
+                    return Failed("The workspace is not a git repository (Git.AutoInit is disabled). Run 'git init' first.", dryRun, ErrorCodes.NotAGitRepository);
+
+                var installed = await _git.IsInstalledAsync();
+                if (installed.IsFailure)
+                    return Failed(installed.Error.Message, dryRun);
+                if (!installed.Data)
+                {
+                    return Failed(
+                        "git is not installed and the workspace is not a repository. " +
+                        "Install Git for Windows from https://git-scm.com/download/win " +
+                        "(then: git init, add a .gitignore, make an initial commit) and re-run.",
+                        dryRun, ErrorCodes.GitNotInstalled);
+                }
+
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Not a git repository; initializing one…"));
+                if (!dryRun)
+                {
+                    var init = await _git.InitRepositoryAsync(workspaceRoot);
+                    if (init.IsFailure)
+                        return Failed($"git init failed: {init.Error.Message}", dryRun, ErrorCodes.GitInitFailed);
+
+                    var gitignore = await _git.EnsureDotnetGitignoreAsync(workspaceRoot);
+                    if (gitignore.IsFailure)
+                        ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, $"Could not create .gitignore: {gitignore.Error.Message}"));
+
+                    var commit = await _git.CreateInitialCommitAsync(workspaceRoot);
+                    if (commit.IsFailure)
+                        return Failed($"Initial commit failed: {commit.Error.Message}", dryRun, ErrorCodes.GitInitFailed);
+                }
+
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.SessionStarting,
+                    "Initialized a git repository (main) with a .gitignore and an initial commit."));
+
+                var refreshed = await _git.GetRepositoryInfoAsync(workspaceRoot);
+                if (refreshed.IsFailure || !refreshed.Data.IsRepository)
+                    return Failed("Repository initialization did not produce a usable git repository.", dryRun, ErrorCodes.GitInitFailed);
+                repo = refreshed.Data;
+            }
 
             await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
 
-            // --- Step 3: Dirty working tree ---
+            // --- Step 3+4: Git preconditions (menus) ---
+            // One combined flow: at most ONE menu per turn; none when the tree is clean and the
+            // branch is protected (the agent branch is created automatically).
+            branch = repo.CurrentBranch;
+            var isProtected = _branchGuard.IsProtected(branch, options.Git);
+
             if (repo.IsDirty)
             {
-                var answer = await ui.AskAsync(
-                    "The working tree has uncommitted changes. Type 'continue' to work on top of them, 'stash' to stash them first, or 'cancel':");
-                var choice = answer.Trim().ToLowerInvariant();
-                if (choice is "" or "cancel" or "c")
+                var dirtyOptions = new List<ChoiceOption>
+                {
+                    new("carry", "Carry my uncommitted changes to a new agent branch"),
+                    new("stash", "Stash my changes first (git stash, restore later yourself)"),
+                };
+                if (!isProtected)
+                    dirtyOptions.Add(new("here", $"Continue on the current branch ('{branch}') with my changes in place"));
+                dirtyOptions.Add(new("cancel", "Cancel"));
+
+                var dirtyMenu = new ChoiceRequest(
+                    "The working tree has uncommitted changes. What should I do?",
+                    dirtyOptions,
+                    DefaultId: "carry");
+
+                var dirtyChoice = await ui.ChooseAsync(dirtyMenu, cancellationToken);
+                lastDirtyChoice = dirtyChoice.SelectedId;
+                if (dirtyChoice.Cancelled || dirtyChoice.SelectedId == "cancel")
                     return Failed("Cancelled by the user (dirty working tree).", dryRun);
-                if (choice is "stash" or "s")
+
+                if (dirtyChoice.SelectedId == "stash")
                 {
                     var stash = await _git.StashAsync(workspaceRoot);
                     if (stash.IsFailure)
                         return Failed($"git stash failed: {stash.Error.Message}", dryRun);
+                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Changes stashed (restore later with 'git stash pop')."));
                 }
+                // "carry" and "here" keep the changes in place; the branch decision below follows.
             }
 
-            // --- Step 4: Branch setup ---
-            branch = repo.CurrentBranch;
-            if (_branchGuard.IsProtected(branch, options.Git))
+            if (isProtected)
             {
+                // Protected branch: no choice — the agent branch is created automatically.
                 var agentBranch = _branchNames.Build(request, options.Git);
-                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, $"Creating agent branch {agentBranch}"));
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.SessionStarting,
+                    $"Branch '{branch}' is protected; creating agent branch {agentBranch}" + (repo.IsDirty ? " (carrying your uncommitted changes)." : ".")));
                 var created = dryRun
                     ? Outcome.Successful()
                     : await _git.CreateAndSwitchBranchAsync(workspaceRoot, agentBranch);
@@ -154,15 +218,38 @@ internal sealed class AgentLoop : IAgentLoop
                     return Failed($"Cannot create agent branch: {created.Error.Message}", dryRun);
                 branch = agentBranch;
             }
+            else if (repo.IsDirty)
+            {
+                // The dirty menu already decided: carry → new agent branch, here → stay.
+                if (lastDirtyChoice == "carry")
+                {
+                    var agentBranch = _branchNames.Build(request, options.Git);
+                    var created = dryRun
+                        ? Outcome.Successful()
+                        : await _git.CreateAndSwitchBranchAsync(workspaceRoot, agentBranch);
+                    if (created.IsFailure)
+                        return Failed($"Cannot create agent branch: {created.Error.Message}", dryRun);
+                    branch = agentBranch;
+                }
+            }
             else if (!dryRun)
             {
-                var answer = await ui.AskAsync(
-                    $"You are on '{branch}' (not protected). Press Enter to create a new agent branch, or type 'keep' to continue on '{branch}':");
-                if (answer.Trim().Equals("keep", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Stay on the current branch.
-                }
-                else
+                // Clean tree on a non-protected branch: one menu (new / stay / cancel).
+                var branchMenu = new ChoiceRequest(
+                    $"You are on '{branch}'. Which branch should I work on?",
+                    new List<ChoiceOption>
+                    {
+                        new("new", $"Create a new agent branch from '{branch}' (recommended)"),
+                        new("stay", $"Continue on '{branch}'"),
+                        new("cancel", "Cancel"),
+                    },
+                    DefaultId: "new");
+
+                var branchChoice = await ui.ChooseAsync(branchMenu, cancellationToken);
+                if (branchChoice.Cancelled || branchChoice.SelectedId == "cancel")
+                    return Failed("Cancelled by the user (branch choice).", dryRun);
+
+                if (branchChoice.SelectedId == "new")
                 {
                     var agentBranch = _branchNames.Build(request, options.Git);
                     var created = await _git.CreateAndSwitchBranchAsync(workspaceRoot, agentBranch);
@@ -448,10 +535,10 @@ internal sealed class AgentLoop : IAgentLoop
             CancellationToken = cancellationToken,
         };
 
-        AgentTurnResult Failed(string message, bool dry)
+        AgentTurnResult Failed(string message, bool dry, string? errorCode = null)
         {
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, message));
-            return new AgentTurnResult { ErrorMessage = message, DryRun = dry, Turn = 0 };
+            return new AgentTurnResult { ErrorMessage = message, DryRun = dry, Turn = 0, ErrorCode = errorCode };
         }
     }
 

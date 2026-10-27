@@ -89,6 +89,12 @@ public static class ErrorCodes
     /// <summary>A git command failed.</summary>
     public const string GitFailure = "KA_GIT_FAILURE";
 
+    /// <summary>git is not installed (or not on PATH) and the workspace is not a repository.</summary>
+    public const string GitNotInstalled = "KA_GIT_NOT_INSTALLED";
+
+    /// <summary>Automatic repository initialization failed.</summary>
+    public const string GitInitFailed = "KA_GIT_INIT_FAILED";
+
     // --- Chat / browser ---------------------------------------------------
 
     /// <summary>The browser could not be attached to or launched.</summary>

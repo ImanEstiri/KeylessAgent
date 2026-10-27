@@ -35,6 +35,9 @@ public class BrowserConnectorTests
 
         public IDisposable BeginWait(string message) => new NopScope();
 
+        public Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default)
+            => Task.FromResult(ChoiceResult.CancelledMenu());
+
         private sealed class NopScope : IDisposable
         {
             public void Dispose()

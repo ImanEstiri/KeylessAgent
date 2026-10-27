@@ -222,6 +222,12 @@ public sealed record SnapshotFilterOptions
 public sealed record GitOptions
 {
     /// <summary>
+    /// Automatically initialize a git repository (with .gitignore and an initial commit) when
+    /// the workspace is not one yet. Default true.
+    /// </summary>
+    public bool AutoInit { get; init; } = true;
+
+    /// <summary>
     /// Prefix of agent branches. Default <c>agent/</c>.
     /// </summary>
     public string BranchPrefix { get; init; } = "agent/";
