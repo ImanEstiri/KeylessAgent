@@ -2,12 +2,35 @@
 
 The highest-risk part of KeylessAgent: driving the DeepSeek web chat with Microsoft.Playwright. This document explains what is automated, which selectors are used, and what still needs manual verification.
 
-## Connection
+## Connection — the Chrome 136 rule and the one-time login
 
-1. **Default — attach to your Chrome**: you start Chrome with `chrome --remote-debugging-port=9222`; the agent uses `ConnectOverCDP` and reuses your logged-in profile. Nothing is stored, no passwords are ever typed.
-2. **Fallback — persistent profile**: if CDP fails, the agent launches Chromium with a persistent context under `%LOCALAPPDATA%\KeylessAgent\chrome-profile`. Log in once; the login persists.
+Since **Chrome 136**, `--remote-debugging-port` is **ignored when Chrome uses its default
+user-data-dir**. Attaching to your daily Chrome profile is therefore impossible. KeylessAgent
+uses a **dedicated profile** (`Browser.UserDataDir`, default
+`%LOCALAPPDATA%\KeylessAgent\chrome-profile`) and you log in to DeepSeek **once**; the login
+persists there.
 
-If the login page is detected, the agent prints a warning and waits (up to 5 minutes) for you to log in manually.
+Connection order (every step reported through the UI — never silent):
+
+| Step | Behavior |
+| --- | --- |
+| 1. Probe | `GET http://127.0.0.1:<port>/json/version` — open → attach ("Attached to Chrome on port N"). |
+| 2. Auto-launch (default on) | Start the REAL Chrome: `chrome --remote-debugging-port=<port> --remote-debugging-address=127.0.0.1 --user-data-dir=<profile> --no-first-run --no-default-browser-check https://chat.deepseek.com/`; wait ≤30s for the port; attach; "Started Chrome with the KeylessAgent profile. Log in to DeepSeek in that window once." |
+| 3. Fallback | Only with `Browser.AllowPlaywrightLaunch: true` (default **false**): a Playwright-managed browser with its own profile, explicitly warned as separate/automated. |
+| Failure | Chrome not found/started → `KA_BROWSER_CONNECTION_FAILED` with the exact manual-start command line; port open but attach failed → the reason is reported instead of falling through. |
+
+Tab rules: an existing `chat.deepseek.com` tab is reused (`Browser.ReuseExistingTab`, default
+true) — **your other tabs are never navigated**; otherwise a new TAB opens in the existing
+window (`Target.createTarget … newWindow:false`). The chosen tab is focused
+(`BringToFrontAsync` + `Target.activateTarget`). When a login is required the tab is brought
+to front again and the agent waits (up to `LoginWaitSeconds` = 5 minutes), continuing
+automatically once the login indicator disappears.
+
+Dispose policy: only the tab the agent opened is closed; the Chrome window stays running
+(`Browser.CloseChromeOnExit: false`) so the next run reuses the warm session. `run`, `doctor`
+and `keyless chrome` all go through the same connection service (`IBrowserConnector`), so
+doctor reports which path was taken (attached / auto-launched / failed) and why. `keyless
+chrome <workspace>` starts only the dedicated Chrome for a first login.
 
 ## Selectors
 

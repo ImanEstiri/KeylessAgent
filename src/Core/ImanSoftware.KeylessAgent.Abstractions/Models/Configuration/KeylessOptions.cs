@@ -50,6 +50,42 @@ public sealed record BrowserOptions
     public int ChromeDebugPort { get; init; } = 9222;
 
     /// <summary>
+    /// Dedicated Chrome profile directory (mandatory since Chrome 136: the default
+    /// user-data-dir ignores --remote-debugging-port). Default
+    /// <c>%LOCALAPPDATA%\KeylessAgent\chrome-profile</c>. The DeepSeek login persists here.
+    /// </summary>
+    public string UserDataDir { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Start the real Chrome with the dedicated profile automatically when the debug port
+    /// is not open. Default true.
+    /// </summary>
+    public bool AutoLaunchChrome { get; init; } = true;
+
+    /// <summary>
+    /// Explicit path of chrome.exe. When empty, the registry (App Paths) and the common
+    /// install locations are searched.
+    /// </summary>
+    public string ChromePath { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Reuse an already-open chat.deepseek.com tab instead of opening a new one. Default true.
+    /// </summary>
+    public bool ReuseExistingTab { get; init; } = true;
+
+    /// <summary>
+    /// Opt-in Playwright-managed fallback browser when the real Chrome cannot be found or
+    /// started. Default false (an automated browser with its own profile is confusing).
+    /// </summary>
+    public bool AllowPlaywrightLaunch { get; init; }
+
+    /// <summary>
+    /// Close the Chrome window the agent launched when the session ends. Default false:
+    /// the profile stays warm and the login persists.
+    /// </summary>
+    public bool CloseChromeOnExit { get; init; }
+
+    /// <summary>
     /// Whether the DeepThink toggle is turned on before the first message of a chat. Default true.
     /// </summary>
     public bool EnableDeepThink { get; init; } = true;

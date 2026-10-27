@@ -8,7 +8,13 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   "Mode": "Ask",            // Ask | AutoSafe | Auto
 
   "Browser": {
-    "ChromeDebugPort": 9222,        // CDP port of your running Chrome
+    "ChromeDebugPort": 9222,        // CDP port; ignored by Chrome's DEFAULT profile since Chrome 136
+    "UserDataDir": "",              // dedicated profile; empty = %LOCALAPPDATA%\KeylessAgent\chrome-profile
+    "AutoLaunchChrome": true,       // start the real Chrome with the dedicated profile when the port is closed
+    "ChromePath": "",               // explicit chrome.exe path; empty = registry + common locations
+    "ReuseExistingTab": true,       // reuse an open chat.deepseek.com tab instead of opening one
+    "AllowPlaywrightLaunch": false, // opt-in automated fallback browser (NOT your Chrome)
+    "CloseChromeOnExit": false,     // close the launched Chrome window when the session ends
     "EnableDeepThink": true,        // DeepThink toggle before the first message
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",
@@ -60,9 +66,22 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
 - **AutoSafe** — allow-listed `runcommand`s run automatically, everything else (including every `deletefile`) still asks. A warning is shown at turn start: **AutoSafe is not a security boundary** — allow-listed programs (dotnet, node, python, …) can execute arbitrary code.
 - **Auto** — everything runs automatically, including `deletefile` (the deny list still applies); `deletefile` is the only confirmation Auto skips. Backups are always made.
 
-### Browser
+### Browser — the Chrome 136 rule
 
-- **ChromeDebugPort**: start Chrome with `chrome --remote-debugging-port=9222`; KeylessAgent attaches over CDP to your real profile. If that fails it launches a persistent Chromium profile under `%LOCALAPPDATA%\KeylessAgent\chrome-profile` (log in once; it stays logged in).
+Since Chrome 136, `--remote-debugging-port` is **ignored when Chrome runs with its default
+user-data-dir**. Attaching to a daily Chrome profile is impossible; a dedicated profile is
+mandatory. KeylessAgent therefore uses one dedicated profile and one login:
+
+1. **Probe**: `http://127.0.0.1:<ChromeDebugPort>/json/version` — if it answers, attach ("Attached to Chrome on port N").
+2. **Auto-launch** (default on): start the REAL Chrome with `--remote-debugging-port … --user-data-dir=<dedicated profile> --no-first-run --no-default-browser-check`, opening chat.deepseek.com, wait up to 30s for the port, attach. Log in to DeepSeek **once** in that window; the login persists in the profile.
+3. **Playwright fallback**: only with `AllowPlaywrightLaunch: true` (default false) — a separate automated browser, clearly warned.
+4. If Chrome cannot be found or started, the agent fails with `KA_BROWSER_CONNECTION_FAILED` and prints the exact manual-start command line.
+
+Tab rules: an existing `chat.deepseek.com` tab is reused (`ReuseExistingTab`); otherwise a new TAB is opened in the existing window (`Target.createTarget … newWindow:false`). The agent never navigates your other tabs. The chosen tab is focused (`BringToFrontAsync` + `Target.activateTarget`), also when a login is required.
+
+Dispose policy: only the tab the agent opened is closed; the Chrome window stays running by default (`CloseChromeOnExit: false`) so the next run reuses the warm session.
+
+`keyless chrome <workspace>` starts only the dedicated Chrome (for logging in first), and `keyless doctor <workspace>` reports which connection path was taken.
 - **Toggles**: before the first message of a new chat the agent reads each toggle's `aria-pressed` and only clicks when it disagrees with the config; if a toggle cannot be found it warns and continues.
 - **Debug/verbose** (`keyless run … -v` or `Browser.Debug`): writes `.agent/logs/diagnostics.log` and saves screenshots on errors.
 

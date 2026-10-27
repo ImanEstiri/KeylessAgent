@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.Logging;
 using ImanSoftware.Outcomes;
@@ -13,15 +14,15 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 /// </summary>
 internal sealed class ChatDiagnosticsService : IChatDiagnostics
 {
-    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, CancellationToken, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose)>>> _openPage;
+    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose)>>> _openPage;
 
     public ChatDiagnosticsService()
-        : this((session, cancellationToken) => OpenRealPageAsync(session, cancellationToken))
+        : this((session, ui, cancellationToken) => OpenRealPageAsync(session, ui, cancellationToken))
     {
     }
 
     internal ChatDiagnosticsService(
-        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, CancellationToken, Task<Outcome<(IChatPageInspector, Func<ValueTask>)>>> openPage)
+        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector, Func<ValueTask>)>>> openPage)
     {
         _openPage = openPage;
     }
@@ -60,7 +61,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             {
                 Browser = browser,
                 WorkspaceRoot = workspaceRoot,
-            }, cancellationToken);
+            }, new DiagnosticsUi(), cancellationToken);
             if (opened.IsFailure)
                 return Outcome.Failure<ChatDiagnosticsReport>(opened.Error);
 
@@ -86,31 +87,39 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
 
     private static async Task<Outcome<(IChatPageInspector, Func<ValueTask>)>> OpenRealPageAsync(
         ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions session,
+        IAgentUserInterface ui,
         CancellationToken cancellationToken)
     {
-        var provider = new PlaywrightChatProvider();
-        var browserOptions = session.Browser;
-        var playwright = await Microsoft.Playwright.Playwright.CreateAsync();
-        var connection = await PlaywrightChatProvider.ConnectAsync(playwright, browserOptions);
+        var connector = new BrowserConnector();
+        var connection = await connector.ConnectAsync(session.Browser, ui, cancellationToken);
         if (connection.IsFailure)
             return Outcome.Failure<(IChatPageInspector, Func<ValueTask>)>(connection.Error);
 
-        var (browser, context, ownsBrowser) = connection.Data;
-        var page = await context.NewPageAsync();
-        await page.GotoAsync("https://chat.deepseek.com/", new Microsoft.Playwright.PageGotoOptions
-        {
-            WaitUntil = Microsoft.Playwright.WaitUntilState.DOMContentLoaded,
-            Timeout = 60_000,
-        });
+        var (attachment, rawPage) = connection.Data;
+        var page = (Microsoft.Playwright.IPage)rawPage;
 
-        var selectors = await SelectorsCatalog.LoadAsync(session.WorkspaceRoot, browserOptions.SelectorsFile, cancellationToken);
+        var selectors = await SelectorsCatalog.LoadAsync(session.WorkspaceRoot, session.Browser.SelectorsFile, cancellationToken);
         if (selectors.IsFailure)
             return Outcome.Failure<(IChatPageInspector, Func<ValueTask>)>(selectors.Error);
 
-        await provider.WaitForLoginIfNeeded(page, selectors.Data);
+        var provider = new PlaywrightChatProvider();
+        await provider.WaitForLoginIfNeeded(page, selectors.Data, session.Browser, cancellationToken);
 
         IChatPageInspector inspector = new PlaywrightChatInspector(page);
-        return Outcome.Successful((inspector, (Func<ValueTask>)(() => DisposeAsync(browser, ownsBrowser))));
+        return Outcome.Successful((inspector, (Func<ValueTask>)(() => DisposePageAsync(page))));
+    }
+
+    /// <summary>Doctor closes only the tab it opened — the Chrome window stays.</summary>
+    private static async ValueTask DisposePageAsync(Microsoft.Playwright.IPage page)
+    {
+        try
+        {
+            await page.CloseAsync();
+        }
+        catch
+        {
+            // Closing must never crash diagnostics.
+        }
     }
 
     private static async ValueTask DisposeAsync(Microsoft.Playwright.IBrowser? browser, bool ownsBrowser)
@@ -323,4 +332,35 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
 
     private static string DefaultCaptureDir()
         => Path.Combine(Path.GetTempPath(), "keylessagent-capture");
+
+    /// <summary>
+    /// The connector reports its decisions; doctor surfaces them as progress lines via the
+    /// same channel the agent loop uses.
+    /// </summary>
+    private sealed class DiagnosticsUi : IAgentUserInterface
+    {
+        public void Say(string message)
+        {
+        }
+
+        public void ShowProgress(AgentProgressEvent progressEvent)
+            => Console.WriteLine($"[{progressEvent.Type}] {progressEvent.Detail}");
+
+        public Task<bool> ConfirmAsync(ConfirmRequest request) => Task.FromResult(true);
+
+        public Task<string> AskAsync(string question) => Task.FromResult(string.Empty);
+
+        public void ShowDiff(FileChange change)
+        {
+        }
+
+        public IDisposable BeginWait(string message) => new NopScope();
+
+        private sealed class NopScope : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
 }

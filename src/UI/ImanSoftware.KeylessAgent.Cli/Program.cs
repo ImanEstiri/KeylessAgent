@@ -1,3 +1,4 @@
+using ImanSoftware.KeylessAgent.Cli.Commands.Chrome;
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
 using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
@@ -40,6 +41,10 @@ app.Configure(config =>
     config.AddCommand<UndoCommand>("undo")
         .WithDescription("Restore the newest backup batch from <workspace>/.agent/backups.")
         .WithExample("undo", @"G:\Projects\MyApp");
+
+    config.AddCommand<ChromeCommand>("chrome")
+        .WithDescription("Start the dedicated Chrome with the KeylessAgent profile so you can log in to DeepSeek once.")
+        .WithExample("chrome", @"G:\Projects\MyApp");
 
     config.AddCommand<DoctorCommand>("doctor")
         .WithDescription("Live selector check: attaches to Chrome and reports every selector's state without sending anything.")

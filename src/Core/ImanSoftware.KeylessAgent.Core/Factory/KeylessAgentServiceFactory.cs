@@ -87,6 +87,14 @@ public static class KeylessAgentServiceFactory
         => new SessionStore();
 
     /// <summary>
+    /// Creates the browser connection service (probe/launch/attach/tab rules) shared by
+    /// run, doctor and the <c>keyless chrome</c> command.
+    /// </summary>
+    /// <returns>The browser connector.</returns>
+    public static IBrowserConnector CreateBrowserConnector()
+        => new BrowserConnector();
+
+    /// <summary>
     /// Creates the chat diagnostics service (powers <c>keyless doctor</c>; a future GUI can reuse it).
     /// </summary>
     /// <returns>The diagnostics service.</returns>

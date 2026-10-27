@@ -116,6 +116,8 @@ internal sealed class ConfigurationService : IConfigurationService
 
         if (options.Browser.ChromeDebugPort is < 1 or > 65535)
             problems.Add("Browser.ChromeDebugPort must be a valid port.");
+        if (options.Browser.MinDelayMs < 0 || options.Browser.MaxDelayMs < options.Browser.MinDelayMs)
+            problems.Add("Browser delays must satisfy 0 <= MinDelayMs <= MaxDelayMs.");
         if (options.Browser.ReplyTimeoutSeconds < 10)
             problems.Add("Browser.ReplyTimeoutSeconds must be at least 10.");
         if (options.Browser.SendConfirmSeconds < 1)

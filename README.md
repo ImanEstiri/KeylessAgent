@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/github/license/ImanEstiri/KeylessAgent.svg)](LICENSE.txt)
 [![Build and test](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml)
 
-KeylessAgent is a .NET coding agent that does not use an API key. It rides on the DeepSeek web chat **you are already logged into** in your own Chrome: it opens a new chat, sends your request together with your project's tree and code dump, waits for the reply, and applies it to your workspace as a strict command language (AgentScript) — on a protected agent branch, never on `main`.
+KeylessAgent is a .NET coding agent that does not use an API key. It rides on the DeepSeek web chat **you are logged into** in a dedicated Chrome profile (one manual login, then it persists): it opens a new chat, sends your request together with your project's tree and code dump, waits for the reply, and applies it to your workspace as a strict command language (AgentScript) — on a protected agent branch, never on `main`.
 
 ## ⚠️ Terms-of-service and account-risk notice (read this first)
 
@@ -27,8 +27,11 @@ Every LLM coding tool wants an API key. If you already pay for (or use) DeepSeek
 
 - Windows (the workspace scripts are `.bat`; see [known limitations](#known-limitations))
 - [.NET 10 SDK / runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Chrome, started with remote debugging:
-  `chrome --remote-debugging-port=9222` (or let KeylessAgent launch a persistent profile automatically)
+- Chrome. KeylessAgent uses a **dedicated Chrome profile** (`%LOCALAPPDATA%\KeylessAgent\chrome-profile`):
+  since Chrome 136 the debug port is ignored for Chrome's default profile, so a daily-profile
+  attach is impossible. Run `keyless chrome <workspace>` once and log in to DeepSeek in that
+  window — the login persists, and KeylessAgent auto-starts this profile afterwards
+  (`Browser.AutoLaunchChrome`).
 - A DeepSeek account logged in to [chat.deepseek.com](https://chat.deepseek.com) in that browser
 - The two workspace scripts in your repo root: `tree-view.bat` and `code-dump.bat` (they generate the attachments; KeylessAgent never modifies them)
 
