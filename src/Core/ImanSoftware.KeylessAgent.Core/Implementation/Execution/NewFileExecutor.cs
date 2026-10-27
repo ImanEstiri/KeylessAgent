@@ -42,9 +42,13 @@ internal sealed class NewFileExecutor : ICommandExecutor
         if (resolve.IsFailure)
             return CommandExecutionResult.Fail(command, resolve.Error.Code, resolve.Error.Message);
 
-        var guard = await _branchGuard.EnsureModifiableAsync(context.WorkspaceRoot, context.Options.Git);
-        if (guard.IsFailure)
-            return CommandExecutionResult.Fail(command, guard.Error.Code, guard.Error.Message);
+        // NO-GIT MODE: no branch protection (there is no git to protect).
+        if (!context.NoGitMode)
+        {
+            var guard = await _branchGuard.EnsureModifiableAsync(context.WorkspaceRoot, context.Options.Git);
+            if (guard.IsFailure)
+                return CommandExecutionResult.Fail(command, guard.Error.Code, guard.Error.Message);
+        }
 
         if (_storage.FileExists(resolve.Data))
         {

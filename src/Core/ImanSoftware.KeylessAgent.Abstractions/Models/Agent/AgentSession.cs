@@ -34,4 +34,15 @@ public sealed record AgentSession
     /// UTC timestamp of the last activity.
     /// </summary>
     public string LastActivityUtc { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Workspace-relative paths the AGENT changed (file commands plus runcommand-detected
+    /// changes). Drives the dirty-menu skip.
+    /// </summary>
+    public IReadOnlyList<string> AgentChangedPaths { get; init; } = [];
+
+    /// <summary>
+    /// Turns served by the current chat (for Chat.MaxTurnsPerChat).
+    /// </summary>
+    public int TurnsInChat { get; init; }
 }

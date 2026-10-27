@@ -6,6 +6,7 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -85,6 +86,20 @@ public static class KeylessAgentServiceFactory
     /// <returns>The session store.</returns>
     public static ISessionStore CreateSessionStore()
         => new SessionStore();
+
+    /// <summary>
+    /// Creates the workspace capability inspector (probed once per session).
+    /// </summary>
+    /// <returns>The workspace inspector.</returns>
+    public static IWorkspaceInspector CreateWorkspaceInspector()
+        => new WorkspaceInspector();
+
+    /// <summary>
+    /// Creates the change tracker (git porcelain or no-git index).
+    /// </summary>
+    /// <returns>The change tracker.</returns>
+    public static IChangeTracker CreateChangeTracker()
+        => new ChangeTracker();
 
     /// <summary>
     /// Creates the browser connection service (probe/launch/attach/tab rules) shared by

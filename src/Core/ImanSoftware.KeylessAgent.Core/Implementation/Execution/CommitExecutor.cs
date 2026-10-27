@@ -36,6 +36,20 @@ internal sealed class CommitExecutor : ICommandExecutor
     {
         var commit = (CommitCommand)command;
 
+        // NO-GIT MODE: nothing can be committed; the result tells the model why.
+        if (context.NoGitMode)
+        {
+            return new CommandExecutionResult
+            {
+                Number = command.Number,
+                Kind = command.Kind,
+                Target = command.Target,
+                Status = CommandStatus.Error,
+                ErrorCode = ErrorCodes.GitNotInstalled,
+                ErrorMessage = "git unavailable, nothing committed",
+            };
+        }
+
         var guard = await _branchGuard.EnsureModifiableAsync(context.WorkspaceRoot, context.Options.Git);
         if (guard.IsFailure)
             return CommandExecutionResult.Fail(command, guard.Error.Code, guard.Error.Message);

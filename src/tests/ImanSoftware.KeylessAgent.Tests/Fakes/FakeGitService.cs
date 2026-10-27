@@ -34,6 +34,12 @@ internal sealed class FakeGitService : IGitService
     public Task<Outcome<bool>> IsInstalledAsync()
         => Task.FromResult(Outcome.Successful(GitInstalled));
 
+    public Task<Outcome<IReadOnlyList<string>>> RunStatusPorcelainAsync(string workspaceRoot)
+        => Task.FromResult(Outcome.Successful<IReadOnlyList<string>>(PorcelainLines.ToList()));
+
+    /// <summary>Scripted porcelain lines returned by RunStatusPorcelainAsync.</summary>
+    public List<string> PorcelainLines { get; } = new();
+
     public Task<Outcome> InitRepositoryAsync(string workspaceRoot)
     {
         InitCalled = true;

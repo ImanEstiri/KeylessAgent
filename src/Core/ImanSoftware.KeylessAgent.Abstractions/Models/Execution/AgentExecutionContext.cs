@@ -24,6 +24,12 @@ public sealed record AgentExecutionContext
     public bool DryRun { get; init; }
 
     /// <summary>
+    /// NO-GIT MODE: git is not installed. File commands skip the branch guard; @@commit
+    /// reports that nothing was committed instead of failing.
+    /// </summary>
+    public bool NoGitMode { get; init; }
+
+    /// <summary>
     /// The UI contract to talk to the user (say, ask, confirm, diff).
     /// </summary>
     public IAgentUserInterface Ui { get; init; } = null!;

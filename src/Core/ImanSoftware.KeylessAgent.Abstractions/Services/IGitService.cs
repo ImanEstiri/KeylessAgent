@@ -75,6 +75,11 @@ public interface IGitService : IService
     Task<Outcome<bool>> IsInstalledAsync();
 
     /// <summary>
+    /// The raw <c>git status --porcelain</c> lines (change tracking with git).
+    /// </summary>
+    Task<Outcome<IReadOnlyList<string>>> RunStatusPorcelainAsync(string workspaceRoot);
+
+    /// <summary>
     /// Initializes a repository: <c>git init -b main</c>, falling back to
     /// <c>git init</c> + <c>git branch -M main</c> on old git versions.
     /// </summary>

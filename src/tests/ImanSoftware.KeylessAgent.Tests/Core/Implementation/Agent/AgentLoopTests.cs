@@ -5,9 +5,11 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Agent;
@@ -56,6 +58,8 @@ public class AgentLoopTests : IDisposable
             new WorkspaceCommandExecutor(),
             new ResultFormatter(),
             new SessionStore(),
+            new WorkspaceInspector(),
+            new ChangeTracker(),
             new BranchNameBuilder(new FakeDateTimeProvider()),
             new FakeDateTimeProvider(),
             null);

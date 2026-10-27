@@ -7,6 +7,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Git;
@@ -32,6 +33,8 @@ internal sealed class AgentLoop : IAgentLoop
     private readonly IWorkspaceCommandExecutor _executor;
     private readonly IResultFormatter _resultFormatter;
     private readonly ISessionStore _sessions;
+    private readonly IWorkspaceInspector _workspaceInspector;
+    private readonly IChangeTracker _changeTracker;
     private readonly BranchNameBuilder _branchNames;
     private readonly IDateTimeProvider _time;
     private readonly ILoggerAdapter<AgentLoop> _log;
@@ -47,6 +50,8 @@ internal sealed class AgentLoop : IAgentLoop
             new WorkspaceCommandExecutor(),
             new ResultFormatter(),
             new SessionStore(),
+            new WorkspaceInspector(),
+            new ChangeTracker(),
             new BranchNameBuilder(new DefaultDateTimeProvider()),
             new DefaultDateTimeProvider(),
             log)
@@ -63,6 +68,8 @@ internal sealed class AgentLoop : IAgentLoop
         IWorkspaceCommandExecutor executor,
         IResultFormatter resultFormatter,
         ISessionStore sessions,
+        IWorkspaceInspector workspaceInspector,
+        IChangeTracker changeTracker,
         BranchNameBuilder branchNames,
         IDateTimeProvider time,
         ILoggerAdapter<AgentLoop>? log)
@@ -76,6 +83,8 @@ internal sealed class AgentLoop : IAgentLoop
         _executor = executor;
         _resultFormatter = resultFormatter;
         _sessions = sessions;
+        _workspaceInspector = workspaceInspector;
+        _changeTracker = changeTracker;
         _branchNames = branchNames;
         _time = time;
         _log = log ?? new LoggerAdapter<AgentLoop>(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
@@ -99,6 +108,8 @@ internal sealed class AgentLoop : IAgentLoop
         string? errorMessage = null;
         string? lastDirtyChoice = null;
         AgentSession? savedSession = null;
+        var noGitModeUsed = false;
+        var agentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -116,28 +127,26 @@ internal sealed class AgentLoop : IAgentLoop
                 ui.Say("[!] AutoSafe is not a security boundary: allow-listed programs (dotnet, node, python, ...) can execute arbitrary code on this machine.");
             }
 
-            // --- Step 2: Git preconditions ---
-            var repoOutcome = await _git.GetRepositoryInfoAsync(workspaceRoot);
-            if (repoOutcome.IsFailure)
-                return Failed(repoOutcome.Error.Message, dryRun);
-            var repo = repoOutcome.Data;
-            if (!repo.IsRepository)
+            // --- Step 2: Workspace capabilities (probed ONCE per session, reused everywhere) ---
+            var capabilitiesOutcome = await _workspaceInspector.InspectAsync(workspaceRoot, options.Git, cancellationToken);
+            if (capabilitiesOutcome.IsFailure)
+                return Failed(capabilitiesOutcome.Error.Message, dryRun);
+            var capabilities = capabilitiesOutcome.Data;
+            var noGitMode = capabilities.NoGitMode;
+
+            if (noGitMode)
+            {
+                // NO-GIT MODE: one warning, no prompts, no branch protection, no commits, no push.
+                ui.Say("[!] Git is not installed. There is no branch protection, no commits and no git history, " +
+                       "so changes cannot be reverted with git. File changes made through AgentScript file commands " +
+                       "are still backed up in .agent/backups (keyless undo); changes made by commands are not.");
+                noGitModeUsed = true;
+            }
+            else if (!capabilities.IsRepository)
             {
                 // --- Step 2b: automatic repository initialization ---
                 if (!options.Git.AutoInit)
                     return Failed("The workspace is not a git repository (Git.AutoInit is disabled). Run 'git init' first.", dryRun, ErrorCodes.NotAGitRepository);
-
-                var installed = await _git.IsInstalledAsync();
-                if (installed.IsFailure)
-                    return Failed(installed.Error.Message, dryRun);
-                if (!installed.Data)
-                {
-                    return Failed(
-                        "git is not installed and the workspace is not a repository. " +
-                        "Install Git for Windows from https://git-scm.com/download/win " +
-                        "(then: git init, add a .gitignore, make an initial commit) and re-run.",
-                        dryRun, ErrorCodes.GitNotInstalled);
-                }
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Not a git repository; initializing one…"));
                 if (!dryRun)
@@ -162,32 +171,52 @@ internal sealed class AgentLoop : IAgentLoop
                 var refreshed = await _git.GetRepositoryInfoAsync(workspaceRoot);
                 if (refreshed.IsFailure || !refreshed.Data.IsRepository)
                     return Failed("Repository initialization did not produce a usable git repository.", dryRun, ErrorCodes.GitInitFailed);
-                repo = refreshed.Data;
             }
 
-            await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
+            if (!noGitMode)
+                await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
 
             // --- Step 3+4: Git preconditions (menus) ---
-            // One combined flow: at most ONE menu per turn; none when the tree is clean and the
-            // branch is protected (the agent branch is created automatically).
-            branch = repo.CurrentBranch;
-            var isProtected = _branchGuard.IsProtected(branch, options.Git);
+            branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
+            var isProtected = !noGitMode && _branchGuard.IsProtected(branch, options.Git);
+            var isAgentBranch = !noGitMode && capabilities.IsAgentBranch;
 
-            if (repo.IsDirty)
+            // Change tracking: baseline before the turn.
+            IReadOnlyList<ChangedPath> turnChanges = [];
+            object? changeBaseline = null;
+            if (!dryRun)
+                changeBaseline = (await _changeTracker.CaptureAsync(workspaceRoot, !noGitMode, cancellationToken)).Data;
+
+            var repo = await _git.GetRepositoryInfoAsync(workspaceRoot);
+            var repoDirty = !noGitMode && repo.IsSuccess && repo.Data.IsRepository && (repo.Data.IsDirty);
+            var loadedSession = await _sessions.LoadAsync(workspaceRoot);
+            var agentChangedPaths = loadedSession is { IsSuccess: true } && loadedSession.Data.AgentChangedPaths.Count > 0
+                ? loadedSession.Data.AgentChangedPaths
+                : null;
+
+            // Skip the dirty menu when every dirty path was changed by the agent itself AND we
+            // are already on an agent branch.
+            var skipDirtyMenu = repoDirty && isAgentBranch && agentChangedPaths is not null &&
+                (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline!, true, cancellationToken))
+                    is { IsSuccess: true } diffResult
+                && diffResult.Data.All(c => agentChangedPaths.Contains(c.Path, StringComparer.OrdinalIgnoreCase));
+
+
+            if (!noGitMode && repoDirty && !skipDirtyMenu)
             {
-                var dirtyOptions = new List<ChoiceOption>
-                {
-                    new("carry", "Carry my uncommitted changes to a new agent branch"),
-                    new("stash", "Stash my changes first (git stash, restore later yourself)"),
-                };
-                if (!isProtected)
-                    dirtyOptions.Add(new("here", $"Continue on the current branch ('{branch}') with my changes in place"));
+                // Dirty tree menu: numbered, no typing. "carry" is only offered when we are NOT
+                // already on an agent branch; the default is "carry" off-branch, "here" on-branch.
+                var dirtyOptions = new List<ChoiceOption>();
+                if (!isAgentBranch)
+                    dirtyOptions.Add(new("carry", "Carry my uncommitted changes to a new agent branch"));
+                dirtyOptions.Add(new("stash", "Stash my changes first (git stash, restore later yourself)"));
+                dirtyOptions.Add(new("here", $"Continue on the current branch ('{branch}') with my changes in place"));
                 dirtyOptions.Add(new("cancel", "Cancel"));
 
                 var dirtyMenu = new ChoiceRequest(
                     "The working tree has uncommitted changes. What should I do?",
                     dirtyOptions,
-                    DefaultId: "carry");
+                    DefaultId: isAgentBranch ? "here" : "carry");
 
                 var dirtyChoice = await ui.ChooseAsync(dirtyMenu, cancellationToken);
                 lastDirtyChoice = dirtyChoice.SelectedId;
@@ -201,7 +230,6 @@ internal sealed class AgentLoop : IAgentLoop
                         return Failed($"git stash failed: {stash.Error.Message}", dryRun);
                     ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Changes stashed (restore later with 'git stash pop')."));
                 }
-                // "carry" and "here" keep the changes in place; the branch decision below follows.
             }
 
             if (isProtected)
@@ -210,7 +238,7 @@ internal sealed class AgentLoop : IAgentLoop
                 var agentBranch = _branchNames.Build(request, options.Git);
                 ui.ShowProgress(new AgentProgressEvent(
                     AgentEventType.SessionStarting,
-                    $"Branch '{branch}' is protected; creating agent branch {agentBranch}" + (repo.IsDirty ? " (carrying your uncommitted changes)." : ".")));
+                    $"Branch '{branch}' is protected; creating agent branch {agentBranch}" + (repoDirty ? " (carrying your uncommitted changes)." : ".")));
                 var created = dryRun
                     ? Outcome.Successful()
                     : await _git.CreateAndSwitchBranchAsync(workspaceRoot, agentBranch);
@@ -218,7 +246,7 @@ internal sealed class AgentLoop : IAgentLoop
                     return Failed($"Cannot create agent branch: {created.Error.Message}", dryRun);
                 branch = agentBranch;
             }
-            else if (repo.IsDirty)
+            else if (repoDirty)
             {
                 // The dirty menu already decided: carry → new agent branch, here → stay.
                 if (lastDirtyChoice == "carry")
@@ -232,7 +260,7 @@ internal sealed class AgentLoop : IAgentLoop
                     branch = agentBranch;
                 }
             }
-            else if (!dryRun)
+            else if (!noGitMode && !dryRun)
             {
                 // Clean tree on a non-protected branch: one menu (new / stay / cancel).
                 var branchMenu = new ChoiceRequest(
@@ -311,6 +339,12 @@ internal sealed class AgentLoop : IAgentLoop
                 var prompt = SystemPromptBuilder.Build(options);
                 if (prompt.IsFailure)
                     return Failed(prompt.Error.Message, dryRun);
+
+                if (noGitModeUsed)
+                    prompt = Outcome.Successful(prompt.Data +
+                        "\n\nIMPORTANT: git is NOT installed in this workspace. There is no version control: " +
+                        "do not use @@commit and do not run any git commands (they will fail with command_not_found). " +
+                        "File changes are backed up by the program automatically.");
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingMessage, "Sending the AgentScript rules (first message of this chat)"));
                 if (!dryRun)
@@ -478,6 +512,15 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (completedByDone)
                 {
+                // Update the agent-changed path set (file commands + runcommand side effects):
+                // persisted in session.json so the next turn can skip the dirty menu when all
+                // dirty paths are agent-made.
+                if (!dryRun && changeBaseline is not null)
+                {
+                    var changed = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline, !noGitModeUsed, cancellationToken)).Data;
+                    if (changed is not null)
+                        agentPaths.UnionWith(changed.Select(c => c.Path));
+                }
                     await logger.AppendAsync("turn-done", new { Turn = turn, Summary = summary }, cancellationToken);
                     break;
                 }
@@ -560,6 +603,7 @@ internal sealed class AgentLoop : IAgentLoop
             Options = options,
             DryRun = dryRun,
             Ui = ui,
+            NoGitMode = noGitModeUsed,
             CancellationToken = cancellationToken,
         };
 

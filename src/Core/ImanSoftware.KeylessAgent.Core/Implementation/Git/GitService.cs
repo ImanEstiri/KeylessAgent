@@ -121,6 +121,19 @@ internal sealed class GitService : IGitService
     }
 
     /// <inheritdoc />
+    public async Task<Outcome<IReadOnlyList<string>>> RunStatusPorcelainAsync(string workspaceRoot)
+    {
+        var status = await RunAsync(workspaceRoot, "status --porcelain");
+        if (status.IsFailure)
+            return Outcome.Failure<IReadOnlyList<string>>(status.Error);
+
+        var lines = status.Data.Output
+            .Split("\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        return Outcome.Successful((IReadOnlyList<string>)lines);
+    }
+
+    /// <inheritdoc />
     public async Task<Outcome<bool>> IsInstalledAsync()
     {
         var result = await RunAsync(Directory.GetCurrentDirectory(), "--version");

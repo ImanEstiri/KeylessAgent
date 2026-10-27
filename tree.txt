@@ -1,6 +1,0 @@
-Folder PATH listing for volume Local Disk
-Volume serial number is 000000FC C0AD:37BC
-G:\F
-Invalid path - \F
-No subfolders exist 
-
