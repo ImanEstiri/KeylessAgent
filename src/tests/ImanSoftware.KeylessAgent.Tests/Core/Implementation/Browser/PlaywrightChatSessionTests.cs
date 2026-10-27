@@ -264,6 +264,55 @@ public class PlaywrightChatSessionTests : IDisposable
         page.LastInsertedText.Should().Contain("dump content");
     }
 
+    // ---------- diagnostics hint tests ----------
+
+    [Fact]
+    public async Task SendNotConfirmed_WithDebug_ShowsScreenshotPath()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => { };
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+        var options = new ChatSessionOptions
+        {
+            WorkspaceRoot = _root,
+            Browser = new BrowserOptions
+            {
+                MinDelayMs = 0, MaxDelayMs = 0,
+                SendConfirmSeconds = 1, UploadWaitSeconds = 1,
+                ReplyTimeoutSeconds = 5, Debug = true,
+            },
+        };
+        var debugSession = new PlaywrightChatSession(
+            page, () => ValueTask.CompletedTask, options,
+            new ReplyExtractor(), new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
+            new LoggerAdapter<PlaywrightChatSession>(NullLoggerFactory.Instance),
+            ImanFileStorageFactory.CreateStorage(), pollDelayMs: 20);
+
+        var outcome = await debugSession.SendMessageAsync("request", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Message.Should().Contain("Debug screenshot:");
+        page.Screenshots.Should().NotBeEmpty();
+        page.Screenshots[0].Should().Contain(_root);
+        page.Screenshots[0].Should().Contain("send-not-confirmed");
+    }
+
+    [Fact]
+    public async Task SendNotConfirmed_WithoutDebug_SuggestsKeylessDoctor()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => { };
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+
+        var outcome = await session.SendMessageAsync("request", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Message.Should().Contain("keyless doctor");
+        outcome.Error.Message.Should().NotContain("Debug screenshot");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

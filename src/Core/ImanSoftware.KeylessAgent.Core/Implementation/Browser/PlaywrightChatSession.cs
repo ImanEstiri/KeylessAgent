@@ -65,8 +65,8 @@ internal sealed class PlaywrightChatSession : IChatSession
             await _rateLimiter.WaitAsync(cancellationToken);
 
             // --- Step 1: fingerprint the current newest assistant message (pre-send baseline) ---
-            _preSendStamp = _page.GetNewestAssistantStamp();
-            var itemCountBefore = _page.GetMessageItemCount();
+            _preSendStamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
+            var itemCountBefore = await _page.GetMessageItemCountAsync(cancellationToken);
 
             // --- Step 2: deliver attachments (upload with wait, paste fallback) ---
             var text = message;
@@ -81,21 +81,21 @@ internal sealed class PlaywrightChatSession : IChatSession
             }
 
             // --- Step 3: insert the whole text and send ---
-            _page.InsertText(text);
+            await _page.InsertTextAsync(text, cancellationToken);
             await Task.Delay(_random.Next(
                 _options.Browser.MinDelayMs,
                 Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
 
             // One send attempt = the send button when clickable, otherwise Enter — never both.
-            if (!_page.TryClickSend())
-                _page.PressEnter();
+            if (!await _page.TryClickSendAsync(cancellationToken))
+                await _page.PressEnterAsync(cancellationToken);
 
             // --- Step 4: confirm the send actually happened ---
             if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
             {
                 // The list is virtualized: a constant item count proves nothing. An emptied input
                 // means the text left the composer — the message was sent.
-                if (_page.IsInputCleared())
+                if (await _page.IsInputClearedAsync(cancellationToken))
                 {
                     _log.LogInformation("Send not confirmed by the message list, but the input was cleared; treating the message as sent.");
                     return Outcome.Successful();
@@ -103,20 +103,21 @@ internal sealed class PlaywrightChatSession : IChatSession
 
                 // The text is still in the composer: exactly one retry (button, else Enter).
                 _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once.", _options.Browser.SendConfirmSeconds);
-                if (!_page.TryClickSend())
-                    _page.PressEnter();
+                if (!await _page.TryClickSendAsync(cancellationToken))
+                    await _page.PressEnterAsync(cancellationToken);
 
                 if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
                 {
-                    if (_page.IsInputCleared())
+                    if (await _page.IsInputClearedAsync(cancellationToken))
                     {
                         _log.LogInformation("Send confirmed after retry by the cleared input.");
                         return Outcome.Successful();
                     }
 
-                    _page.SaveDebugScreenshot("send-not-confirmed");
+                    var screenshot = await CaptureDiagnosticsAsync("send-not-confirmed", cancellationToken);
                     return Outcome.Failure(new OutcomeError(
-                        $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator).",
+                        $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator)."
+                        + DiagnosticsHint(screenshot),
                         ErrorCodes.SendNotConfirmed, OutcomeErrorType.Failure));
                 }
             }
@@ -125,7 +126,7 @@ internal sealed class PlaywrightChatSession : IChatSession
         }
         catch (Exception ex)
         {
-            _page.SaveDebugScreenshot("send-failed");
+            await CaptureDiagnosticsAsync("send-failed", cancellationToken);
             return Outcome.Failure(new OutcomeError(ex));
         }
     }
@@ -141,10 +142,10 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var stillGenerating = _page.IsStopIndicatorVisible();
-            var stamp = _page.GetNewestAssistantStamp();
+            var stillGenerating = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
+            var stamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
             var isNewMessage = stamp is not null && stamp.IsDifferentFrom(_preSendStamp);
-            var reply = isNewMessage && _page.GetNewestAssistantHtml() is { } html
+            var reply = isNewMessage && await _page.GetNewestAssistantHtmlAsync(cancellationToken) is { } html
                 ? _replyExtractor.ExtractFinalAnswer(html)
                 : null;
 
@@ -164,9 +165,9 @@ internal sealed class PlaywrightChatSession : IChatSession
             await Task.Delay(_pollDelayMs, cancellationToken);
         }
 
-        _page.SaveDebugScreenshot("reply-timeout");
+        var screenshot = await CaptureDiagnosticsAsync("reply-timeout", cancellationToken);
         return Outcome.Failure<string>(new OutcomeError(
-            $"No complete new reply within {_options.Browser.ReplyTimeoutSeconds}s.",
+            $"No complete new reply within {_options.Browser.ReplyTimeoutSeconds}s." + DiagnosticsHint(screenshot),
             ErrorCodes.ReplyTimeout, OutcomeErrorType.Failure));
     }
 
@@ -184,11 +185,14 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (_page.GetMessageItemCount() > itemCountBefore)
+            if (await _page.GetMessageItemCountAsync(cancellationToken) > itemCountBefore)
                 return true;
 
-            if (_page.IsInputCleared() && _page.IsStopIndicatorVisible())
+            if (await _page.IsInputClearedAsync(cancellationToken) &&
+                await _page.IsStopIndicatorVisibleAsync(cancellationToken))
+            {
                 return true;
+            }
 
             await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
@@ -217,7 +221,7 @@ internal sealed class PlaywrightChatSession : IChatSession
             created.Add(path);
         }
 
-        if (!_page.TryUploadFiles(created))
+        if (!await _page.TryUploadFilesAsync(created, cancellationToken))
         {
             _log.LogWarning("SetInputFiles failed; pasting the attachment content instead.");
             return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
@@ -233,13 +237,13 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (HasUploadSign(uploadNames))
+            if (await HasUploadSignAsync(uploadNames, cancellationToken))
                 return Outcome.Successful(AttachmentDelivery.Uploaded);
 
             await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
 
-        if (HasUploadSign(uploadNames))
+        if (await HasUploadSignAsync(uploadNames, cancellationToken))
             return Outcome.Successful(AttachmentDelivery.Uploaded);
 
         _log.LogWarning("No sign of the uploaded files within {Seconds}s; pasting the content instead.", _options.Browser.UploadWaitSeconds);
@@ -250,17 +254,57 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// Whether the page shows any sign that the upload landed: the hidden file input reports
     /// one of the files, a composer-near element shows a file name, or chips are visible.
     /// </summary>
-    private bool HasUploadSign(List<string> uploadNames)
+    private async Task<bool> HasUploadSignAsync(List<string> uploadNames, CancellationToken cancellationToken)
     {
-        var inputFiles = _page.GetInputFileNames();
+        var inputFiles = await _page.GetInputFileNamesAsync(cancellationToken);
         if (inputFiles.Any(file => uploadNames.Contains(file, StringComparer.OrdinalIgnoreCase)))
             return true;
 
-        if (uploadNames.Any(name => _page.IsFileNameVisible(name)))
-            return true;
+        foreach (var name in uploadNames)
+        {
+            if (await _page.IsFileNameVisibleAsync(name, cancellationToken))
+                return true;
+        }
 
-        return _page.AreAttachmentChipsVisible();
+        return await _page.AreAttachmentChipsVisibleAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Debug mode captures a page screenshot (via the debug-capable page implementations) and
+    /// the error message points at the file; otherwise the message points at keyless doctor.
+    /// </summary>
+    private async Task<string?> CaptureDiagnosticsAsync(string name, CancellationToken cancellationToken)
+    {
+        if (!_options.Browser.Debug)
+            return null;
+
+        try
+        {
+            var directory = Path.Combine(_options.WorkspaceRoot, ".agent", "logs");
+            var mkdir = await _storage.CreateDirectoryAsync(directory, cancellationToken);
+            if (mkdir.IsFailure)
+                return null;
+
+            var path = Path.Combine(directory, $"{name}-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+            await _page.SaveDebugScreenshotAsync(path, cancellationToken);
+            _log.LogInformation("Debug screenshot saved: {Path}", path);
+            return path;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Screenshots are best-effort.
+            return null;
+        }
+    }
+
+    private static string DiagnosticsHint(string? screenshotPath)
+        => screenshotPath is not null
+            ? $" Debug screenshot: {screenshotPath}"
+            : " Run 'keyless doctor' to inspect the live selectors.";
 
     private enum AttachmentDelivery
     {

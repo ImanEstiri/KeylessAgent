@@ -43,113 +43,120 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     /// <summary>The last text handed to InsertText (paste detection in tests).</summary>
     public string? LastInsertedText { get; private set; }
 
-    /// <summary>Records ("click" | "enter") in order, plus whether chips were visible at send time.</summary>
-    public List<(string Method, bool ChipsVisible)> Sends { get; } = [];
+    /// <summary>When set, screenshots are recorded here instead of the filesystem.</summary>
+    public List<string> Screenshots { get; } = new();
+
+    /// <summary>Records ("click" | "click-failed" | "enter") in order, plus whether chips were visible at send time.</summary>
+    public List<(string Method, bool ChipsVisible)> Sends { get; } = new();
 
     /// <summary>Runs after a successful send; the test uses it to evolve the fake DOM.</summary>
     public Action? OnSent { get; set; }
 
-    public ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp? GetNewestAssistantStamp()
+    public Task<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?> GetNewestAssistantStampAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
             if (NewestAssistantKey is null && NewestAssistantText is null)
-                return null;
+                return Task.FromResult<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?>(null);
 
-            return new ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp(
-                NewestAssistantKey,
-                TextHash: StableHash(NewestAssistantText ?? string.Empty),
-                VisibleCount: AssistantVisibleCount);
+            return Task.FromResult<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?>(
+                new ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp(
+                    NewestAssistantKey,
+                    TextHash: StableHash(NewestAssistantText ?? string.Empty),
+                    VisibleCount: AssistantVisibleCount));
         }
     }
 
-    public string? GetNewestAssistantHtml()
+    public Task<string?> GetNewestAssistantHtmlAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
             if (NewestAssistantText is null)
-                return null;
+                return Task.FromResult<string?>(null);
 
-            return $"<div class='ds-message'><div class='ds-markdown ds-assistant-message-main-content'>{NewestAssistantText}</div></div>";
+            return Task.FromResult<string?>(
+                $"<div class='ds-message'><div class='ds-markdown ds-assistant-message-main-content'>{NewestAssistantText}</div></div>");
         }
     }
 
-    public int GetMessageItemCount()
+    public Task<int> GetMessageItemCountAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return ItemCount;
+            return Task.FromResult(ItemCount);
         }
     }
 
-    public bool IsStopIndicatorVisible()
+    public Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return StopVisible;
+            return Task.FromResult(StopVisible);
         }
     }
 
-    public bool IsInputCleared() => !InputHasText;
+    public Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(!InputHasText);
 
-    public bool IsSendEnabled()
+    public Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return SendEnabled;
+            return Task.FromResult(SendEnabled);
         }
     }
 
-    public bool AreAttachmentChipsVisible()
+    public Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return ChipsVisible;
+            return Task.FromResult(ChipsVisible);
         }
     }
 
-    public IReadOnlyList<string> GetInputFileNames()
+    public Task<IReadOnlyList<string>> GetInputFileNamesAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return InputFileNames.ToList();
+            return Task.FromResult<IReadOnlyList<string>>(InputFileNames.ToList());
         }
     }
 
-    public bool IsFileNameVisible(string fileName)
+    public Task<bool> IsFileNameVisibleAsync(string fileName, CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
-            return VisibleFileNames.Contains(fileName);
+            return Task.FromResult(VisibleFileNames.Contains(fileName));
         }
     }
 
-    public void InsertText(string text)
+    public Task InsertTextAsync(string text, CancellationToken cancellationToken = default)
     {
         InputHasText = true;
         LastInsertedText = text;
+        return Task.CompletedTask;
     }
 
-    public bool TryClickSend()
+    public Task<bool> TryClickSendAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
             if (FailClick)
             {
                 Sends.Add(("click-failed", ChipsVisible));
-                return false;
+                return Task.FromResult(false);
             }
 
             Sends.Add(("click", ChipsVisible));
             if (!SendEnabled)
-                return false;
+                return Task.FromResult(false);
         }
 
         OnSent?.Invoke();
-        return true;
+        return Task.FromResult(true);
     }
 
-    public void PressEnter()
+    public Task PressEnterAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
@@ -157,12 +164,16 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
         }
 
         OnSent?.Invoke();
+        return Task.CompletedTask;
     }
 
-    public bool TryUploadFiles(IReadOnlyList<string> filePaths) => !FailUpload;
+    public Task<bool> TryUploadFilesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
+        => Task.FromResult(!FailUpload);
 
-    public void SaveDebugScreenshot(string name)
+    public Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default)
     {
+        Screenshots.Add(fullPath);
+        return Task.CompletedTask;
     }
 
     /// <summary>Simulates a successful send: the user message lands and generating starts.</summary>

@@ -27,7 +27,11 @@ All selectors live in the workspace `selectors.json` (created from the embedded 
 | `DeepThinkToggle` / `SearchToggle` | `.ds-toggle-button:has-text("DeepThink")` / `…("Search")` | state read from `aria-pressed` |
 | `LoginIndicator` | `input[type="password"]` | |
 
-**Not covered by the DOM sample**: the generating/Stop state, the New Chat button, and the login page. Those selectors ship with several fallbacks and log a clear error naming the missing selector — fix them in `selectors.json` when DeepSeek changes.
+**Still unverified against a live chat**: the generating/Stop state, the New Chat button, and the attachment chips. Those selectors ship with several fallbacks and log a clear error naming the missing selector — fix them in `selectors.json` when DeepSeek changes, or just run `keyless doctor` which reports every key with the matching fallback index.
+
+## Cancellation
+
+Every page operation takes a CancellationToken. Playwright's own waits do not accept one, so each call races the token — Ctrl+C interrupts any in-flight wait promptly instead of waiting out its timeout.
 
 ## How to verify selectors: keyless doctor
 
@@ -57,6 +61,30 @@ Options:
 
 Run `keyless doctor` after every DeepSeek UI update: a NOT FOUND line points at exactly which
 fallback list to fix.
+
+## Send / confirm / upload decision tables
+
+**Send attempt** (one attempt = the send button when clickable, otherwise Enter — never both):
+
+| Observation after the attempt | Decision |
+| --- | --- |
+| A new message item appeared in the DOM | Sent — continue to `WaitForReplyAsync` |
+| Input is empty AND the stop/generating indicator is on | Sent |
+| Input is empty, no indicator (virtualized list did not grow) | Sent — a constant item count proves nothing |
+| Input still holds the text | Not sent — retry exactly once (button, else Enter) |
+| Still not confirmed after the retry AND the input still holds the text | Fail `KA_SEND_NOT_CONFIRMED` |
+
+**Attachment delivery** (after `SetInputFilesAsync` is attempted):
+
+| Observation | Decision |
+| --- | --- |
+| `SetInputFilesAsync` itself failed | Paste the content into the message |
+| The hidden file input reports one of the uploaded file names | Attached — send with the files |
+| A composer-near element (chip) shows an uploaded file name | Attached |
+| Chips are visible at all | Attached (uncertainty counts as attached, with a warning) |
+| No sign of the files after `Browser.UploadWaitSeconds` | Paste the content instead |
+
+The same content is never both attached and pasted.
 
 ## Reply identity — never the previous reply
 

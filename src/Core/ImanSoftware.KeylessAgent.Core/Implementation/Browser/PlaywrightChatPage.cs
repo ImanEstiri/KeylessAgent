@@ -5,7 +5,8 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 
 /// <summary>
 /// The Playwright-backed IChatPage: talks to the real chat DOM through the selector catalog,
-/// preferring structural selectors over hashed class names.
+/// preferring structural selectors over hashed class names. Playwright's own waits do not take
+/// a CancellationToken, so every operation races the token — Ctrl+C interrupts promptly.
 /// </summary>
 internal sealed class PlaywrightChatPage : IChatPage
 {
@@ -26,17 +27,18 @@ internal sealed class PlaywrightChatPage : IChatPage
     public string Url => _page.Url;
 
     /// <inheritdoc />
-    public AssistantStamp? GetNewestAssistantStamp()
+    public async Task<AssistantStamp?> GetNewestAssistantStampAsync(CancellationToken cancellationToken = default)
     {
-        var newest = GetNewestAssistantLocator();
+        cancellationToken.ThrowIfCancellationRequested();
+        var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
         if (newest is null)
             return null;
 
-        var key = Evaluate(newest,
-            "element => element.closest('[data-virtual-list-item-key]')?.getAttribute('data-virtual-list-item-key') ?? element.getAttribute('data-virtual-list-item-key')");
-        var text = Evaluate(newest,
-            "element => { const final = element.querySelector('.ds-markdown.ds-assistant-message-main-content'); return final ? final.innerText : ''; }");
-        var count = CountAssistantMessages();
+        var key = await EvaluateAsync(newest,
+            "element => element.closest('[data-virtual-list-item-key]')?.getAttribute('data-virtual-list-item-key') ?? element.getAttribute('data-virtual-list-item-key')", cancellationToken);
+        var text = await EvaluateAsync(newest,
+            "element => { const final = element.querySelector('.ds-markdown.ds-assistant-message-main-content'); return final ? final.innerText : ''; }", cancellationToken);
+        var count = await CountAssistantMessagesAsync(cancellationToken);
 
         return new AssistantStamp(
             Key: string.IsNullOrWhiteSpace(key) ? null : key.Trim(),
@@ -45,26 +47,32 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public string? GetNewestAssistantHtml()
+    public async Task<string?> GetNewestAssistantHtmlAsync(CancellationToken cancellationToken = default)
     {
-        var newest = GetNewestAssistantLocator();
+        cancellationToken.ThrowIfCancellationRequested();
+        var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
         if (newest is null)
             return null;
 
-        var html = Evaluate(newest, "element => element.outerHTML");
+        var html = await EvaluateAsync(newest, "element => element.outerHTML", cancellationToken);
         return string.IsNullOrEmpty(html) ? null : html;
     }
 
     /// <inheritdoc />
-    public int GetMessageItemCount()
+    public async Task<int> GetMessageItemCountAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         for (var index = 0; index < _selectors.MessageItems.Length; index++)
         {
             var selector = _selectors.MessageItems[index];
             try
             {
                 _log.LogDebug("MessageItems matched selector #{Index}: {Selector}", index, selector);
-                return _page.Locator(selector).CountAsync().GetAwaiter().GetResult();
+                return (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch
             {
@@ -76,17 +84,27 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public bool IsStopIndicatorVisible() => FirstVisible(_page, _selectors.StopIndicator, timeoutMs: 400) is not null;
+    public async Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var found = await FirstVisibleAsync(_page, _selectors.StopIndicator, timeoutMs: 400, cancellationToken);
+        return found is not null;
+    }
 
     /// <inheritdoc />
-    public bool IsInputCleared()
+    public async Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var selector in _selectors.InputBox)
         {
             try
             {
-                var value = Evaluate(_page.Locator(selector).First, "element => element.value ?? ''");
+                var value = await EvaluateAsync(_page.Locator(selector).First, "element => element.value ?? ''", cancellationToken);
                 return string.IsNullOrEmpty(value);
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch
             {
@@ -98,18 +116,22 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public bool IsSendEnabled()
+    public async Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var selector in _selectors.SendButton)
         {
             try
             {
                 var locator = _page.Locator(selector).First;
-                locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 })
-                    .GetAwaiter().GetResult();
-                var disabled = Evaluate(locator,
-                    "element => element.getAttribute('aria-disabled') === 'true' || element.className.includes('ds-button--disabled')");
+                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
+                var disabled = await EvaluateAsync(locator,
+                    "element => element.getAttribute('aria-disabled') === 'true' || element.className.includes('ds-button--disabled')", cancellationToken);
                 return disabled != "true";
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch (TimeoutException)
             {
@@ -122,18 +144,23 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public bool AreAttachmentChipsVisible()
+    public async Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var selector in _selectors.AttachmentChips)
         {
             try
             {
-                _page.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
+                await _page.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
                 {
                     State = WaitForSelectorState.Visible,
                     Timeout = 300,
-                }).GetAwaiter().GetResult();
+                });
                 return true;
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch (TimeoutException)
             {
@@ -145,19 +172,23 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<string> GetInputFileNames()
+    public async Task<IReadOnlyList<string>> GetInputFileNamesAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var selector in _selectors.FileInput)
         {
             try
             {
-                var locator = _page.Locator(selector).First;
-                var raw = Evaluate(locator,
-                    "element => Array.from(element.files || []).map(f => f.name).join('|')");
+                var raw = await EvaluateAsync(_page.Locator(selector).First,
+                    "element => Array.from(element.files || []).map(f => f.name).join('|')", cancellationToken);
                 if (string.IsNullOrEmpty(raw))
                     continue;
 
                 return raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch
             {
@@ -169,17 +200,22 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public bool IsFileNameVisible(string fileName)
+    public async Task<bool> IsFileNameVisibleAsync(string fileName, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(fileName))
             return false;
 
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             // Chips render the file name next to the composer; a page-wide text probe is
             // enough as a positive signal (the composer area is where uploads render).
-            var count = _page.GetByText(fileName).CountAsync().GetAwaiter().GetResult();
+            var count = await WithCancellationAsync(_page.GetByText(fileName).CountAsync(), cancellationToken);
             return count > 0;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -188,20 +224,24 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public void InsertText(string text)
+    public async Task InsertTextAsync(string text, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         for (var index = 0; index < _selectors.InputBox.Length; index++)
         {
             var selector = _selectors.InputBox[index];
             try
             {
                 var input = _page.Locator(selector).First;
+                await input.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 });
                 _log.LogDebug("InputBox matched selector #{Index}: {Selector}", index, selector);
-                input.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 })
-                    .GetAwaiter().GetResult();
-                input.FillAsync(string.Empty).GetAwaiter().GetResult();
-                _page.Keyboard.InsertTextAsync(text).GetAwaiter().GetResult();
+                await input.FillAsync(string.Empty);
+                await _page.Keyboard.InsertTextAsync(text);
                 return;
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch (TimeoutException)
             {
@@ -214,22 +254,23 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public bool TryClickSend()
+    public async Task<bool> TryClickSendAsync(CancellationToken cancellationToken = default)
     {
         // Pick the first visible candidate that is not aria-disabled; Enter stays the last fallback.
+        cancellationToken.ThrowIfCancellationRequested();
         for (var index = 0; index < _selectors.SendButton.Length; index++)
         {
             try
             {
                 var locator = _page.Locator(_selectors.SendButton[index]).First;
-                locator.WaitForAsync(new LocatorWaitForOptions
+                await locator.WaitForAsync(new LocatorWaitForOptions
                 {
                     State = WaitForSelectorState.Visible,
                     Timeout = 3_000,
-                }).GetAwaiter().GetResult();
+                });
 
-                var disabled = Evaluate(locator,
-                    "element => element.getAttribute('aria-disabled') === 'true' || (element.className && String(element.className).includes('ds-button--disabled'))");
+                var disabled = await EvaluateAsync(locator,
+                    "element => element.getAttribute('aria-disabled') === 'true' || (element.className && String(element.className).includes('ds-button--disabled'))", cancellationToken);
                 if (disabled == "true")
                 {
                     _log.LogDebug("SendButton #{Index} matched but is disabled; trying next", index);
@@ -237,8 +278,12 @@ internal sealed class PlaywrightChatPage : IChatPage
                 }
 
                 _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
-                locator.ClickAsync().GetAwaiter().GetResult();
+                await locator.ClickAsync();
                 return true;
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch (TimeoutException)
             {
@@ -255,19 +300,28 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public void PressEnter() => _page.Keyboard.PressAsync("Enter").GetAwaiter().GetResult();
+    public async Task PressEnterAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await _page.Keyboard.PressAsync("Enter");
+    }
 
     /// <inheritdoc />
-    public bool TryUploadFiles(IReadOnlyList<string> filePaths)
+    public async Task<bool> TryUploadFilesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
     {
-        var input = FirstVisible(_page, _selectors.FileInput, timeoutMs: 5_000);
+        cancellationToken.ThrowIfCancellationRequested();
+        var input = await FirstVisibleAsync(_page, _selectors.FileInput, timeoutMs: 5_000, cancellationToken);
         if (input is null)
             return false;
 
         try
         {
-            input.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray()).GetAwaiter().GetResult();
+            await input.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray());
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -277,18 +331,21 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public void SaveDebugScreenshot(string name)
+    public async Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default)
     {
         if (!_debug)
             return;
 
         try
         {
-            var directory = Path.Combine(Path.GetTempPath(), "keylessagent-screens");
-            Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, $"{name}-{DateTime.Now:yyyyMMdd-HHmmss}.png");
-            _page.ScreenshotAsync(new PageScreenshotOptions { Path = path, FullPage = false }).GetAwaiter().GetResult();
-            _log.LogInformation("Debug screenshot saved: {Path}", path);
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            await _page.ScreenshotAsync(new PageScreenshotOptions { Path = fullPath, FullPage = false });
+            _log.LogInformation("Debug screenshot saved: {Path}", fullPath);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -296,19 +353,23 @@ internal sealed class PlaywrightChatPage : IChatPage
         }
     }
 
-    private ILocator? GetNewestAssistantLocator()
+    private async Task<ILocator?> GetNewestAssistantLocatorAsync(CancellationToken cancellationToken)
     {
         for (var index = 0; index < _selectors.AssistantMessage.Length; index++)
         {
             var selector = _selectors.AssistantMessage[index];
             try
             {
-                var count = _page.Locator(selector).CountAsync().GetAwaiter().GetResult();
+                var count = (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
                 if (count == 0)
                     continue;
 
                 _log.LogDebug("AssistantMessage matched selector #{Index}: {Selector}", index, selector);
                 return _page.Locator(selector).Nth(count - 1);
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch
             {
@@ -319,13 +380,17 @@ internal sealed class PlaywrightChatPage : IChatPage
         return null;
     }
 
-    private int CountAssistantMessages()
+    private async Task<int> CountAssistantMessagesAsync(CancellationToken cancellationToken)
     {
         foreach (var selector in _selectors.AssistantMessage)
         {
             try
             {
-                return _page.Locator(selector).CountAsync().GetAwaiter().GetResult();
+                return (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch
             {
@@ -336,12 +401,16 @@ internal sealed class PlaywrightChatPage : IChatPage
         return 0;
     }
 
-    private static string? Evaluate(ILocator locator, string script)
+    private async Task<string?> EvaluateAsync(ILocator locator, string script, CancellationToken cancellationToken)
     {
         try
         {
-            var result = locator.EvaluateAsync(script).GetAwaiter().GetResult();
+            var result = await WithCancellationAsync(locator.EvaluateAsync(script), cancellationToken);
             return result?.ToString();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -349,19 +418,24 @@ internal sealed class PlaywrightChatPage : IChatPage
         }
     }
 
-    internal static ILocator? FirstVisible(IPage page, string[] selectors, int timeoutMs)
+    internal static async Task<ILocator?> FirstVisibleAsync(IPage page, string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
     {
-        for (var index = 0; index < selectors.Length; index++)
+        foreach (var selector in selectors)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var locator = page.Locator(selectors[index]).First;
-                locator.WaitForAsync(new LocatorWaitForOptions
+                var locator = page.Locator(selector).First;
+                await locator.WaitForAsync(new LocatorWaitForOptions
                 {
                     State = WaitForSelectorState.Visible,
                     Timeout = timeoutMs,
-                }).GetAwaiter().GetResult();
+                });
                 return locator;
+            }
+            catch (Exception) when (false)
+            {
+                throw;
             }
             catch (TimeoutException)
             {
@@ -370,6 +444,22 @@ internal sealed class PlaywrightChatPage : IChatPage
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Playwright's waits carry their own timeouts but no CancellationToken; racing the token
+    /// makes Ctrl+C interrupt any in-flight wait promptly.
+    /// </summary>
+    private static async Task<T> WithCancellationAsync<T>(Task<T> task, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var cancellation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = cancellationToken.Register(() => cancellation.TrySetResult(true));
+        var completed = await Task.WhenAny(task, cancellation.Task);
+        if (completed != task)
+            throw new OperationCanceledException(cancellationToken);
+
+        return await task;
     }
 
     internal static int StableHash(string text)

@@ -30,7 +30,8 @@ internal sealed record AssistantStamp(string? Key, int TextHash, int VisibleCoun
 
 /// <summary>
 /// The page operations the chat session needs — the seam that makes the reply-waiting logic
-/// unit-testable against a fake page.
+/// unit-testable against a fake page. All operations are async and accept a CancellationToken
+/// so Ctrl+C interrupts Playwright waits.
 /// </summary>
 internal interface IChatPage
 {
@@ -38,44 +39,44 @@ internal interface IChatPage
     string Url { get; }
 
     /// <summary>Fingerprint of the newest assistant message (key, text hash, visible count).</summary>
-    AssistantStamp? GetNewestAssistantStamp();
+    Task<AssistantStamp?> GetNewestAssistantStampAsync(CancellationToken cancellationToken = default);
 
     /// <summary>The outer HTML of the newest assistant message, or null when there is none.</summary>
-    string? GetNewestAssistantHtml();
+    Task<string?> GetNewestAssistantHtmlAsync(CancellationToken cancellationToken = default);
 
     /// <summary>How many message items (user + assistant) are currently visible in the list.</summary>
-    int GetMessageItemCount();
+    Task<int> GetMessageItemCountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether the stop/generating indicator is currently visible.</summary>
-    bool IsStopIndicatorVisible();
+    Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether the input box is empty (the text was consumed by the send).</summary>
-    bool IsInputCleared();
+    Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether the send button is currently enabled.</summary>
-    bool IsSendEnabled();
+    Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether uploaded-file chips are visible (the upload has landed in the UI).</summary>
-    bool AreAttachmentChipsVisible();
+    Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>The file names the hidden file input currently reports (the upload was registered).</summary>
-    IReadOnlyList<string> GetInputFileNames();
+    Task<IReadOnlyList<string>> GetInputFileNamesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether an element near the composer (a chip or its label) shows the given file name.</summary>
-    bool IsFileNameVisible(string fileName);
+    Task<bool> IsFileNameVisibleAsync(string fileName, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the whole text into the input at once — never per-character typing.</summary>
-    void InsertText(string text);
+    Task InsertTextAsync(string text, CancellationToken cancellationToken = default);
 
-    /// <summary>Clicks the send button; false when the button cannot be found.</summary>
-    bool TryClickSend();
+    /// <summary>Clicks the send button; false when the button cannot be clicked.</summary>
+    Task<bool> TryClickSendAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Presses Enter in the input box.</summary>
-    void PressEnter();
+    Task PressEnterAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Uploads files through the chat's file input; false when the input cannot be used.</summary>
-    bool TryUploadFiles(IReadOnlyList<string> filePaths);
+    Task<bool> TryUploadFilesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default);
 
-    /// <summary>Saves a debug screenshot (no-op unless debug mode is on).</summary>
-    void SaveDebugScreenshot(string name);
+    /// <summary>Saves a debug screenshot to the given absolute path (best-effort; may be a no-op).</summary>
+    Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default);
 }
