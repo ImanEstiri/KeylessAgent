@@ -70,11 +70,7 @@ internal sealed class PlaywrightChatPage : IChatPage
                 _log.LogDebug("MessageItems matched selector #{Index}: {Selector}", index, selector);
                 return (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // The virtualized list re-renders constantly; try the next fallback selector.
             }
@@ -102,11 +98,7 @@ internal sealed class PlaywrightChatPage : IChatPage
                 var value = await EvaluateAsync(_page.Locator(selector).First, "element => element.value ?? ''", cancellationToken);
                 return string.IsNullOrEmpty(value);
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Try the next fallback selector.
             }
@@ -186,11 +178,7 @@ internal sealed class PlaywrightChatPage : IChatPage
 
                 return raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Try the next fallback selector.
             }
@@ -367,11 +355,7 @@ internal sealed class PlaywrightChatPage : IChatPage
                 _log.LogDebug("AssistantMessage matched selector #{Index}: {Selector}", index, selector);
                 return _page.Locator(selector).Nth(count - 1);
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // The virtualized list re-renders constantly; try the next fallback selector.
             }
@@ -388,11 +372,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 return (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
             }
-            catch (Exception) when (false)
-            {
-                throw;
-            }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Try the next fallback selector.
             }

@@ -148,21 +148,6 @@ public class ChatDiagnosticsServiceTests : IDisposable
         composer.Should().Contain("textarea");
     }
 
-    [Fact]
-    public void HtmlTrimmer_RemovesScriptsStylesSvg_AndLongText()
-    {
-        var html = "<div><script>alert(1)</script><style>.x{}</style><svg><path/></svg>" +
-                   "<p>short ok</p><span>" + new string('x', 200) + "</span></div>";
-
-        var trimmed = HtmlTrimmer.Trim(html);
-
-        trimmed.Should().Contain("<script removed>");
-        trimmed.Should().Contain("<style removed>");
-        trimmed.Should().Contain("<svg/>");
-        trimmed.Should().Contain("short ok");
-        trimmed.Should().NotContain(new string('x', 200));
-    }
-
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

@@ -30,36 +30,3 @@ internal interface IChatPageInspector
     /// </summary>
     string? CaptureTrimmed(string[] selectors);
 }
-
-/// <summary>
-/// Diagnostics-only HTML trimming: removes scripts, styles, inline svg and long text runs
-/// (message text becomes "...") so a captured snapshot is safe to attach to a bug report.
-/// </summary>
-internal static class HtmlTrimmer
-{
-    /// <summary>
-    /// Trims an HTML fragment for bug reports.
-    /// </summary>
-    /// <param name="html">Raw HTML.</param>
-    /// <returns>Trimmed HTML, or an empty string for empty input.</returns>
-    public static string Trim(string html)
-    {
-        if (string.IsNullOrEmpty(html))
-            return string.Empty;
-
-        var text = System.Text.RegularExpressions.Regex.Replace(
-            html, "<script\\b[^>]*>.*?</script>", "<script removed>", System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-        text = System.Text.RegularExpressions.Regex.Replace(
-            text, "<style\\b[^>]*>.*?</style>", "<style removed>", System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-        text = System.Text.RegularExpressions.Regex.Replace(
-            text, "<svg\\b[^>]*>.*?</svg>", "<svg/>", System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-        text = System.Text.RegularExpressions.Regex.Replace(
-            text, "<!--.*?-->", string.Empty, System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-
-        // Personal text never leaves the machine: any text run over 60 chars becomes "...".
-        text = System.Text.RegularExpressions.Regex.Replace(
-            text, ">[^<>]{61,}<", ">...", System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
-
-        return text;
-    }
-}
