@@ -29,3 +29,13 @@
 - AgentLoop dirty menu: carry(default)/stash/here(non-protected)/cancel; branch menu new(default)/stay/cancel only on clean non-protected; protected+clean = auto agent branch, zero menus.
 - GitService: IsInstalledAsync, InitRepositoryAsync (-b main with fallback), EnsureDotnetGitignoreAsync (dotnet new gitignore or minimal template), CreateInitialCommitAsync (one-shot -c identity), HasOriginRemoteAsync.
 - CommitExecutor: no origin -> Ok "committed locally, push skipped".
+
+## Task 2 additions (final)
+- ReplySourceMode (Auto/Copy/Dom, default Auto) + Browser.ReplySource config; selector key MessageCopyButton (3 fallbacks incl. aria-label Copy).
+- IChatPage capture members: GetNewestReasoningTextAsync, WaitForMessageCopyButtonAsync (hover first), PrepareReplyCaptureAsync (ExposeBinding + init script wrapping writeText/execCommand/copy event, agent-flag gated), TryCaptureCopiedReplyAsync (interception -> OS clipboard read with grant + save/restore in finally).
+- IReplyReader logic in Core (ReplyReader): Copy-first per mode, validation (normalized containment or similarity >= 0.9, reasoning-start must be absent, >= 50% DOM length), Auto falls back with "Dom (copy rejected)" origin, Copy fails KA_REPLY_TIMEOUT.
+- IChatSession.LastReplyOrigin ("Copy" / "Dom" / "Dom (copy rejected)"); AgentLoop logs reply-source per reply into the turn log.
+- Parser fence tolerance: outer fence stripped only when first AND last non-blank lines are fences of same/greater length (3 or 4 backticks); inner fences untouched.
+- System prompt: no outer code fence; nonce reminder.
+- doctor: MessageCopyButton probe + ReplyCapture check (strategy, clipboardUntouched, copiedLength, validation); --capture unchanged; capture probe uses a PlaywrightChatPage over the same tab.
+- ExposeBindingAsync<string,string?> interception; OS clipboard always restored in finally.

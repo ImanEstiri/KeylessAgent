@@ -82,4 +82,32 @@ internal interface IChatPage
 
     /// <summary>Saves a debug screenshot to the given absolute path (best-effort; may be a no-op).</summary>
     Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The rendered text of the newest assistant message's reasoning block
+    /// (.ds-think-content), or null when there is none.
+    /// </summary>
+    Task<string?> GetNewestReasoningTextAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hovers the newest assistant message and waits for its message-level Copy control.
+    /// False when the control does not appear in time (the bar may be hover-only).
+    /// </summary>
+    Task<bool> WaitForMessageCopyButtonAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Installs the clipboard interception (wraps navigator.clipboard.writeText and the
+    /// execCommand('copy') path) gated on an agent-only flag; the user's manual copying is
+    /// never affected and the OS clipboard is never written by interception.
+    /// </summary>
+    Task PrepareReplyCaptureAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Captures the newest message's copied final answer: hover, click its Copy control,
+    /// prefer the intercepted text; when nothing is intercepted within the timeout, grant
+    /// clipboard-read/write, save the current OS clipboard text, read
+    /// navigator.clipboard.readText() and ALWAYS restore the previous text. Null when both
+    /// strategies fail.
+    /// </summary>
+    Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 }

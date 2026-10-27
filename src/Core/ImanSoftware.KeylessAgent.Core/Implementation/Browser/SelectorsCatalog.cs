@@ -39,6 +39,12 @@ internal sealed class SelectorsCatalog
     /// <summary>Reasoning block selectors (excluded from every read).</summary>
     public string[] Reasoning { get; init; } = [];
 
+    /// <summary>
+    /// Message-level Copy button selectors (copies ONLY the final answer). Scoped to the
+    /// newest assistant message at use time; the bar may appear on hover only.
+    /// </summary>
+    public string[] MessageCopyButton { get; init; } = [];
+
     /// <summary>Stop / generating indicator selectors.</summary>
     public string[] StopIndicator { get; init; } = [];
 

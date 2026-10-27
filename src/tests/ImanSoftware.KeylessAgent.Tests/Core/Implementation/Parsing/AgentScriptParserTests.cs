@@ -345,6 +345,67 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_OuterFenceThreeBackticks_IsStripped()
+    {
+        const string script = "```\n@@say\n<<<MSG\nhi\nMSG>>>\n@@end\n@@eof\n```";
+        var result = ParseOk(script);
+        result.Commands.OfType<SayCommand>().Single().Message.Should().Be("hi");
+    }
+
+    [Fact]
+    public void Parse_OuterFenceFourBackticks_WithInnerFences_IsStripped()
+    {
+        const string script = """
+            ````
+            @@newfile src/README.md
+            <<<CONTENT
+            # Title
+
+            ```bash
+            dotnet build
+            ```
+            CONTENT>>>
+            @@end
+            @@eof
+            ````
+            """;
+        var result = ParseOk(script);
+        var command = result.Commands.OfType<NewFileCommand>().Single();
+        command.Content.Should().Contain("```bash");
+        command.Content.Should().NotContain("CONTENT>>>", "CONTENT>>> is the payload end marker, not content");
+        result.EofSeen.Should().BeTrue("the outer 4-backtick fence was stripped and @@eof processed");
+    }
+
+    [Fact]
+    public void Parse_InnerFenceInsideContent_NoOuterFence_IsKept()
+    {
+        const string script = """
+            @@newfile src/README.md
+            <<<CONTENT
+            # Title
+
+            ```bash
+            dotnet build
+            ```
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+        var result = ParseOk(script);
+        var command = result.Commands.OfType<NewFileCommand>().Single();
+        command.Content.Should().Contain("```bash");
+    }
+
+    [Fact]
+    public void Parse_UnclosedOuterFence_IsNotStripped_AndReportsProblems()
+    {
+        // First line is a fence but the last line is not a closing fence: nothing stripped.
+        const string script = "```\n@@say\n<<<MSG\nhi\nMSG>>>\n@@end\n@@eof\n";
+        var result = ParseBad(script);
+        result.Problems.Should().NotBeEmpty();
+    }
+
+    [Fact]
     public void Parse_MultipleProblems_AreAllReported()
     {
         const string script = """

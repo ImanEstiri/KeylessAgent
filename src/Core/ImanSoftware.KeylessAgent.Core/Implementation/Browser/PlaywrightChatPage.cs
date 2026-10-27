@@ -320,7 +320,268 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
+    public async Task<string?> GetNewestReasoningTextAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
+        if (newest is null)
+            return null;
+
+        return await EvaluateAsync(newest,
+            "element => { const think = element.querySelector('.ds-think-content'); return think ? think.innerText : ''; }",
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> WaitForMessageCopyButtonAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
+        if (newest is null)
+            return false;
+
+        try
+        {
+            await newest.HoverAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Hover before copy failed: {Message}", ex.Message);
+        }
+
+        foreach (var selector in _selectors.MessageCopyButton)
+        {
+            try
+            {
+                await newest.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = (float)timeout.TotalMilliseconds,
+                });
+                _log.LogDebug("MessageCopyButton matched selector: {Selector}", selector);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // Try the next fallback selector.
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public async Task PrepareReplyCaptureAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await _page.ExposeBindingAsync<string, string?>("__keylessReportCopy", (_, text) =>
+        {
+            if (!string.IsNullOrEmpty(text))
+                _capturedCopy = text;
+            return text;
+        });
+
+        await WithCancellationAsync(_page.EvaluateAsync(InstallInterceptionScript), cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Strategy 1: interception (OS clipboard untouched).
+        await WithCancellationAsync(_page.EvaluateAsync("() => { window.__keylessCapture = true; window.__keylessCapturedText = null; }"), cancellationToken);
+        try
+        {
+            var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
+            if (newest is not null)
+            {
+                try
+                {
+                    await newest.HoverAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _log.LogDebug("Hover before copy failed: {Message}", ex.Message);
+                }
+
+                foreach (var selector in _selectors.MessageCopyButton)
+                {
+                    try
+                    {
+                        await newest.Locator(selector).First.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
+                        break;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (TimeoutException)
+                    {
+                        // Try the next fallback selector.
+                    }
+                }
+            }
+
+            var deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.IsNullOrEmpty(_capturedCopy))
+                    return _capturedCopy;
+
+                var polled = await EvaluateAsync(_page.Locator("body").First,
+                    "() => window.__keylessCapturedText", cancellationToken);
+                if (!string.IsNullOrEmpty(polled))
+                    return polled;
+
+                await Task.Delay(200, cancellationToken);
+            }
+        }
+        finally
+        {
+            try
+            {
+                await _page.EvaluateAsync("() => { window.__keylessCapture = false; }");
+            }
+            catch
+            {
+                // Disabling the flag is best-effort.
+            }
+        }
+
+        // Strategy 2: real OS clipboard, save/restore in finally.
+        string? previous = null;
+        try
+        {
+            await _page.Context.GrantPermissionsAsync(new[] { "clipboard-read", "clipboard-write" });
+            var previousRaw = await EvaluateAsync(_page.Locator("body").First,
+                "async () => { try { return await navigator.clipboard.readText(); } catch { return null; } }",
+                cancellationToken);
+            previous = string.IsNullOrEmpty(previousRaw) ? null : previousRaw;
+
+            var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
+            if (newest is null)
+                return null;
+
+            try
+            {
+                await newest.HoverAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Hover is best-effort.
+            }
+
+            var clicked = false;
+            foreach (var selector in _selectors.MessageCopyButton)
+            {
+                try
+                {
+                    await newest.Locator(selector).First.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
+                    clicked = true;
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (TimeoutException)
+                {
+                    // Try the next fallback selector.
+                }
+            }
+
+            if (!clicked)
+                return null;
+
+            await Task.Delay(500, cancellationToken);
+            var text = await EvaluateAsync(_page.Locator("body").First,
+                "async () => { try { return await navigator.clipboard.readText(); } catch { return null; } }",
+                cancellationToken);
+            return string.IsNullOrEmpty(text) ? null : text;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            // The user's clipboard is ALWAYS restored.
+            if (previous is not null)
+            {
+                try
+                {
+                    await _page.EvaluateAsync("async (text) => { await navigator.clipboard.writeText(text); }", previous);
+                }
+                catch
+                {
+                    // Restore is best-effort.
+                }
+            }
+        }
+    }
+
+    private const string InstallInterceptionScript = """
+        (() => {
+            window.__keylessCapture = false;
+            window.__keylessCapturedText = null;
+            const report = (text) => {
+                if (!window.__keylessCapture || !text) return;
+                window.__keylessCapturedText = text;
+                window.__keylessReportCopy(text);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                const original = navigator.clipboard.writeText.bind(navigator.clipboard);
+                navigator.clipboard.writeText = async (text) => {
+                    report(text);
+                    if (!window.__keylessCapture) return original(text);
+                };
+            }
+            const originalExec = document.execCommand.bind(document);
+            document.execCommand = function (cmd, ...rest) {
+                if (String(cmd).toLowerCase() === 'copy') {
+                    const sel = document.getSelection ? String(document.getSelection()) : '';
+                    report(sel);
+                    if (!window.__keylessCapture) return originalExec(cmd, ...rest);
+                    return true;
+                }
+                return originalExec(cmd, ...rest);
+            };
+            document.addEventListener('copy', (event) => {
+                if (!window.__keylessCapture) return;
+                const text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+                report(text);
+                event.preventDefault();
+            }, true);
+        })()
+        """;
+
+    private string? _capturedCopy;
+
+    /// <inheritdoc />
     public async Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default)
+
     {
         if (!_debug)
             return;

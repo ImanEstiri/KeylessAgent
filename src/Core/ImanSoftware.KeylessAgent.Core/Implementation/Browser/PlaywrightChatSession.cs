@@ -1,6 +1,7 @@
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.Logging;
@@ -56,6 +57,16 @@ internal sealed class PlaywrightChatSession : IChatSession
 
     /// <inheritdoc />
     public string ChatUrl => _page.Url;
+
+    /// <inheritdoc />
+    public string LastReplyOrigin => LastReplyOriginValue switch
+    {
+        ReplyOrigin.Copy => "Copy",
+        ReplyOrigin.DomAfterRejectedCopy => "Dom (copy rejected)",
+        _ => "Dom",
+    };
+
+    private ReplyOrigin LastReplyOriginValue { get; set; } = ReplyOrigin.Dom;
 
     /// <inheritdoc />
     public async Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
@@ -131,6 +142,61 @@ internal sealed class PlaywrightChatSession : IChatSession
         }
     }
 
+
+    private bool _capturePrepared;
+
+    /// <summary>The origin of the last accepted reply (for the turn log).</summary>
+    /// <summary>
+    /// Decides the reply source: Dom = rendered text; Copy = capture (hover + click newest
+    /// message's Copy control, interception then OS clipboard with restore) validated against
+    /// the DOM text; Auto = copy first, fall back to Dom on capture/validation failure.
+    /// </summary>
+    private async Task<Outcome<ReplyReadResult>> ReadReplyTextAsync(string domText, CancellationToken cancellationToken)
+    {
+        var mode = _options.Browser.ReplySource;
+        if (mode == ReplySourceMode.Dom)
+        {
+            LastReplyOriginValue = ReplyOrigin.Dom;
+            return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
+        }
+
+        // ExposeBinding must be installed exactly once, before the first capture.
+        if (!_capturePrepared)
+        {
+            await _page.PrepareReplyCaptureAsync(cancellationToken);
+            _capturePrepared = true;
+        }
+
+        // The message-level Copy control may appear on hover only; wait within the reply timeout.
+        var buttonWait = await _page.WaitForMessageCopyButtonAsync(
+            TimeSpan.FromSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 10)), cancellationToken);
+        if (!buttonWait)
+        {
+            if (mode == ReplySourceMode.Copy)
+            {
+                return Outcome.Failure<ReplyReadResult>(new OutcomeError(
+                    "The message Copy button did not appear within the reply timeout.",
+                    ErrorCodes.ReplyTimeout, OutcomeErrorType.Failure));
+            }
+
+            LastReplyOriginValue = ReplyOrigin.Dom;
+            return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
+        }
+
+        var reasoning = await _page.GetNewestReasoningTextAsync(cancellationToken);
+        var read = await ReplyReader.ReadAsync(
+            mode,
+            new ReplyReadContext(domText, reasoning, ct => _page.TryCaptureCopiedReplyAsync(TimeSpan.FromSeconds(5), ct)),
+            summary => _log.LogInformation("Reply copy validation: {Summary}", summary),
+            cancellationToken);
+
+        if (read.IsFailure)
+            return read;
+
+        LastReplyOriginValue = read.Data.Origin;
+        return read;
+    }
+
     /// <inheritdoc />
     public async Task<Outcome<string>> WaitForReplyAsync(CancellationToken cancellationToken = default)
     {
@@ -154,9 +220,14 @@ internal sealed class PlaywrightChatSession : IChatSession
                 !string.IsNullOrWhiteSpace(reply) &&
                 reply == stableReply)
             {
-                // This accepted message becomes the baseline for the next turn.
+                // Completion detected. The DOM text is the baseline; the reply SOURCE (raw
+                // Markdown from the Copy button vs DOM extraction) is decided per config.
+                var readOutcome = await ReadReplyTextAsync(reply, cancellationToken);
+                if (readOutcome.IsFailure)
+                    return Outcome.Failure<string>(readOutcome.Error);
+
                 _preSendStamp = stamp;
-                return Outcome.Successful(reply);
+                return Outcome.Successful(readOutcome.Data.Text);
             }
 
             // Only the NEW message's text may accumulate stability; the old reply never counts.

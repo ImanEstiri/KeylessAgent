@@ -282,8 +282,9 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
     }
 
     /// <summary>
-    /// Strips one surrounding Markdown code fence (opener line starting with ``` and a bare ``` closer),
-    /// which the model may add around the script.
+    /// Strips one surrounding Markdown code fence — only when the first non-blank line is an
+    /// opening fence and the LAST non-blank line is a closing fence of the same or greater
+    /// length. Fences inside CONTENT payloads are never touched (only the outer pair is removed).
     /// </summary>
     private static List<string> StripSurroundingCodeFence(List<string> lines)
     {
@@ -292,15 +293,20 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         var last = lines.Count - 1;
         while (last >= 0 && lines[last].Trim().Length == 0) last--;
 
-        if (first >= last || !lines[first].TrimStart().StartsWith("```", StringComparison.Ordinal))
+        if (first >= last)
             return lines;
 
-        var stripped = lines.Where((_, i) => i != first).ToList();
-        var newLast = stripped.Count - 1;
-        while (newLast >= 0 && stripped[newLast].Trim().Length == 0) newLast--;
-        if (newLast >= 0 && stripped[newLast].Trim().Equals("```", StringComparison.Ordinal))
-            stripped.RemoveAt(newLast);
+        var opener = lines[first].TrimStart();
+        if (!opener.StartsWith("```", StringComparison.Ordinal))
+            return lines;
 
+        var openerFence = opener.StartsWith("````", StringComparison.Ordinal) ? "````" : "```";
+        var closer = lines[last].Trim();
+        var minClosing = openerFence.Length; // closing fence must be same or greater length
+        if (closer.Length < minClosing || !closer.All(c => c == '`'))
+            return lines;
+
+        var stripped = lines.Where((_, i) => i != first && i != last).ToList();
         return stripped;
     }
 

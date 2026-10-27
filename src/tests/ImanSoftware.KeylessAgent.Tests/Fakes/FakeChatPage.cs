@@ -75,8 +75,11 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
             if (NewestAssistantText is null)
                 return Task.FromResult<string?>(null);
 
+            // The real DOM escapes < and >; the reply extractor relies on that (entities are
+            // decoded, raw < would be parsed as tags).
+            var encoded = System.Net.WebUtility.HtmlEncode(NewestAssistantText);
             return Task.FromResult<string?>(
-                $"<div class='ds-message'><div class='ds-markdown ds-assistant-message-main-content'>{NewestAssistantText}</div></div>");
+                $"<div class='ds-message'><div class='ds-markdown ds-assistant-message-main-content'>{encoded}</div></div>");
         }
     }
 
@@ -175,6 +178,58 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     {
         Screenshots.Add(fullPath);
         return Task.CompletedTask;
+    }
+
+    /// <summary>The rendered reasoning text of the newest assistant message.</summary>
+    public string? ReasoningText { get; set; }
+
+    /// <summary>Whether the message-level Copy control is present (hover simulated).</summary>
+    public bool CopyButtonVisible { get; set; }
+
+    /// <summary>What TryCaptureCopiedReplyAsync returns; null = both strategies fail.</summary>
+    public string? CapturedReply { get; set; }
+
+    /// <summary>Which capture strategy last "worked": interception / clipboard / none.</summary>
+    public string LastCaptureStrategy { get; set; } = "none";
+
+    /// <summary>The OS clipboard text the fake tracks (to assert it is untouched/restored).</summary>
+    public string OsClipboard { get; set; } = "user-clipboard-content";
+
+    /// <summary>Whether the OS clipboard is untouched (fake always leaves it alone).</summary>
+    public bool OsClipboardUntouched => OsClipboard == "user-clipboard-content";
+
+    public bool InterceptionPrepared { get; set; }
+
+    public string? LastCopyClickedKey { get; set; }
+
+    public Task<string?> GetNewestReasoningTextAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ReasoningText);
+
+    public Task<bool> WaitForMessageCopyButtonAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+        => Task.FromResult(CopyButtonVisible);
+
+    public Task PrepareReplyCaptureAsync(CancellationToken cancellationToken = default)
+    {
+        InterceptionPrepared = true;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>When true, the fake pretends interception produced nothing (clipboard path).</summary>
+    public bool ForceClipboardStrategy { get; set; }
+
+    public Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        if (CapturedReply is null)
+        {
+            LastCaptureStrategy = "none";
+            return Task.FromResult<string?>(null);
+        }
+
+        // The real page prefers interception and falls back to the OS clipboard; the fake
+        // reports which strategy the test configured.
+        LastCaptureStrategy = InterceptionPrepared && !ForceClipboardStrategy ? "interception" : "clipboard";
+        LastCopyClickedKey = NewestAssistantKey;
+        return Task.FromResult<string?>(CapturedReply);
     }
 
     /// <summary>Simulates a successful send: the user message lands and generating starts.</summary>

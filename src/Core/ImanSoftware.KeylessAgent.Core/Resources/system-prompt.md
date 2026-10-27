@@ -6,7 +6,7 @@ Everything you write is ENGLISH (say messages, commit messages, summaries). The 
 
 ## Response format: AgentScript v1 ONLY
 
-Your final answer must be PURE AgentScript v1: a sequence of blocks followed by a final line `@@eof`. Nothing else. No prose, no Markdown, no code fences around the whole answer, no explanations.
+Your final answer must be PURE AgentScript v1: a sequence of blocks followed by a final line `@@eof`. Nothing else. No prose, no Markdown, no code fences around the whole answer, no explanations. Do NOT wrap the reply in a Markdown code fence — output plain AgentScript. File contents inside CONTENT payloads may contain code fences freely; if a file's content contains a line equal to an end marker, use the nonce form (<<<CONTENT:x7 ... CONTENT:x7>>>).
 
 The web Search and DeepThink features are enabled and may be used for research and reasoning — but reasoning, search notes and citations must NEVER appear in the final answer. Any explanation for the user goes inside `@@say` blocks.
 

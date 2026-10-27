@@ -14,7 +14,7 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 /// </summary>
 internal sealed class ChatDiagnosticsService : IChatDiagnostics
 {
-    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose)>>> _openPage;
+    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose, IChatPage Page)>>> _openPage;
 
     public ChatDiagnosticsService()
         : this((session, ui, cancellationToken) => OpenRealPageAsync(session, ui, cancellationToken))
@@ -22,7 +22,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     }
 
     internal ChatDiagnosticsService(
-        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector, Func<ValueTask>)>>> openPage)
+        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, IAgentUserInterface, CancellationToken, Task<Outcome<(IChatPageInspector, Func<ValueTask>, IChatPage)>>> openPage)
     {
         _openPage = openPage;
     }
@@ -65,7 +65,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             if (opened.IsFailure)
                 return Outcome.Failure<ChatDiagnosticsReport>(opened.Error);
 
-            var (inspector, dispose) = opened.Data;
+            var (inspector, dispose, chatPage) = opened.Data;
             try
             {
                 return await BuildReportAsync(inspector, selectors.Data, captureDirectory, watch, cancellationToken);
@@ -85,7 +85,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         }
     }
 
-    private static async Task<Outcome<(IChatPageInspector, Func<ValueTask>)>> OpenRealPageAsync(
+    private static async Task<Outcome<(IChatPageInspector, Func<ValueTask>, IChatPage)>> OpenRealPageAsync(
         ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions session,
         IAgentUserInterface ui,
         CancellationToken cancellationToken)
@@ -93,20 +93,26 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         var connector = new BrowserConnector();
         var connection = await connector.ConnectAsync(session.Browser, ui, cancellationToken);
         if (connection.IsFailure)
-            return Outcome.Failure<(IChatPageInspector, Func<ValueTask>)>(connection.Error);
+            return Outcome.Failure<(IChatPageInspector, Func<ValueTask>, IChatPage)>(connection.Error);
 
         var (attachment, rawPage) = connection.Data;
         var page = (Microsoft.Playwright.IPage)rawPage;
 
         var selectors = await SelectorsCatalog.LoadAsync(session.WorkspaceRoot, session.Browser.SelectorsFile, cancellationToken);
         if (selectors.IsFailure)
-            return Outcome.Failure<(IChatPageInspector, Func<ValueTask>)>(selectors.Error);
+            return Outcome.Failure<(IChatPageInspector, Func<ValueTask>, IChatPage)>(selectors.Error);
 
         var provider = new PlaywrightChatProvider();
         await provider.WaitForLoginIfNeeded(page, selectors.Data, session.Browser, cancellationToken);
 
+        IChatPage chatPage = new PlaywrightChatPage(
+            page, selectors.Data, session.Browser.Debug,
+            new ImanSoftware.Logging.LoggerAdapter<ImanSoftware.KeylessAgent.Core.Implementation.Browser.PlaywrightChatPage>(
+                Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance));
+        await chatPage.PrepareReplyCaptureAsync(cancellationToken);
+
         IChatPageInspector inspector = new PlaywrightChatInspector(page);
-        return Outcome.Successful((inspector, (Func<ValueTask>)(() => DisposePageAsync(page))));
+        return Outcome.Successful((inspector, (Func<ValueTask>)(() => DisposePageAsync(page)), chatPage));
     }
 
     /// <summary>Doctor closes only the tab it opened — the Chrome window stays.</summary>

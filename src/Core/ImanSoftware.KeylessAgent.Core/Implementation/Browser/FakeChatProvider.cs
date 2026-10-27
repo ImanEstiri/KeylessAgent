@@ -40,6 +40,8 @@ internal sealed class FakeChatProvider : IChatProvider
     {
         public string ChatUrl => url;
 
+        public string LastReplyOrigin => "Dom";
+
         public Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
         {
             owner.Sent.Add(new SentMessage(message, attachments.Select(a => a.Name).ToList()));

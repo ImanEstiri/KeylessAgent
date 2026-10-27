@@ -101,6 +101,12 @@ public sealed record BrowserOptions
     public string SelectorsFile { get; init; } = "selectors.json";
 
     /// <summary>
+    /// Where replies are read from: Auto (copy button, validated, DOM fallback — default),
+    /// Copy (never silent fallback), Dom (original behavior).
+    /// </summary>
+    public ReplySourceMode ReplySource { get; init; } = ReplySourceMode.Auto;
+
+    /// <summary>
     /// How long to wait for a complete reply. Default 300 seconds.
     /// </summary>
     public int ReplyTimeoutSeconds { get; init; } = 300;

@@ -86,8 +86,14 @@ public class ChatDiagnosticsServiceTests : IDisposable
     {
         var inspector = FullyWorking();
         IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
         var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
-            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
 
@@ -106,8 +112,14 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var inspector = FullyWorking();
         inspector.Matched.Remove("SendButton");
         IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
         var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
-            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
 
@@ -123,8 +135,14 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var inspector = FullyWorking();
         inspector.Matched.Add("LoginIndicator");
         IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
         var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
-            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
 
@@ -138,8 +156,14 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var capture = Path.Combine(_root, "capture");
         var inspector = FullyWorking();
         IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
         var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
-            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), capture, watch: false);
 

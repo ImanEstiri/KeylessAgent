@@ -32,6 +32,11 @@ public interface IChatSession : IAsyncDisposable
     string ChatUrl { get; }
 
     /// <summary>
+    /// Where the last accepted reply was read from: "Copy", "Dom" or "Dom (copy rejected)".
+    /// </summary>
+    string LastReplyOrigin { get; }
+
+    /// <summary>
     /// Sends one message. Attachments are uploaded through the chat's file input when possible
     /// and pasted into the message otherwise.
     /// </summary>
