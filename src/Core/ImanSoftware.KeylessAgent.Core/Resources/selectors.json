@@ -5,10 +5,10 @@
     "textarea[name=\"search\"]"
   ],
   "SendButton": [
-    "div:has(> textarea) ~ * [role=\"button\"].ds-button--icon",
-    "[role=\"button\"].ds-button--iconLabelPrimary",
+    "div:has(> input[type=\"file\"]) ~ div [role=\"button\"].ds-button--filled",
+    "div:has(> input[type=\"file\"]) ~ * [role=\"button\"].ds-button--primary",
+    "[role=\"button\"].ds-button--primary.ds-button--filled",
     "[role=\"button\"].ds-button--filled.ds-button--circle",
-    "div:has(> input[type=\"file\"]) [role=\"button\"].ds-button--filled",
     "button[type=\"submit\"]"
   ],
   "NewChatButton": [

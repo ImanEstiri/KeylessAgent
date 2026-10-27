@@ -66,19 +66,27 @@ public class SelectorsCatalogFragmentTests
     }
 
     [Fact]
-    public void SendButton_FirstFallback_MatchesTheIconLabelPrimaryButton()
+    public void SendButton_NeverContainsThePaperclipSelector()
     {
         var catalog = LoadDefault();
 
-        // The first fallback targets the icon button in the textarea's sibling container;
-        // on this fragment the second (iconLabelPrimary) fallback is the intended match
-        // because the icon button is aria-disabled there. At least ONE fallback must match.
+        // The iconLabelPrimary button next to the file input is the PAPERCLIP: clicking it
+        // opens the OS file dialog instead of sending. It must never be a send candidate.
+        catalog.SendButton.Should().NotContain(s => s.Contains("iconLabelPrimary"));
+    }
+
+    [Fact]
+    public void SendButton_SomeFallbackMatchesTheFilledSend_AndItIsNotThePaperclip()
+    {
+        var catalog = LoadDefault();
+
         var matched = catalog.SendButton
             .Select(css => MatchFirst(SampleInputArea, css))
             .FirstOrDefault(e => e is not null);
 
         matched.Should().NotBeNull("at least one send fallback must match the real input area");
-        matched!.ClassName.Should().NotContain("ds-button--disabled", "a disabled send is never the target");
+        matched!.ClassName.Should().Contain("ds-button--filled");
+        matched.ClassName.Should().NotContain("iconLabelPrimary", "that is the paperclip");
     }
 
     [Fact]

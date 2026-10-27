@@ -112,10 +112,11 @@ internal sealed class PlaywrightChatSession : IChatSession
                     return Outcome.Successful();
                 }
 
-                // The text is still in the composer: exactly one retry (button, else Enter).
-                _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once.", _options.Browser.SendConfirmSeconds);
-                if (!await _page.TryClickSendAsync(cancellationToken))
-                    await _page.PressEnterAsync(cancellationToken);
+                // The text is still in the composer: exactly one retry, with ENTER. The button
+                // click was already proven ineffective (or it would have been confirmed), and
+                // re-clicking a mis-identified control (e.g. the paperclip) only opens dialogs.
+                _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once with Enter.", _options.Browser.SendConfirmSeconds);
+                await _page.PressEnterAsync(cancellationToken);
 
                 if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
                 {

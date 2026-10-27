@@ -258,12 +258,29 @@ internal sealed class PlaywrightChatPage : IChatPage
                     Timeout = 3_000,
                 });
 
-                var disabled = await EvaluateAsync(locator,
-                    "element => element.getAttribute('aria-disabled') === 'true' || (element.className && String(element.className).includes('ds-button--disabled'))", cancellationToken);
-                if (disabled == "true")
+                var state = await EvaluateAsync(locator,
+                    "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
+                    cancellationToken);
+                if (!string.IsNullOrEmpty(state))
                 {
-                    _log.LogDebug("SendButton #{Index} matched but is disabled; trying next", index);
-                    continue;
+                    var parsed = System.Text.Json.JsonDocument.Parse(state);
+                    var dis = parsed.RootElement.TryGetProperty("dis", out var disValue) && disValue.ValueKind == System.Text.Json.JsonValueKind.True;
+                    var paperclip = parsed.RootElement.TryGetProperty("paperclip", out var paperclipValue) && paperclipValue.ValueKind == System.Text.Json.JsonValueKind.True;
+
+                    // Disabled buttons can never send...
+                    if (dis)
+                    {
+                        _log.LogDebug("SendButton #{Index} matched but is disabled; trying next", index);
+                        continue;
+                    }
+
+                    // ...and the iconLabelPrimary button next to the file input is the PAPERCLIP:
+                    // clicking it opens the OS file dialog ("Open" window) instead of sending.
+                    if (paperclip)
+                    {
+                        _log.LogDebug("SendButton #{Index} matched the paperclip (file attach); skipping", index);
+                        continue;
+                    }
                 }
 
                 _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);

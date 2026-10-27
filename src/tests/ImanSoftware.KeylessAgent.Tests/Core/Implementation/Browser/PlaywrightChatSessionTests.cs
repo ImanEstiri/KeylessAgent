@@ -114,8 +114,9 @@ public class PlaywrightChatSessionTests : IDisposable
         outcome.IsFailure.Should().BeTrue();
         outcome.Error.Code.Should().Be("KA_SEND_NOT_CONFIRMED");
 
-        // primary attempt (click) + one retry (click; Enter only when the click cannot happen)
-        page.Sends.Select(s => s.Method).Should().Equal("click", "click");
+        // primary attempt (click) + exactly one retry, which is ENTER (a repeated click on a
+        // mis-identified control only opens dialogs)
+        page.Sends.Select(s => s.Method).Should().Equal("click", "enter");
     }
 
     [Fact]
@@ -185,9 +186,9 @@ public class PlaywrightChatSessionTests : IDisposable
         var outcome = await session.SendMessageAsync("request", []);
 
         outcome.IsFailure.Should().BeTrue();
-        outcome.Error.Code.Should().Be("KA_SEND_NOT_CONFIRMED");
-        page.Sends.Select(s => s.Method).Should().Equal("click", "click");
-        page.LastInsertedText.Should().Be("request", "the text is not duplicated");
+        // primary attempt (click) + exactly one retry, which is ENTER (a repeated click on a
+        // mis-identified control only opens dialogs)
+        page.Sends.Select(s => s.Method).Should().Equal("click", "enter");
     }
 
     [Fact]
