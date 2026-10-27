@@ -39,7 +39,7 @@ All selectors live in the workspace `selectors.json` (created from the embedded 
 | Key | Default (first fallback) | Notes |
 | --- | --- | --- |
 | `InputBox` | `textarea[placeholder="Message DeepSeek"]` | also `textarea[name="search"]` |
-| `SendButton` | `div:has(> input[type="file"]) [role="button"].ds-button--filled` | icon-only button next to the hidden file input |
+| `SendButton` | `div:has(> input[type="file"]) ~ div [role="button"].ds-button--filled` | the filled/primary button next to the file input — NEVER the paperclip (`iconLabelPrimary` opens the OS file dialog); disabled/paperclip-like candidates are skipped, retry is Enter-only |
 | `FileInput` | `input[type="file"][multiple]` | accepts `.md`, `.txt`, `.bat`, `.cs`, `.json`, … |
 | `NewChatButton` | `[role="button"]:has-text("New chat")` | not present in the sample; multiple fallbacks |
 | `MessageItems` | `.ds-virtual-list [data-virtual-list-item-key]` | the list is virtualized: only newest messages exist in the DOM |
@@ -94,7 +94,7 @@ fallback list to fix.
 | A new message item appeared in the DOM | Sent — continue to `WaitForReplyAsync` |
 | Input is empty AND the stop/generating indicator is on | Sent |
 | Input is empty, no indicator (virtualized list did not grow) | Sent — a constant item count proves nothing |
-| Input still holds the text | Not sent — retry exactly once (button, else Enter) |
+| Input still holds the text | Not sent — retry exactly once, with ENTER (a repeated click on a mis-identified control only opens dialogs) |
 | Still not confirmed after the retry AND the input still holds the text | Fail `KA_SEND_NOT_CONFIRMED` |
 
 **Attachment delivery** (after `SetInputFilesAsync` is attempted):
