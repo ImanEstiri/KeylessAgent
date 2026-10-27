@@ -38,6 +38,8 @@ Every process runs with a hard timeout and captured output.
 | `AutoSafe` | auto when allow-listed, otherwise confirm | confirm each | auto |
 | `Auto` | auto | auto (the only confirmation Auto skips) | auto |
 
+Confirmations are yes/no prompts with the default shown in brackets (Enter accepts it; they never loop on empty input). Git workflow questions (dirty tree, branch choice) are **numbered menus** — arrow keys, digit hotkeys, Enter, Esc; non-interactive hosts take the default.
+
 In `AutoSafe` and `Auto` the agent warns at turn start: **AutoSafe is not a security boundary** — allow-listed programs (dotnet, node, python, …) can execute arbitrary code.
 
 `--dry-run` executes nothing and prints what would happen. Declined-by-user commands are reported to the model as `KA_COMMAND_DECLINED` results — the model sees the refusal and can adapt.

@@ -168,6 +168,8 @@ Every failure the agent reports carries a stable code.
 | `KA_BRANCH_PROTECTED` | current branch matches a protected pattern |
 | `KA_NOT_A_GIT_REPOSITORY` | workspace is not a git repo |
 | `KA_GIT_FAILURE` | a git command failed |
+| `KA_GIT_NOT_INSTALLED` | git is not installed (workspace not a repo, `Git.AutoInit` needs it) |
+| `KA_GIT_INIT_FAILED` | automatic repository initialization failed |
 
 ### Chat / browser
 

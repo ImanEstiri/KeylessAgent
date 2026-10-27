@@ -109,6 +109,28 @@ fallback list to fix.
 
 The same content is never both attached and pasted.
 
+## Reply sources — Copy button first, DOM fallback (`Browser.ReplySource`)
+
+Verified facts from real chats: the message-level Copy button copies ONLY the final answer
+(never the reasoning), the copied text is raw Markdown (indentation, markers, nested fences
+preserved), and it may or may not carry an outer code fence.
+
+| Mode (`Browser.ReplySource`) | Behavior |
+| --- | --- |
+| `Auto` *(default)* | Try Copy → validate → fall back to Dom. The used source is logged per reply. |
+| `Copy` | Copy only; capture or validation failures return `KA_REPLY_TIMEOUT` (never silent fallback). |
+| `Dom` | The original DOM extraction. |
+
+**Capture strategies, in order:**
+
+1. **Interception**: an injected script wraps `navigator.clipboard.writeText`, `document.execCommand('copy')` and the `copy` event, reporting the text to C# through an exposed binding — active ONLY while the agent's capture flag is set, and the OS clipboard is never written, so the user's manual copying is unaffected.
+2. **Clipboard read**: grant `clipboard-read`/`clipboard-write`, save the current clipboard text, hover the newest message and click its message-level Copy control, read `navigator.clipboard.readText()`, and ALWAYS restore the previous text in a `finally` block.
+3. **None**: fall back to Dom (Auto) or fail with `KA_REPLY_TIMEOUT` (Copy).
+
+**Validation** (rendered DOM text and raw Markdown differ by syntax, so normalized forms are compared — markdown/punctuation stripped, whitespace collapsed, lowercased): (a) the normalized DOM text is contained in the normalized copy, OR similarity ≥ 0.9 (token overlap + length ratio); (b) the first 60 normalized characters of the reasoning block must NOT appear in the copy; (c) the copy is non-empty and at least 50% of the DOM length. On failure the numbers are logged and Auto falls back ("Dom (copy rejected)").
+
+Completion detection is unchanged (new-message fingerprint, final-answer element, stop indicator gone, stable); with Copy the message-level Copy control of THAT newest message must also appear (hover first — the bar may be hover-only), otherwise Dom fallback (Auto) or `KA_REPLY_TIMEOUT` (Copy). The parser strips an outer code fence only when the first AND last non-blank lines are fences of the same or greater length, so a copied reply wrapped in a fence parses fine while inner fences survive.
+
 ## Reply identity — never the previous reply
 
 After every send the DOM still shows the PREVIOUS assistant message until the new one renders

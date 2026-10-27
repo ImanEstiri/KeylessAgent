@@ -2,13 +2,13 @@
 
 **A coding agent that runs on your own DeepSeek login. No API key.**
 
-`keyless` is the command-line front end for [KeylessAgent](https://github.com/ImanEstiri/KeylessAgent). It drives your logged-in DeepSeek web chat through Chrome, applies the model's replies to your workspace using the strict AgentScript command language, and keeps your work on a protected agent branch.
+`keyless` is the command-line front end for [KeylessAgent](https://github.com/ImanEstiri/KeylessAgent). It drives your logged-in DeepSeek web chat through a dedicated Chrome profile, applies the model's replies to your workspace using the strict AgentScript command language, and keeps your work on a protected agent branch.
 
 > Automating a web UI may violate the provider's terms of use and can get your account limited. This project is not affiliated with DeepSeek.
 
 ## Installation
 
-Requires the **.NET 10** runtime and Chrome.
+Requires the **.NET 10** runtime, Git and Chrome.
 
 ```bash
 dotnet tool install --global ImanSoftware.KeylessAgent.Cli
@@ -21,19 +21,18 @@ The workspace path is always the first input — pass it as the first argument o
 ```bash
 keyless run "G:\Projects\MyApp" "Add xUnit tests for the markdown parser"
 keyless                              # prompts for the workspace path first; one chat reused
-
-# Inside the interactive session:
-#   /workspace <path>   switch to another workspace (validated; fresh chat session)
-#   /help               list slash commands
-#   any other /-input   rejected with a hint (never sent to the model)
 keyless resume "G:\Projects\MyApp" "continue with the failing test"
 keyless undo "G:\Projects\MyApp"     # restore the newest backup batch
 keyless config "G:\Projects\MyApp"   # show / create keyless.json
+keyless chrome "G:\Projects\MyApp"   # start the dedicated Chrome (one-time DeepSeek login)
+keyless doctor "G:\Projects\MyApp"   # live selector check, never sends anything
 ```
 
-Start Chrome with `chrome --remote-debugging-port=9222` and make sure you are logged in to chat.deepseek.com, or let KeylessAgent launch a persistent profile for you.
+Inside the interactive session: `/workspace <path>` switches workspaces, `/help` lists slash commands, any other `/`-input is rejected with a hint.
 
-Full documentation — AgentScript, configuration, selectors, security model — lives in the main repository:
+First run in a non-git workspace initializes the repository automatically (main branch, .NET .gitignore, initial commit — `Git.AutoInit`). Run `keyless chrome` once and log in to DeepSeek in the dedicated profile; since Chrome 136 the debug port only works with a dedicated profile, and the login persists there. Git decisions (dirty tree, branch choice) are presented as numbered menus — arrows, digits, Enter, Esc; no typed answers.
+
+Full documentation — AgentScript, configuration, selectors, reply sources, security model — lives in the main repository:
 
 **[github.com/ImanEstiri/KeylessAgent](https://github.com/ImanEstiri/KeylessAgent)**
 

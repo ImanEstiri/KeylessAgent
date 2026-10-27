@@ -19,6 +19,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",
     "ReplyTimeoutSeconds": 300,
+    "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
     "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
     "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
     "MinDelayMs": 400,              // random human-like delay between actions
@@ -47,6 +48,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   },
 
   "Git": {
+    "AutoInit": true,               // auto git init + .gitignore + initial commit when the workspace is not a repo
     "BranchPrefix": "agent/",
     "ProtectedBranchPatterns": [ "main", "master", "release*" ]
   },
