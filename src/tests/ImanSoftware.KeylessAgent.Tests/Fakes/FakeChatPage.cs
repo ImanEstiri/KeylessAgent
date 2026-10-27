@@ -24,7 +24,8 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
 
     public bool InputHasText { get; set; }
 
-    public bool SendEnabled { get; set; } = true;
+    /// <summary>Send control state: true/false, or null when no send control exists.</summary>
+    public bool? SendEnabled { get; set; } = true;
 
     public bool ChipsVisible { get; set; }
 
@@ -98,7 +99,7 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     public Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(!InputHasText);
 
-    public Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default)
+    public Task<bool?> IsSendEnabledAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
@@ -148,7 +149,7 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
             }
 
             Sends.Add(("click", ChipsVisible));
-            if (!SendEnabled)
+            if (SendEnabled == false)
                 return Task.FromResult(false);
         }
 

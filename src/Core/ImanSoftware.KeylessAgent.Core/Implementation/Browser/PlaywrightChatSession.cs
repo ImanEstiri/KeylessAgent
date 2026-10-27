@@ -227,23 +227,60 @@ internal sealed class PlaywrightChatSession : IChatSession
             return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
         }
 
-        // SetInputFiles succeeded. The chips may never appear (UI differences), so the upload
-        // is judged by several signals; pasting on top of a working upload would duplicate the
-        // content. Positive sign: the file input reports the files, a chip shows a file name,
-        // or chips are visible at all. Uncertain counts as attached (with a warning).
+        // SetInputFiles succeeded: that proves the files were SELECTED, not that the upload
+        // finished. Wait for both: a positive upload sign (files registered / chips visible)
+        // AND an enabled send control, as long as the send control can be detected at all
+        // (when none of its selectors match, do not block on it — Enter is the fallback).
         var uploadNames = attachments.Select(a => a.Name).ToList();
         var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.UploadWaitSeconds);
+        var uploadSign = false;
+        var sendSeen = false;
+        var sendEnabled = false;
+
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (await HasUploadSignAsync(uploadNames, cancellationToken))
-                return Outcome.Successful(AttachmentDelivery.Uploaded);
+            if (!uploadSign && await HasUploadSignAsync(uploadNames, cancellationToken))
+            {
+                uploadSign = true;
+                _log.LogInformation("Upload registered in the composer.");
+            }
+
+            var sendState = await _page.IsSendEnabledAsync(cancellationToken);
+            if (sendState.HasValue)
+            {
+                sendSeen = true;
+                sendEnabled = sendState.Value;
+            }
+
+            if (uploadSign && (!sendSeen || sendEnabled))
+                break;
 
             await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
         }
 
-        if (await HasUploadSignAsync(uploadNames, cancellationToken))
+        // Final sweep after the loop: the last poll may have flipped both flags.
+        if (!uploadSign)
+            uploadSign = await HasUploadSignAsync(uploadNames, cancellationToken);
+        if (!sendSeen)
+        {
+            var sendState = await _page.IsSendEnabledAsync(cancellationToken);
+            if (sendState.HasValue)
+            {
+                sendSeen = true;
+                sendEnabled = sendState.Value;
+            }
+        }
+
+        if (uploadSign && (!sendSeen || sendEnabled))
+        {
+            if (!sendEnabled)
+                _log.LogWarning("Upload registered but the send control is still disabled after {Seconds}s; sending anyway.", _options.Browser.UploadWaitSeconds);
+            return Outcome.Successful(AttachmentDelivery.Uploaded);
+        }
+
+        if (uploadSign && !sendSeen)
             return Outcome.Successful(AttachmentDelivery.Uploaded);
 
         _log.LogWarning("No sign of the uploaded files within {Seconds}s; pasting the content instead.", _options.Browser.UploadWaitSeconds);

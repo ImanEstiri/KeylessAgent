@@ -53,8 +53,11 @@ internal interface IChatPage
     /// <summary>Whether the input box is empty (the text was consumed by the send).</summary>
     Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Whether the send button is currently enabled.</summary>
-    Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The send control state: true/false when a send button matched (enabled/disabled),
+    /// null when no send-control selector matched at all (undetectable — callers must not block on it).
+    /// </summary>
+    Task<bool?> IsSendEnabledAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Whether uploaded-file chips are visible (the upload has landed in the UI).</summary>
     Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default);

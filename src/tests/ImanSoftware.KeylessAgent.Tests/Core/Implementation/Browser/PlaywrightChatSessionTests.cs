@@ -313,6 +313,65 @@ public class PlaywrightChatSessionTests : IDisposable
         outcome.Error.Message.Should().NotContain("Debug screenshot");
     }
 
+    // ---------- upload readiness tests ----------
+
+    [Fact]
+    public async Task Upload_SendEnabledOnlyAfterPolls_SendWaitsForEnablement()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.ChipsVisible = true;
+        page.SendEnabled = false;           // still uploading
+        var enabledAt = DateTime.UtcNow;
+        _ = Task.Delay(600).ContinueWith(_ =>
+        {
+            page.SendEnabled = true;        // upload finished
+            enabledAt = DateTime.UtcNow;
+        });
+        DateTime? clickedAt = null;
+        page.OnSent = () =>
+        {
+            clickedAt = DateTime.UtcNow;
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply", 2));
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 5);
+        var attachment = new SnapshotAttachment("code-dump-result.md", SnapshotAttachmentKind.CodeDump, "dump");
+
+        var outcome = await session.SendMessageAsync("request", [attachment]);
+
+        outcome.IsSuccess.Should().BeTrue();
+        clickedAt.Should().NotBeNull();
+        (clickedAt.Value - enabledAt).Should().BeGreaterThanOrEqualTo(TimeSpan.Zero,
+            "the send click must not happen while the send control is still disabled");
+    }
+
+    [Fact]
+    public async Task Upload_SendControlUndetectable_DoesNotDeadlock()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.ChipsVisible = true;
+        page.SendEnabled = null;            // no send-control selector matches at all
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "reply", 2));
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 2);
+        var attachment = new SnapshotAttachment("tree-view-result.txt", SnapshotAttachmentKind.TreeView, "tree");
+        var startedAt = DateTime.UtcNow;
+
+        var outcome = await session.SendMessageAsync("request", [attachment]);
+
+        outcome.IsSuccess.Should().BeTrue();
+        (DateTime.UtcNow - startedAt).Should().BeLessThan(TimeSpan.FromSeconds(2),
+            "an undetectable send control must not block until the upload timeout");
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

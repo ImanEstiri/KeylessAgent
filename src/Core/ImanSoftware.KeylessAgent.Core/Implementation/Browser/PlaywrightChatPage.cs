@@ -108,7 +108,7 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
-    public async Task<bool> IsSendEnabledAsync(CancellationToken cancellationToken = default)
+    public async Task<bool?> IsSendEnabledAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         foreach (var selector in _selectors.SendButton)
@@ -131,8 +131,9 @@ internal sealed class PlaywrightChatPage : IChatPage
             }
         }
 
-        // When the button cannot be inspected, assume enabled — Enter is the fallback anyway.
-        return true;
+        // No send-control selector matched: undetectable. Callers must not block on it —
+        // Enter is the fallback anyway.
+        return null;
     }
 
     /// <inheritdoc />
