@@ -11,7 +11,7 @@ internal sealed class InteractiveSession
 {
     private readonly IAnsiConsole _console;
     private readonly Func<string, string, CancellationToken, Task<int>> _runTurn;
-    private readonly Func<string, string, string?> _switchWorkspace;
+    private readonly Func<string, string, CancellationToken, Task<string?>> _switchWorkspace;
 
     /// <summary>
     /// Creates the loop.
@@ -22,12 +22,12 @@ internal sealed class InteractiveSession
     /// </param>
     /// <param name="switchWorkspace">
     /// Validates and re-binds to a new workspace (git preconditions + fresh session happen in the
-    /// command layer); (oldWorkspace, newWorkspace) → error message, or null on success.
+    /// command layer); (oldWorkspace, newWorkspace, cancellation) → error message, or null on success.
     /// </param>
     public InteractiveSession(
         IAnsiConsole console,
         Func<string, string, CancellationToken, Task<int>> runTurn,
-        Func<string, string, string?> switchWorkspace)
+        Func<string, string, CancellationToken, Task<string?>> switchWorkspace)
     {
         _console = console;
         _runTurn = runTurn;
@@ -63,7 +63,7 @@ internal sealed class InteractiveSession
 
             if (input.StartsWith('/'))
             {
-                var switched = await HandleSlashCommandAsync(input, workspace);
+                var switched = await HandleSlashCommandAsync(input, workspace, cancellationToken);
                 if (switched is not null)
                     workspace = switched;
                 continue;
@@ -96,7 +96,7 @@ internal sealed class InteractiveSession
     /// Executes a slash command. Returns the new workspace when /workspace switched,
     /// or null when the loop should continue on the current workspace.
     /// </summary>
-    private async Task<string?> HandleSlashCommandAsync(string input, string workspace)
+    private async Task<string?> HandleSlashCommandAsync(string input, string workspace, CancellationToken cancellationToken)
     {
         var parts = input.Split(' ', 2, StringSplitOptions.TrimEntries);
         var command = parts[0].ToLowerInvariant();
@@ -121,7 +121,7 @@ internal sealed class InteractiveSession
                     return null;
                 }
 
-                var error = _switchWorkspace(workspace, newPath);
+                var error = await _switchWorkspace(workspace, newPath, cancellationToken);
                 if (error is not null)
                 {
                     _console.MarkupLine($"[red][[x]][/] {error.EscapeMarkup()}");

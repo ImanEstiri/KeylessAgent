@@ -91,7 +91,7 @@ public class ConsoleHardeningTests
 
         var session = new InteractiveSession(console,
             (_, _, _) => throw new PlaywrightTimeoutExceptionStub("Chrome did not answer"),
-            (_, _) => null);
+            (_, _, _) => null);
 
         await session.RunAsync(@"C:\ws", CancellationToken.None);
 

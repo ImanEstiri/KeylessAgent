@@ -23,14 +23,14 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
 
         // /workspace re-runs the git preconditions for the new workspace and starts a fresh
         // chat session for it (its own .agent/session.json); a failure keeps the old workspace.
-        string? SwitchWorkspace(string oldWorkspace, string newWorkspace)
+        async Task<string?> SwitchWorkspace(string oldWorkspace, string newWorkspace, CancellationToken ct)
         {
             var git = KeylessAgentServiceFactory.CreateGitService();
-            var repo = git.GetRepositoryInfoAsync(newWorkspace).GetAwaiter().GetResult();
+            var repo = await git.GetRepositoryInfoAsync(newWorkspace);
             if (repo.IsFailure || !repo.Data.IsRepository)
                 return "The new workspace is not a git repository.";
 
-            var cleared = sessions.ClearAsync(newWorkspace).GetAwaiter().GetResult();
+            var cleared = await sessions.ClearAsync(newWorkspace);
             if (cleared.IsFailure)
                 return $"Cannot reset the session file: {cleared.Error.Message}";
 

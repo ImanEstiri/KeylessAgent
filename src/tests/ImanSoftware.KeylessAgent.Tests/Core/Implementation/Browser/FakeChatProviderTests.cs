@@ -49,7 +49,7 @@ public class SelectorsCatalogTests : IDisposable
     [Fact]
     public void Load_MissingFile_WritesEmbeddedDefaultAndUsesIt()
     {
-        var outcome = SelectorsCatalog.Load(_root, "selectors.json");
+        var outcome = SelectorsCatalog.LoadAsync(_root, "selectors.json").GetAwaiter().GetResult();
 
         outcome.IsSuccess.Should().BeTrue();
         File.Exists(Path.Combine(_root, "selectors.json")).Should().BeTrue();
@@ -65,7 +65,7 @@ public class SelectorsCatalogTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "selectors.json"),
             """{ "InputBox": ["textarea#custom"], "SendButton": ["#send"], "FinalAnswer": [".answer"] }""");
 
-        var outcome = SelectorsCatalog.Load(_root, "selectors.json");
+        var outcome = SelectorsCatalog.LoadAsync(_root, "selectors.json").GetAwaiter().GetResult();
 
         outcome.IsSuccess.Should().BeTrue();
         outcome.Data.InputBox.Should().BeEquivalentTo(["textarea#custom"]);
@@ -76,7 +76,7 @@ public class SelectorsCatalogTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_root, "selectors.json"), "{ not json ]");
 
-        var outcome = SelectorsCatalog.Load(_root, "selectors.json");
+        var outcome = SelectorsCatalog.LoadAsync(_root, "selectors.json").GetAwaiter().GetResult();
 
         outcome.IsFailure.Should().BeTrue();
         outcome.Error.Message.Should().Contain("not valid JSON");
@@ -88,7 +88,7 @@ public class SelectorsCatalogTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "selectors.json"),
             """{ "InputBox": ["a"], "SendButton": [], "FinalAnswer": [] }""");
 
-        var outcome = SelectorsCatalog.Load(_root, "selectors.json");
+        var outcome = SelectorsCatalog.LoadAsync(_root, "selectors.json").GetAwaiter().GetResult();
 
         outcome.IsFailure.Should().BeTrue();
     }
@@ -106,7 +106,7 @@ public class SelectorsCatalogTests : IDisposable
             }
             """);
 
-        var outcome = SelectorsCatalog.Load(_root, "selectors.json");
+        var outcome = SelectorsCatalog.LoadAsync(_root, "selectors.json").GetAwaiter().GetResult();
 
         outcome.IsSuccess.Should().BeTrue();
         outcome.Data.InputBox.Should().Contain("textarea#x");

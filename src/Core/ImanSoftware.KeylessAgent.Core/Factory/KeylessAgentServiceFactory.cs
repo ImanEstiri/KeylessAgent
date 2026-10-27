@@ -75,7 +75,7 @@ public static class KeylessAgentServiceFactory
     {
         var storage = ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage();
         var provider = new ImanSoftware.KeylessAgent.Core.Implementation.Diagnostics.FileLoggerProvider(
-            workspaceRoot, storage, new ImanSoftware.DateTimeProvider.DefaultDateTimeProvider());
+            workspaceRoot, storage);
         return new SingleProviderLoggerFactory(provider);
     }
 

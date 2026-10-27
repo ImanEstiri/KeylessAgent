@@ -64,7 +64,7 @@ internal sealed class SelectorsCatalog
     /// <param name="workspaceRoot">The workspace directory.</param>
     /// <param name="selectorsFileName">Workspace-relative selectors file name.</param>
     /// <returns>The catalog, or a <c>KA_CONFIG_INVALID</c> failure with a precise message.</returns>
-    public static Outcome<SelectorsCatalog> Load(string workspaceRoot, string selectorsFileName)
+    public static async Task<Outcome<SelectorsCatalog>> LoadAsync(string workspaceRoot, string selectorsFileName, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(workspaceRoot, selectorsFileName);
         var storage = ImanFileStorageFactory.CreateStorage();
@@ -76,11 +76,11 @@ internal sealed class SelectorsCatalog
                 return Outcome.Failure<SelectorsCatalog>(embedded.Error);
 
             var directory = storage.CreateDirectoryAsync(Path.GetDirectoryName(path)!);
-            if (directory.GetAwaiter().GetResult().IsFailure)
+            if ((await storage.CreateDirectoryAsync(Path.GetDirectoryName(path)!, cancellationToken)).IsFailure)
                 return Outcome.Failure<SelectorsCatalog>(new OutcomeError(
                     $"Cannot create directory for {path}.", ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Failure));
 
-            var write = storage.WriteAllTextAsync(path, embedded.Data).GetAwaiter().GetResult();
+            var write = await storage.WriteAllTextAsync(path, embedded.Data, cancellationToken);
             if (write.IsFailure)
                 return Outcome.Failure<SelectorsCatalog>(new OutcomeError(
                     $"Cannot write default selectors to {path}: {write.Error.Message}",
@@ -89,7 +89,7 @@ internal sealed class SelectorsCatalog
             return Deserialize(embedded.Data, path);
         }
 
-        var text = storage.ReadAllTextAsync(path).GetAwaiter().GetResult();
+        var text = await storage.ReadAllTextAsync(path, cancellationToken);
         if (text.IsFailure)
             return Outcome.Failure<SelectorsCatalog>(new OutcomeError(
                 $"Cannot read {path}: {text.Error.Message}", ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Failure));

@@ -41,24 +41,26 @@ public class ChatDiagnosticsServiceTests : IDisposable
 
         public string Url => "https://chat.deepseek.com/a/chat/s/test";
 
-        public (int Index, int Count)? Probe(string[] selectors)
+        public Task<(int Index, int Count)?> ProbeAsync(string[] selectors, CancellationToken cancellationToken = default)
         {
             // The catalog's first fallback per key identifies the key uniquely in tests.
             var key = KeyFor(selectors);
             if (key is null)
-                return null;
+                return Task.FromResult<(int, int)?>(null);
 
-            return Matched.Contains(key) ? (0, 3) : null;
+            return Task.FromResult<(int, int)?>(Matched.Contains(key) ? (0, 3) : null);
         }
 
-        public string? GetToggleState(string[] selectors) => ToggleState;
+        public Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default)
+            => Task.FromResult(ToggleState);
 
-        public bool IsInputEditable() => InputEditable;
+        public Task<bool> IsInputEditableAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(InputEditable);
 
-        public string? CaptureTrimmed(string[] selectors)
+        public Task<string?> CaptureTrimmedAsync(string[] selectors, CancellationToken cancellationToken = default)
         {
             var key = KeyFor(selectors);
-            return key is null || !Matched.Contains(key) ? null : CapturedHtml;
+            return Task.FromResult(key is null || !Matched.Contains(key) ? null : CapturedHtml);
         }
 
         /// <summary>Maps the first fallback selector back to its catalog key (test bookkeeping).</summary>
@@ -75,16 +77,16 @@ public class ChatDiagnosticsServiceTests : IDisposable
         }
     }
 
-    private static readonly SelectorsCatalog RealCatalog = SelectorsCatalog.Load(
+    private static readonly SelectorsCatalog RealCatalog = SelectorsCatalog.LoadAsync(
         Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "ka-doctor-real-" + Guid.CreateVersion7().ToString("N"))).FullName,
-        "selectors.json").Data!;
+        "selectors.json").GetAwaiter().GetResult().Data!;
 
     [Fact]
     public async Task AllRequiredMatched_ProducesExitOkReport()
     {
         var inspector = FullyWorking();
         IChatPageInspector asInterface = inspector;
-        var service = new ChatDiagnosticsService(_ => Task.FromResult(
+        var service = new ChatDiagnosticsService((_, _) => Task.FromResult(
             Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
@@ -104,7 +106,7 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var inspector = FullyWorking();
         inspector.Matched.Remove("SendButton");
         IChatPageInspector asInterface = inspector;
-        var service = new ChatDiagnosticsService(_ => Task.FromResult(
+        var service = new ChatDiagnosticsService((_, _) => Task.FromResult(
             Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
@@ -121,7 +123,7 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var inspector = FullyWorking();
         inspector.Matched.Add("LoginIndicator");
         IChatPageInspector asInterface = inspector;
-        var service = new ChatDiagnosticsService(_ => Task.FromResult(
+        var service = new ChatDiagnosticsService((_, _) => Task.FromResult(
             Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
@@ -136,7 +138,7 @@ public class ChatDiagnosticsServiceTests : IDisposable
         var capture = Path.Combine(_root, "capture");
         var inspector = FullyWorking();
         IChatPageInspector asInterface = inspector;
-        var service = new ChatDiagnosticsService(_ => Task.FromResult(
+        var service = new ChatDiagnosticsService((_, _) => Task.FromResult(
             Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask)))));
 
         var report = await service.InspectAsync(_root, new BrowserOptions(), capture, watch: false);

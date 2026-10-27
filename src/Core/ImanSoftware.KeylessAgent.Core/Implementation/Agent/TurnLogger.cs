@@ -30,11 +30,12 @@ internal sealed class TurnLogger
     /// </summary>
     /// <param name="workspaceRoot">The workspace directory.</param>
     /// <param name="turn">The 1-based turn number.</param>
-    public void Start(string workspaceRoot, int turn)
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task StartAsync(string workspaceRoot, int turn, CancellationToken cancellationToken = default)
     {
         var directory = Path.Combine(workspaceRoot, ".agent", "logs");
         LogPath = Path.Combine(directory, $"turn-{turn}.jsonl");
-        _storage.CreateDirectoryAsync(directory).GetAwaiter().GetResult();
+        await _storage.CreateDirectoryAsync(directory, cancellationToken);
     }
 
     /// <summary>
@@ -42,7 +43,8 @@ internal sealed class TurnLogger
     /// </summary>
     /// <param name="type">The event type (message-sent, reply-received, command, result, note).</param>
     /// <param name="payload">The event payload object, serialized as JSON.</param>
-    public void Append(string type, object payload)
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task AppendAsync(string type, object payload, CancellationToken cancellationToken = default)
     {
         if (LogPath.Length == 0)
             return;
@@ -55,13 +57,14 @@ internal sealed class TurnLogger
         };
 
         var json = ConfigurationService.CreateSerializer().Serialize(entry);
-        _storage.AppendAllTextAsync(LogPath, json + Environment.NewLine).GetAwaiter().GetResult();
+        await _storage.AppendAllTextAsync(LogPath, json + Environment.NewLine, cancellationToken);
     }
 
     /// <summary>
     /// Appends one command result to the log.
     /// </summary>
     /// <param name="result">The executed command's result.</param>
-    public void AppendResult(CommandExecutionResult result)
-        => Append("result", result);
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public Task AppendResultAsync(CommandExecutionResult result, CancellationToken cancellationToken = default)
+        => AppendAsync("result", result, cancellationToken);
 }

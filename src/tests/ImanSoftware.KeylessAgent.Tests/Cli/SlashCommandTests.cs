@@ -38,7 +38,7 @@ public class SlashCommandTests : IDisposable
                 recordings.TurnRequests.Add(req);
                 return Task.FromResult(0);
             },
-            (_, _) => null);
+            (_, _, _) => null);
         var (_, workspace) = await session.RunAsync(_root, CancellationToken.None);
 
         console.Output.Should().Contain("/workspace");
@@ -61,7 +61,7 @@ public class SlashCommandTests : IDisposable
                 recordings.TurnRequests.Add(req);
                 return Task.FromResult(0);
             },
-            (_, _) => null);
+            (_, _, _) => null);
         await session.RunAsync(_root, CancellationToken.None);
 
         console.Output.Should().Contain("Unknown command");
@@ -86,10 +86,10 @@ public class SlashCommandTests : IDisposable
                 recordings.TurnRequests.Add(req);
                 return Task.FromResult(0);
             },
-            (oldWs, newWs) =>
+            (oldWs, newWs, _) =>
             {
                 switched.Add((oldWs, newWs));
-                return null; // preconditions passed
+                return Task.FromResult<string?>(null); // preconditions passed
             });
         var (_, workspace) = await session.RunAsync(_root, CancellationToken.None);
 
@@ -109,7 +109,7 @@ public class SlashCommandTests : IDisposable
 
         var session = new InteractiveSession(console,
             (_, _, _) => Task.FromResult(0),
-            (_, _) => null);
+            (_, _, _) => null);
         await session.RunAsync(_root, CancellationToken.None);
 
         console.Output.Should().Contain("Directory not found");
@@ -133,7 +133,7 @@ public class SlashCommandTests : IDisposable
                 turnWorkspaces.Add(ws);
                 return Task.FromResult(0);
             },
-            (_, _) => "The new workspace is not a git repository.");
+            (_, _, _) => Task.FromResult<string?>("The new workspace is not a git repository."));
         var (_, workspace) = await session.RunAsync(_root, CancellationToken.None);
 
         console.Output.Should().Contain("The new workspace is not a git repository");
@@ -150,7 +150,7 @@ public class SlashCommandTests : IDisposable
 
         var session = new InteractiveSession(console,
             (_, _, _) => Task.FromResult(0),
-            (_, _) => null);
+            (_, _, _) => null);
         await session.RunAsync(_root, CancellationToken.None);
 
         console.Output.Should().Contain("Usage: /workspace <path>");

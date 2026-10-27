@@ -3,7 +3,8 @@ using Microsoft.Playwright;
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 
 /// <summary>
-/// The Playwright-backed page inspector behind <c>keyless doctor</c>.
+/// The Playwright-backed page inspector behind <c>keyless doctor</c>. Fully async; Playwright
+/// waits race the CancellationToken through <see cref="WithCancellationAsync{T}"/>.
 /// </summary>
 internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
 {
@@ -13,15 +14,20 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
     public string Url => _page.Url;
 
     /// <inheritdoc />
-    public (int Index, int Count)? Probe(string[] selectors)
+    public async Task<(int Index, int Count)?> ProbeAsync(string[] selectors, CancellationToken cancellationToken = default)
     {
         for (var index = 0; index < selectors.Length; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var count = _page.Locator(selectors[index]).CountAsync().GetAwaiter().GetResult();
+                var count = await WithCancellationAsync(_page.Locator(selectors[index]).CountAsync(), cancellationToken);
                 if (count > 0)
-                    return (index, count);
+                    return (index, (int)count);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -33,17 +39,22 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
     }
 
     /// <inheritdoc />
-    public string? GetToggleState(string[] selectors)
+    public async Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default)
     {
-        var probe = Probe(selectors);
+        var probe = await ProbeAsync(selectors, cancellationToken);
         if (probe is null)
             return null;
 
         try
         {
-            var value = _page.Locator(selectors[probe.Value.Index])
-                .First.GetAttributeAsync("aria-pressed").GetAwaiter().GetResult();
-            return value;
+            var value = await WithCancellationAsync(
+                _page.Locator(selectors[probe.Value.Index]).First.GetAttributeAsync("aria-pressed"),
+                cancellationToken);
+            return value?.ToString();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -52,26 +63,31 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
     }
 
     /// <inheritdoc />
-    public bool IsInputEditable()
+    public async Task<bool> IsInputEditableAsync(CancellationToken cancellationToken = default)
     {
         foreach (var selector in (string[])[
                      "textarea[placeholder=\"Message DeepSeek\"]",
                      "textarea"])
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 var locator = _page.Locator(selector).First;
-                locator.WaitForAsync(new LocatorWaitForOptions
+                await locator.WaitForAsync(new LocatorWaitForOptions
                 {
                     State = WaitForSelectorState.Visible,
                     Timeout = 2_000,
-                }).GetAwaiter().GetResult();
+                });
 
-                var ro = EvaluateBool(locator, "element => element.readOnly");
-                var dis = EvaluateBool(locator, "element => element.disabled");
-                return !ro && !dis;
+                var readOnly = await EvaluateBoolAsync(locator, "element => element.readOnly", cancellationToken);
+                var disabled = await EvaluateBoolAsync(locator, "element => element.disabled", cancellationToken);
+                return !readOnly && !disabled;
             }
-            catch
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (TimeoutException)
             {
                 // Try the next fallback.
             }
@@ -80,12 +96,40 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
         return false;
     }
 
-    private static bool EvaluateBool(ILocator locator, string script)
+    /// <inheritdoc />
+    public async Task<string?> CaptureTrimmedAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        var probe = await ProbeAsync(selectors, cancellationToken);
+        if (probe is null)
+            return null;
+
+        try
+        {
+            var html = await WithCancellationAsync(
+                _page.Locator(selectors[probe.Value.Index]).First.EvaluateAsync("element => element.outerHTML"),
+                cancellationToken);
+            return HtmlTrimmer.Trim(html?.ToString() ?? string.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<bool> EvaluateBoolAsync(ILocator locator, string script, CancellationToken cancellationToken)
     {
         try
         {
-            var result = locator.EvaluateAsync(script).GetAwaiter().GetResult();
+            var result = await WithCancellationAsync(locator.EvaluateAsync(script), cancellationToken);
             return result is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.True };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -93,22 +137,19 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
         }
     }
 
-    /// <inheritdoc />
-    public string? CaptureTrimmed(string[] selectors)
+    /// <summary>
+    /// Playwright's waits carry their own timeouts but no CancellationToken; racing the token
+    /// makes Ctrl+C interrupt any in-flight wait promptly.
+    /// </summary>
+    private static async Task<T> WithCancellationAsync<T>(Task<T> task, CancellationToken cancellationToken)
     {
-        var probe = Probe(selectors);
-        if (probe is null)
-            return null;
+        cancellationToken.ThrowIfCancellationRequested();
+        var cancellation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var registration = cancellationToken.Register(() => cancellation.TrySetResult(true));
+        var completed = await Task.WhenAny(task, cancellation.Task);
+        if (completed != task)
+            throw new OperationCanceledException(cancellationToken);
 
-        try
-        {
-            var html = _page.Locator(selectors[probe.Value.Index]).First
-                .EvaluateAsync("element => element.outerHTML").GetAwaiter().GetResult();
-            return HtmlTrimmer.Trim(html?.ToString() ?? string.Empty);
-        }
-        catch
-        {
-            return null;
-        }
+        return await task;
     }
 }

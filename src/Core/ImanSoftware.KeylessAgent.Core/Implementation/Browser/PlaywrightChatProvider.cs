@@ -54,7 +54,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             var pages = context.Pages;
             var page = pages.Count > 0 ? pages[pages.Count - 1] : await context.NewPageAsync();
 
-            var selectors = SelectorsCatalog.Load(options.WorkspaceRoot, options.Browser.SelectorsFile);
+            var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken);
             if (selectors.IsFailure)
                 return Outcome.Failure<IChatSession>(selectors.Error);
 

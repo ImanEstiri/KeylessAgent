@@ -176,8 +176,8 @@ internal sealed class AgentLoop : IAgentLoop
             var sessionOutcome = await _sessions.LoadAsync(workspaceRoot);
             var session = sessionOutcome.IsSuccess ? sessionOutcome.Data : null;
             turn = (session?.Turn ?? 0) + 1;
-            logger.Start(workspaceRoot, turn);
-            logger.Append("turn-started", new { Turn = turn, Request = request, Branch = branch, DryRun = dryRun });
+            await logger.StartAsync(workspaceRoot, turn, cancellationToken);
+            await logger.AppendAsync("turn-started", new { Turn = turn, Request = request, Branch = branch, DryRun = dryRun }, cancellationToken);
 
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.ConnectingToBrowser, "Connecting to the chat"));
             var chatOutcome = await _chat.StartSessionAsync(
@@ -224,7 +224,7 @@ internal sealed class AgentLoop : IAgentLoop
             }
 
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingMessage, "Sending the request"));
-            logger.Append("message-sent", new { Turn = turn, Batch = 0, SystemPrompt = sendSystemPrompt, Attachments = attachments.Select(a => a.Name).ToList() });
+            await logger.AppendAsync("message-sent", new { Turn = turn, Batch = 0, SystemPrompt = sendSystemPrompt, Attachments = attachments.Select(a => a.Name).ToList() }, cancellationToken);
             if (!dryRun)
             {
                 Outcome sent;
@@ -268,7 +268,7 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 var reply = replyOutcome.Data;
-                logger.Append("reply-received", new { Turn = turn, Batch = batch, Reply = reply });
+                await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply }, cancellationToken);
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply, "Validating AgentScript"));
                 var verdictOutcome = _guard.Check(reply, options.Limits);
@@ -298,7 +298,7 @@ internal sealed class AgentLoop : IAgentLoop
                         break;
                     }
 
-                    logger.Append("correction-sent", new { Turn = turn, Problems = verdict.Problems.Select(p => p.ToDisplayString()).ToList() });
+                    await logger.AppendAsync("correction-sent", new { Turn = turn, Problems = verdict.Problems.Select(p => p.ToDisplayString()).ToList() }, cancellationToken);
                     if (!dryRun)
                     {
                         Outcome resent;
@@ -352,7 +352,7 @@ internal sealed class AgentLoop : IAgentLoop
                         $"#{command.Number} {command.Kind} {command.Target}"));
                     var result = await _executor.ExecuteAsync(command, Context());
                     executed.Add(result);
-                    logger.AppendResult(result);
+                    await logger.AppendResultAsync(result, cancellationToken);
 
                     if (command.Kind == CommandKind.Done)
                     {
@@ -363,7 +363,7 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (completedByDone)
                 {
-                    logger.Append("turn-done", new { Turn = turn, Summary = summary });
+                    await logger.AppendAsync("turn-done", new { Turn = turn, Summary = summary }, cancellationToken);
                     break;
                 }
 
@@ -380,7 +380,7 @@ internal sealed class AgentLoop : IAgentLoop
 
                 var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits);
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
-                logger.Append("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count });
+                await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)
                 {
                     Outcome sent;
@@ -467,10 +467,10 @@ internal sealed class AgentLoop : IAgentLoop
         {
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.RefreshingSnapshot,
                 $"Snapshot refresh failed: {refreshed.Error.Message}"));
-            logger.Append("snapshot-failed", new { refreshed.Error.Message });
+            await logger.AppendAsync("snapshot-failed", new { refreshed.Error.Message }, CancellationToken.None);
             return;
         }
 
-        logger.Append("snapshot-refreshed", new { });
+        await logger.AppendAsync("snapshot-refreshed", new { }, CancellationToken.None);
     }
 }

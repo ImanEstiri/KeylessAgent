@@ -24,7 +24,7 @@ public class InteractiveSessionTests
                 turns++;
                 throw new InvalidOperationException("KA_BROWSER_CONNECTION_FAILED: Chrome is not running");
             },
-            (_, _) => null);
+            (_, _, _) => null);
 
         var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 
@@ -50,7 +50,7 @@ public class InteractiveSessionTests
                 turns++;
                 throw new OperationCanceledException(ct);
             },
-            (_, _) => null);
+            (_, _, _) => null);
 
         var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 
@@ -72,7 +72,7 @@ public class InteractiveSessionTests
                 turns++;
                 return Task.FromResult(0);
             },
-            (_, _) => null);
+            (_, _, _) => null);
 
         var (exitCode, _) = await session.RunAsync(@"C:\ws", CancellationToken.None);
 

@@ -13,15 +13,15 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 /// </summary>
 internal sealed class ChatDiagnosticsService : IChatDiagnostics
 {
-    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose)>>> _openPage;
+    private readonly Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, CancellationToken, Task<Outcome<(IChatPageInspector Inspector, Func<ValueTask> Dispose)>>> _openPage;
 
     public ChatDiagnosticsService()
-        : this(session => OpenRealPageAsync(session))
+        : this((session, cancellationToken) => OpenRealPageAsync(session, cancellationToken))
     {
     }
 
     internal ChatDiagnosticsService(
-        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, Task<Outcome<(IChatPageInspector, Func<ValueTask>)>>> openPage)
+        Func<ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions, CancellationToken, Task<Outcome<(IChatPageInspector, Func<ValueTask>)>>> openPage)
     {
         _openPage = openPage;
     }
@@ -52,7 +52,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     {
         try
         {
-            var selectors = SelectorsCatalog.Load(workspaceRoot, browser.SelectorsFile);
+            var selectors = await SelectorsCatalog.LoadAsync(workspaceRoot, browser.SelectorsFile, cancellationToken);
             if (selectors.IsFailure)
                 return Outcome.Failure<ChatDiagnosticsReport>(selectors.Error);
 
@@ -60,7 +60,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             {
                 Browser = browser,
                 WorkspaceRoot = workspaceRoot,
-            });
+            }, cancellationToken);
             if (opened.IsFailure)
                 return Outcome.Failure<ChatDiagnosticsReport>(opened.Error);
 
@@ -85,7 +85,8 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     }
 
     private static async Task<Outcome<(IChatPageInspector, Func<ValueTask>)>> OpenRealPageAsync(
-        ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions session)
+        ImanSoftware.KeylessAgent.Abstractions.Models.Chat.ChatSessionOptions session,
+        CancellationToken cancellationToken)
     {
         var provider = new PlaywrightChatProvider();
         var browserOptions = session.Browser;
@@ -102,7 +103,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             Timeout = 60_000,
         });
 
-        var selectors = SelectorsCatalog.Load(session.WorkspaceRoot, browserOptions.SelectorsFile);
+        var selectors = await SelectorsCatalog.LoadAsync(session.WorkspaceRoot, browserOptions.SelectorsFile, cancellationToken);
         if (selectors.IsFailure)
             return Outcome.Failure<(IChatPageInspector, Func<ValueTask>)>(selectors.Error);
 
@@ -141,18 +142,18 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         CancellationToken cancellationToken)
     {
         var captured = new List<string>();
-        var login = inspector.Probe(catalog.LoginIndicator);
+        var login = await inspector.ProbeAsync(catalog.LoginIndicator, cancellationToken);
         var loggedIn = login is null;
 
         var checks = new List<SelectorCheck>();
         foreach (var (key, selectors) in SelectorEntries(catalog))
         {
-            checks.Add(Classify(key, selectors, inspector, login));
+            checks.Add(await ClassifyAsync(key, selectors, inspector, login, cancellationToken));
         }
 
-        var deepThink = inspector.GetToggleState(catalog.DeepThinkToggle);
-        var search = inspector.GetToggleState(catalog.SearchToggle);
-        var inputEditable = inspector.IsInputEditable();
+        var deepThink = await inspector.GetToggleStateAsync(catalog.DeepThinkToggle, cancellationToken);
+        var search = await inspector.GetToggleStateAsync(catalog.SearchToggle, cancellationToken);
+        var inputEditable = await inspector.IsInputEditableAsync(cancellationToken);
 
         if (captureDirectory is not null)
         {
@@ -196,7 +197,9 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         yield return ("LoginIndicator", catalog.LoginIndicator);
     }
 
-    internal static SelectorCheck Classify(string key, string[] selectors, IChatPageInspector inspector, (int Index, int Count)? login)
+    internal static async Task<SelectorCheck> ClassifyAsync(
+        string key, string[] selectors, IChatPageInspector inspector,
+        (int Index, int Count)? login, CancellationToken cancellationToken)
     {
         if (key == "LoginIndicator")
         {
@@ -207,7 +210,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                     "Not on the login page (the session looks logged in).");
         }
 
-        var probe = inspector.Probe(selectors);
+        var probe = await inspector.ProbeAsync(selectors, cancellationToken);
         if (probe is not null)
         {
             var detail = key switch
@@ -252,10 +255,10 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             files.Add(path);
         }
 
-        await SaveAsync("composer.html", inspector.CaptureTrimmed(catalog.InputBox));
-        await SaveAsync("newest-message.html", inspector.CaptureTrimmed(catalog.AssistantMessage));
-        await SaveAsync("sidebar.html", inspector.CaptureTrimmed(catalog.NewChatButton));
-        await SaveAsync("attachment-chips.html", inspector.CaptureTrimmed(catalog.AttachmentChips));
+        await SaveAsync("composer.html", await inspector.CaptureTrimmedAsync(catalog.InputBox, cancellationToken));
+        await SaveAsync("newest-message.html", await inspector.CaptureTrimmedAsync(catalog.AssistantMessage, cancellationToken));
+        await SaveAsync("sidebar.html", await inspector.CaptureTrimmedAsync(catalog.NewChatButton, cancellationToken));
+        await SaveAsync("attachment-chips.html", await inspector.CaptureTrimmedAsync(catalog.AttachmentChips, cancellationToken));
         return files;
     }
 
@@ -276,13 +279,13 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var generating = inspector.Probe(catalog.StopIndicator);
+            var generating = await inspector.ProbeAsync(catalog.StopIndicator, cancellationToken);
             if (generating is not null)
                 break;
             await Task.Delay(500, cancellationToken);
         }
 
-        var stopHtml = inspector.CaptureTrimmed(catalog.StopIndicator);
+        var stopHtml = await inspector.CaptureTrimmedAsync(catalog.StopIndicator, cancellationToken);
         if (!string.IsNullOrEmpty(stopHtml))
         {
             var path = Path.Combine(directory, "watch-generating-stop.html");
@@ -290,7 +293,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             files.Add(path);
         }
 
-        var newestDuringGenerating = inspector.CaptureTrimmed(catalog.AssistantMessage);
+        var newestDuringGenerating = await inspector.CaptureTrimmedAsync(catalog.AssistantMessage, cancellationToken);
         if (!string.IsNullOrEmpty(newestDuringGenerating))
         {
             var path = Path.Combine(directory, "watch-generating-message.html");
@@ -302,12 +305,12 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (inspector.Probe(catalog.StopIndicator) is null)
+            if (await inspector.ProbeAsync(catalog.StopIndicator, cancellationToken) is null)
                 break;
             await Task.Delay(500, cancellationToken);
         }
 
-        var finished = inspector.CaptureTrimmed(catalog.AssistantMessage);
+        var finished = await inspector.CaptureTrimmedAsync(catalog.AssistantMessage, cancellationToken);
         if (!string.IsNullOrEmpty(finished))
         {
             var path = Path.Combine(directory, "watch-finished-message.html");
