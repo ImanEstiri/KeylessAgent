@@ -97,6 +97,12 @@ Dispose policy: only the tab the agent opened is closed; the Chrome window stays
 
 See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-system-prompt).
 
+
+### Browser window
+
+- **WindowMode**: `Minimized` (default), `Offscreen`, or `Normal`. Affects auto-launched Chrome only. When minimized, throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) prevent slow-downs.
+- **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
+
 ### Snapshot
 
 - The snapshots are **generated natively in C#** — no `.bat` files need to exist in the workspace. `tree-view-result.txt` and `code-dump-result.md` are written into the workspace root (and excluded from git via `.git/info/exclude`).
