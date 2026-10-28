@@ -133,6 +133,9 @@ internal sealed class AgentLoop : IAgentLoop
         var noGitModeUsed = false;
         var agentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var timings = new TimingRecorder();
+        var runCommandCount = 0;
+        var baseBranch = string.Empty;
+        var countingUi = new CommandCountingUserInterface(ui);
 
         try
         {
@@ -213,6 +216,7 @@ internal sealed class AgentLoop : IAgentLoop
 
             // --- Step 3+4: Git preconditions (menus) ---
             branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
+            baseBranch = branch;
             var isProtected = !noGitMode && _branchGuard.IsProtected(branch, options.Git);
             var isAgentBranch = !noGitMode && capabilities.IsAgentBranch;
 
@@ -604,6 +608,9 @@ internal sealed class AgentLoop : IAgentLoop
                     executed.Add(result);
                     await logger.AppendResultAsync(result, cancellationToken);
 
+                    if (result.Kind == CommandKind.RunCommand)
+                        runCommandCount++;
+
                     if (command.Kind == CommandKind.Done)
                     {
                         completedByDone = true;
@@ -734,6 +741,16 @@ internal sealed class AgentLoop : IAgentLoop
                 commits = log.Data.ToList();
         }
 
+        // Diff stat against the branch the turn started from; git problems never fail the turn.
+        var diffStat = string.Empty;
+        if (errorMessage is null && !dryRun && !noGitModeUsed && baseBranch.Length > 0)
+        {
+            var diff = await new ProcessRunner().RunAsync(
+                "git", $"diff --stat \"{baseBranch}\"...HEAD", workspaceRoot, 30);
+            if (diff.ExitCode == 0)
+                diffStat = diff.Output.TrimEnd();
+        }
+
         return new AgentTurnResult
         {
             Branch = branch,
@@ -745,6 +762,9 @@ internal sealed class AgentLoop : IAgentLoop
             ErrorMessage = errorMessage,
             ChangeSet = turnChanges,
             Timings = timings.FormatTable(),
+            AutoApprovedCommands = Math.Max(0, runCommandCount - countingUi.ConfirmedCommands),
+            ConfirmedCommands = countingUi.ConfirmedCommands,
+            DiffStat = diffStat,
             DryRun = dryRun,
         };
 
@@ -753,7 +773,7 @@ internal sealed class AgentLoop : IAgentLoop
             WorkspaceRoot = workspaceRoot,
             Options = options,
             DryRun = dryRun,
-            Ui = ui,
+            Ui = countingUi,
             NoGitMode = noGitModeUsed,
             CancellationToken = cancellationToken,
         };
@@ -765,6 +785,38 @@ internal sealed class AgentLoop : IAgentLoop
             stoppedReason = message;
             return new AgentTurnResult { ErrorMessage = message, DryRun = dry, Turn = 0, ErrorCode = errorCode };
         }
+    }
+
+    /// <summary>
+    /// Counts command approvals flowing through the executor's UI without changing behaviour:
+    /// ConfirmAsync calls titled "Run command" come from RunCommandExecutor and are counted as
+    /// confirmed; the deletion confirmation ("Delete file") and everything else delegate
+    /// unchanged. Auto-approved commands are derived in the loop as executed runcommands minus
+    /// confirmed ones.
+    /// </summary>
+    private sealed class CommandCountingUserInterface(IAgentUserInterface inner) : IAgentUserInterface
+    {
+        public int ConfirmedCommands { get; private set; }
+
+        public void Say(string message) => inner.Say(message);
+
+        public void ShowProgress(AgentProgressEvent progressEvent) => inner.ShowProgress(progressEvent);
+
+        public Task<bool> ConfirmAsync(ConfirmRequest request)
+        {
+            if (request.Title.StartsWith("Run command", StringComparison.Ordinal))
+                ConfirmedCommands++;
+            return inner.ConfirmAsync(request);
+        }
+
+        public Task<string> AskAsync(string question) => inner.AskAsync(question);
+
+        public void ShowDiff(FileChange change) => inner.ShowDiff(change);
+
+        public Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default)
+            => inner.ChooseAsync(request, cancellationToken);
+
+        public IDisposable BeginWait(string message) => inner.BeginWait(message);
     }
 
     private async Task RefreshSnapshotAsync(IAgentUserInterface ui, string workspaceRoot, TurnLogger logger)

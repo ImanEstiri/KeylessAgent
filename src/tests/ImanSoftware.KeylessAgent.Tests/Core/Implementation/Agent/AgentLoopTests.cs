@@ -668,6 +668,64 @@ public class AgentLoopTests : IDisposable
         return count;
     }
 
+    [Fact]
+    public async Task RunAsync_ApprovalCounts_CountsAutoApprovedAndConfirmedCommands()
+    {
+        // Ask mode: "git status" is ReadOnly → auto-approved; "cmd /c echo" needs confirmation
+        // (accepted — the fake UI answers yes).
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand
+            <<<CMD
+            git status
+            CMD>>>
+            @@end
+            @@runcommand
+            <<<CMD
+            cmd /c echo step-done
+            CMD>>>
+            @@end
+            @@eof
+            """,
+            DoneReply("counts done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "approval counts", ui);
+
+        result.AutoApprovedCommands.Should().Be(1);
+        result.ConfirmedCommands.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_DiffStat_ReportsCommittedChangesAgainstBaseBranch()
+    {
+        // git status is auto-approved and @@commit stages+commits: the diff stat against the
+        // base branch (main/master from the auto-init) shows the committed file.
+        var chat = new FakeChatProvider(
+            """
+            @@newfile committed-by-agent.txt
+            <<<CONTENT
+            agent content
+            CONTENT>>>
+            @@end
+            @@commit
+            <<<MSG
+            add file
+            MSG>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "commit something", ui);
+
+        result.ErrorMessage.Should().BeNull();
+        result.DiffStat.Should().Contain("committed-by-agent.txt",
+            "the agent branch has one commit ahead of the base branch");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

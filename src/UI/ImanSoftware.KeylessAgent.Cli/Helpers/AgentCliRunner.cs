@@ -80,10 +80,20 @@ internal static class AgentCliRunner
                     AnsiConsole.MarkupLine($"  [grey]•[/] {change.Kind,-8} {change.Path.EscapeMarkup()}");
             }
 
+            if (result.DiffStat.Length > 0)
+            {
+                AnsiConsole.MarkupLine("[grey]Diff stat:[/]");
+                foreach (var line in result.DiffStat.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries))
+                    AnsiConsole.MarkupLine($"  [grey]{line.TrimEnd().EscapeMarkup()}[/]");
+            }
+
+            AnsiConsole.MarkupLine($"[grey]Auto-approved: {result.AutoApprovedCommands} | Confirmed: {result.ConfirmedCommands}[/]");
+            AnsiConsole.MarkupLine("[grey]Merge the agent branch yourself; keyless does not merge.[/]");
+
             if (timing && result.Timings is not null)
                 AnsiConsole.WriteLine(result.Timings.TrimEnd());
 
-            AnsiConsole.MarkupLine("[grey]keyless undo restores .agent/backups; merge the agent branch yourself; changes made by commands are not undoable.[/]");
+            AnsiConsole.MarkupLine("[grey]keyless undo restores .agent/backups; changes made by commands are NOT undoable with keyless undo.[/]");
 
             return 0;
         }

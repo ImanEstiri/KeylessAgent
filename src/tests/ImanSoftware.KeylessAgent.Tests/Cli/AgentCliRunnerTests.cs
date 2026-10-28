@@ -32,6 +32,9 @@ public class AgentCliRunnerTests
             console.Output.Should().Contain("Timing Summary");
             console.Output.Should().Contain("reply-wait");
             console.Output.Should().Contain("TOTAL");
+            console.Output.Should().Contain("Auto-approved: 0 | Confirmed: 0",
+                "the turn ran no runcommand commands");
+            console.Output.Should().Contain("Merge the agent branch yourself");
         }
         finally
         {

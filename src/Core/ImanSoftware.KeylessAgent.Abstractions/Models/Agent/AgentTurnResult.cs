@@ -61,4 +61,20 @@ public sealed record AgentTurnResult
     /// The per-phase timing table of this turn (the same text that is appended to the turn log).
     /// </summary>
     public string? Timings { get; init; }
+
+    /// <summary>
+    /// How many runcommand executions ran without asking the user (auto-approved by tier).
+    /// </summary>
+    public int AutoApprovedCommands { get; init; }
+
+    /// <summary>
+    /// How many runcommand executions asked the user for confirmation (accepted or declined).
+    /// </summary>
+    public int ConfirmedCommands { get; init; }
+
+    /// <summary>
+    /// Output of <c>git diff --stat &lt;base&gt;...HEAD</c> after the turn; empty when git
+    /// is unavailable, the turn was dry-run, or git failed (never fails the turn).
+    /// </summary>
+    public string DiffStat { get; init; } = "";
 }
