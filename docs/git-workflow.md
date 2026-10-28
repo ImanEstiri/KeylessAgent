@@ -2,11 +2,14 @@
 
 ## Session start (per workspace)
 
-1. **Repository check** — not a git repo:
+1. **Repository check** — probed once per session via IWorkspaceInspector (GitInstalled, IsRepository, CurrentBranch, IsAgentBranch). Not a git repo:
    - `Git.AutoInit` true (default): the agent checks that git is installed (`KA_GIT_NOT_INSTALLED` with a download link when missing), runs `git init -b main` (fallback `git init` + `git branch -M main` on old git), creates a .NET `.gitignore` when the workspace contains a `.sln`/`.slnx`/`.csproj` (`dotnet new gitignore`, else a built-in minimal template), makes the initial commit "Initial commit (created by KeylessAgent)" — with a one-shot `-c user.name="KeylessAgent" -c user.email="keyless@localhost"` identity when none is configured (git config is never changed) — and tells the user in one line. Failure → `KA_GIT_INIT_FAILED`.
    - `Git.AutoInit` false: the turn stops with `KA_NOT_A_GIT_REPOSITORY`.
+   - **git not installed at all**: ONE warning ("no branch protection, no commits, no git history, changes cannot be reverted with git; file changes are still backed up in .agent/backups"), then NO-GIT MODE: no branch guard, no agent branch, no dirty menu, no commit/push. @@commit returns Error/KA_GIT_NOT_INSTALLED "git unavailable, nothing committed" without failing the turn. The system prompt carries a note telling the model not to use @@commit or git commands.
 2. **Exclude upkeep** — `.agent/`, `tree-view-result.txt`, `code-dump-result.md` are appended to `.git/info/exclude` when missing.
-3. **Dirty tree (numbered menu, no typing)** — options: **carry** (default; changes move to the new agent branch), **stash** (`git stash push -u -m "keyless-agent auto stash"`; restore later yourself), **here** (continue on the current branch — only offered on non-protected branches), **cancel**. Arrow keys / digits / Enter / Esc.
+3. **Dirty tree (numbered menu, no typing)** — skipped when every dirty path was changed by the agent itself (tracked in session.AgentChangedPaths) AND the current branch is an agent branch. Options: **carry** (changes move to the new agent branch; only offered when NOT already on an agent branch), **stash** (`git stash push -u -m "keyless-agent auto stash"`; restore later yourself), **here** (continue on the current branch — only on non-protected branches), **cancel**. Default: carry off-branch, here on-branch. Arrow keys / digits / Enter / Esc.
+
+Change tracking works with and without git: with git, `git status --porcelain` snapshots are compared; without git, a lightweight path/size/mtime index (excluding bin/obj/.git/.agent/node_modules/artifacts/.vs/.idea/TestResults) is used. The agent-changed path set is persisted in `.agent/session.json` after each batch.
 4. **Main branch detection** — `git symbolic-ref refs/remotes/origin/HEAD`, falling back to `origin/main`, then `origin/master`, then `main`.
 5. **Branch setup**
    - Current branch protected (`main`/`master`/`release*`, case-insensitive, `*` wildcards, configurable) → **no menu**: the agent creates `agent/<yyyyMMdd-HHmm>-<slug>` automatically and tells the user. The slug comes from the request (kebab-case, `[a-z0-9-]`, max 40 chars, `task` when nothing survives — non-Latin requests included).

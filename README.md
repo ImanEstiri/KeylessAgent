@@ -21,14 +21,14 @@ Every LLM coding tool wants an API key. If you already use DeepSeek's web chat, 
 - **Strict command language.** The model's reply must parse as [AgentScript v1](docs/agentscript-spec.md); anything else is rejected and re-requested automatically. Nothing outside the grammar ever executes.
 - **Workspace-aware.** Every request carries `tree-view-result.txt` and `code-dump-result.md` (generated natively in C# — no scripts to install), filtered for noise and chunked to fit.
 - **Loop with feedback.** After each executed batch the agent sends per-command results (`[KEYLESSAGENT RESULTS]`) back to the same chat, so multi-step tasks iterate until `@@done`.
-- **Reply sources.** Replies are read via the message's own Copy button (raw Markdown, perfectly preserved) with a DOM extraction fallback — see [docs/browser-automation.md](docs/browser-automation.md).
+- **Reply sources.** Replies are read via the message's own Copy button (raw Markdown, perfectly preserved) with a DOM extraction fallback. Risk-tier command approval (ReadOnly/Build auto-approve, Risky always confirmed). Research loop with @@next/@@done. See [docs/browser-automation.md](docs/browser-automation.md).
 - **Safety in code, not in the prompt.** Protected-branch guard, path sandbox, command policy, backups, approval modes — all enforced in C#, covered by tests.
 
 ## Requirements
 
 - Windows (the snapshot analyzer and shell commands assume Windows; see [known limitations](#known-limitations))
 - [.NET 10 SDK / runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Git (`git-scm.com`) — auto-detected; if the workspace is not a repository yet, KeylessAgent initializes one automatically (`Git.AutoInit`)
+- Git (`git-scm.com`) — auto-detected; if the workspace is not a repository yet, KeylessAgent initializes one automatically (`Git.AutoInit`). Without git, a no-git mode runs file commands with backups only
 - Chrome. KeylessAgent uses a **dedicated Chrome profile** (`%LOCALAPPDATA%\KeylessAgent\chrome-profile`):
   since Chrome 136 the debug port is ignored for Chrome's default profile, so a daily-profile
   attach is impossible. Run `keyless chrome <workspace>` once and log in to DeepSeek in that

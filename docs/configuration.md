@@ -20,6 +20,9 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "SelectorsFile": "selectors.json",
     "ReplyTimeoutSeconds": 300,
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
+    "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
+    "MinimizeAfterLogin": true,      // minimize the window after login completes
+    "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
     "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
     "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
     "MinDelayMs": 400,              // random human-like delay between actions
@@ -49,12 +52,15 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
 
   "Git": {
     "AutoInit": true,               // auto git init + .gitignore + initial commit when the workspace is not a repo
+    "MaxTurnsPerChat": 20,          // (in Browser section) turns per chat before a new chat starts
     "BranchPrefix": "agent/",
     "ProtectedBranchPatterns": [ "main", "master", "release*" ]
   },
 
   "Commands": {
     "Allowlist": [ "dotnet", "git", "npm", "node", "python" ],
+    "AutoApprove": [ "ReadOnly", "Build" ],
+    "BatchFailureMode": "StopOnMutationFailure",
     "TimeoutSeconds": 300
   }
 }
@@ -104,6 +110,10 @@ Protected patterns are matched case-insensitively with `*` wildcards. The guard 
 ### Commands
 
 The allow list matches the first program name of the command line. The built-in deny list (format/shutdown/force-push/`git config --global`/`curl | sh`/recursive deletes/encoded PowerShell/…) always applies and cannot be configured away.
+
+**Risk tiers** classify every command segment: ReadOnly (git status, dotnet --version, node -v, dir, type, cat, echo, …), Build (dotnet build/restore/clean), Execute (dotnet test/run, npm test/run, node file, python file, …), Risky (inline interpreters, redirection, command substitution, package installs, deletes/moves/copies, git writes, workspace-escaping paths, unknown programs — always confirmed even in AutoSafe), Denied (the built-in deny list — never runs).
+
+**AutoApprove** lists the tiers that run without confirmation in Ask mode (default: ReadOnly and Build). **BatchFailureMode** controls what happens after a failed command: `StopOnMutationFailure` (default — a ReadOnly probe failure never stops the batch, everything else does), `StopOnAnyFailure`, or `Continue`. Failed command output is always sent to the model so it can adapt.
 
 ## Other files
 

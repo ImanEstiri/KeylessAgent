@@ -30,7 +30,7 @@ keyless doctor "G:\Projects\MyApp"   # live selector check, never sends anything
 
 Inside the interactive session: `/workspace <path>` switches workspaces, `/help` lists slash commands, any other `/`-input is rejected with a hint.
 
-First run in a non-git workspace initializes the repository automatically (main branch, .NET .gitignore, initial commit — `Git.AutoInit`). Run `keyless chrome` once and log in to DeepSeek in the dedicated profile; since Chrome 136 the debug port only works with a dedicated profile, and the login persists there. Git decisions (dirty tree, branch choice) are presented as numbered menus — arrows, digits, Enter, Esc; no typed answers.
+First run in a non-git workspace initializes the repository automatically (main branch, .NET .gitignore, initial commit — `Git.AutoInit`). Without git installed, a no-git mode runs file commands with backups only (no branch protection, no commits). Run `keyless chrome` once and log in to DeepSeek in the dedicated profile; since Chrome 136 the debug port only works with a dedicated profile, and the login persists there. Git decisions (dirty tree, branch choice) are presented as numbered menus — arrows, digits, Enter, Esc; no typed answers. Command risk tiers (ReadOnly/Build/Execute/Risky) control what runs automatically; risky commands always ask.
 
 Full documentation — AgentScript, configuration, selectors, reply sources, security model — lives in the main repository:
 

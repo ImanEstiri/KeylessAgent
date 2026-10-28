@@ -38,10 +38,11 @@ Rules:
 | `editfile` | path | `FIND`, `REPLACE` | Replaces the single occurrence of FIND. Fails unless FIND matches exactly once. BOM is preserved. Matching and counting run on LF-normalized text, and the written file keeps its original (dominant) line ending — a CRLF file stays 100% CRLF. |
 | `deletefile` | path | — | Backs up, then deletes (confirmed in Ask mode). |
 | `readfile` | path | — | Returns the file content as that command's result. |
-| `runcommand` | — | `CMD` | Runs one command line. Every segment split on `&&`, `||`, `;`, `|` is checked against the policy. |
+| `runcommand` | — | `CMD` | Runs one command line. Every segment split on `&&`, `||`, `;`, `|` is checked against the policy. Optional argument `on_error=continue` or `on_error=stop` overrides the batch failure mode for that command. |
 | `ask` | — | `MSG` | Asks the user; the answer becomes that command's result. |
 | `commit` | — | `MSG` | `git add -A`, commit, `git push -u origin <branch>`. Push failures are reported to the model. |
-| `done` | — | `MSG` | Ends the turn with a summary. |
+| `movefile` | from path | `TO` | Moves/renames a file. Sandboxed, backed up, refuses to overwrite (`KA_FILE_ALREADY_EXISTS`), creates parents. |
+| `next` | — | `MSG` (optional) | Control directive: run this batch, send results, keep waiting. Commands without a directive default to @@next. |
 
 ### Example
 
@@ -73,6 +74,27 @@ MSG>>>
 @@end
 @@eof
 ```
+
+## Command risk tiers
+
+Every command segment is classified:
+
+| Tier | Examples | Ask mode | AutoSafe | Auto |
+| --- | --- | --- | --- | --- |
+| ReadOnly | git status/log/diff, dotnet --version, node -v, dir, type, cat, echo | auto-approved | auto-approved | auto |
+| Build | dotnet build/restore/clean | auto-approved | auto-approved | auto |
+| Execute | dotnet test/run, npm test/run, node file, python file | confirm | auto if allow-listed | auto |
+| Risky | python -c, node -e, redirection, installs, deletes, git writes, unknown programs | confirm | confirm (always, even AutoSafe) | auto |
+| Denied | format, shutdown, force-push, git config --global, curl \| sh | never runs | never runs | never runs |
+
+## Batch failure modes
+
+`Commands.BatchFailureMode` controls what happens after a failed command:
+- **StopOnMutationFailure** (default): a ReadOnly probe failure never stops the batch (probes are independent); a Build/Execute/Risky/file-command/@@commit failure stops the remaining non-say commands (reported as skipped with "an earlier command failed (#N)").
+- **StopOnAnyFailure**: any failure stops the rest.
+- **Continue**: nothing stops.
+
+Use `@@runcommand on_error=continue` to override the mode for that command only. Failed command output is always returned to the model in full.
 
 ## Limits (enforced, injected into the system prompt)
 
@@ -169,6 +191,9 @@ Every failure the agent reports carries a stable code.
 | `KA_PARSE_BAD_OPTION` | unknown command option or option value |
 | `KA_PARSE_CONFLICTING_CONTROL` | both @@next and @@done in one reply |
 | `KA_PARSE_SAY_ONLY` | reply contains only @@say and no control directive |
+| `KA_PARSE_CONFLICTING_CONTROL` | both @@next and @@done in one reply |
+| `KA_PARSE_BAD_OPTION` | unknown command option or option value (e.g. on_error=maybe) |
+| `KA_COMMAND_NOT_FOUND` | the program of a command does not exist on this machine |
 | `KA_BRANCH_PROTECTED` | current branch matches a protected pattern |
 | `KA_NOT_A_GIT_REPOSITORY` | workspace is not a git repo |
 | `KA_GIT_FAILURE` | a git command failed |

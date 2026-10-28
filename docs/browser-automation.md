@@ -26,7 +26,21 @@ window (`Target.createTarget … newWindow:false`). The chosen tab is focused
 to front again and the agent waits (up to `LoginWaitSeconds` = 5 minutes), continuing
 automatically once the login indicator disappears.
 
-Dispose policy: **the chat tab stays open after every turn and after exit** — the
+## Window behavior
+
+When Chrome is auto-launched, the window starts minimized (or offscreen) with throttling flags
+(`--disable-renderer-backgrounding --disable-background-timer-throttling --disable-backgrounding-occluded-windows`)
+so a minimized window does not slow down the page. During normal operation the window is
+**never restored or focused** — no hover, no BringToFront, no activateTarget. Restore and focus
+happen ONLY when the user must act: login page detected, captcha, or an error that needs the
+user. After the login indicator disappears (or the captcha is solved) the window is minimized
+again (`Browser.MinimizeAfterLogin`, default true; `Browser.WindowMode` = Minimized/Offscreen/Normal).
+
+`keyless doctor` checks that the page works while minimized (document.visibilityState, timers,
+hover shows the action bar, Copy button clickable) and reports; on failure it advises
+`Offscreen` or `Normal` window mode.
+
+## Reply sources and capture strategies — the
 conversation continues across turns and across runs (the next run reuses the tab and the saved
 chat URL). Only `Browser.CloseChromeOnExit: true` closes the window when the session ends.
 When the window was launched (or already logged in), it is **minimized automatically** via CDP
