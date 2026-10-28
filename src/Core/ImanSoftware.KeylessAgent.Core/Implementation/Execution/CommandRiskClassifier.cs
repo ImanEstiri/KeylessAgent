@@ -94,59 +94,7 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
     /// Splits a command line into segments on &amp;&amp;, ||, ; and | while respecting quotes.
     /// </summary>
     internal static string[] SplitSegments(string commandLine)
-    {
-        var segments = new List<string>();
-        var current = new System.Text.StringBuilder();
-        var inQuote = false;
-        char quote = default;
-
-        foreach (var c in commandLine)
-        {
-            if (inQuote)
-            {
-                current.Append(c);
-                if (c == quote)
-                    inQuote = false;
-                continue;
-            }
-
-            if (c is '"' or '\'')
-            {
-                inQuote = true;
-                current.Append(c);
-                continue;
-            }
-
-            if (c == ';' || c == '|')
-            {
-                segments.Add(current.ToString());
-                current.Clear();
-                continue;
-            }
-
-            if (c == '&')
-            {
-                // '&&' separates; a single '&' (background) stays in the segment.
-                current.Append(c);
-                continue;
-            }
-
-            current.Append(c);
-        }
-
-        segments.Add(current.ToString());
-
-        var final = new List<string>();
-        foreach (var segment in segments)
-        {
-            // split '&&' and '||' pairs
-            var parts = System.Text.RegularExpressions.Regex.Split(
-                segment, "&&|\\|\\|", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
-            final.AddRange(parts.Select(p => p.Trim()).Where(p => p.Length > 0));
-        }
-
-        return final.ToArray();
-    }
+        => ShellSegmenter.Split(commandLine);
 
     private (CommandRiskTier Tier, string Reason) ClassifySegment(string segment, string workspaceRoot)
     {

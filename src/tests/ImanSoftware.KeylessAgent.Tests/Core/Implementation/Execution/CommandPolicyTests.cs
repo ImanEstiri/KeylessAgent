@@ -17,6 +17,10 @@ public class CommandPolicyTests
     [InlineData("dotnet build && dotnet test")]
     [InlineData("dotnet test --logger console;echo done")]
     [InlineData("npm install | sort")]
+    [InlineData("dotnet test --filter \"Category=A|Category=B\"")]
+    [InlineData("dotnet test --filter \"Category=A|format C:\"")]
+    [InlineData("echo \"format C:\"")]
+    [InlineData("echo \"shutdown is a word\"")]
     public void Validate_SafeCommands_Pass(string commandLine)
     {
         var outcome = _policy.Validate(commandLine, Options());
@@ -54,6 +58,17 @@ public class CommandPolicyTests
         outcome.IsFailure.Should().BeTrue();
         outcome.Error.Code.Should().Be(ErrorCodes.CommandDenied);
         outcome.Error.Message.Should().Contain("format");
+    }
+
+    [Fact]
+    public void Validate_UnquotedPipeStillSplitsBeforeDenyCheck()
+    {
+        // The quote-aware splitter must not over-correct: an unquoted pipe is a real
+        // separator, so a deny-list program after it is still rejected.
+        var outcome = _policy.Validate("dotnet test | format C:", Options());
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.CommandDenied);
     }
 
     [Fact]

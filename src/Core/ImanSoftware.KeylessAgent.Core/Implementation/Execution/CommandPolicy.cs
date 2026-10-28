@@ -87,10 +87,11 @@ internal sealed class CommandPolicy : ICommandPolicy
 
     /// <summary>
     /// Splits a command line into the segments the shell would run:
-    /// on <c>&amp;&amp;</c>, <c>||</c>, <c>;</c> and <c>|</c>.
+    /// on <c>&amp;&amp;</c>, <c>||</c>, <c>;</c> and <c>|</c>, respecting quotes (a pipe inside
+    /// a quoted filter is not a separator).
     /// </summary>
     internal static string[] SplitSegments(string commandLine)
-        => commandLine.Split(["&&", "||", ";", "|"], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        => ShellSegmenter.Split(commandLine);
 
     private static string ExtractProgram(string segment)
     {
