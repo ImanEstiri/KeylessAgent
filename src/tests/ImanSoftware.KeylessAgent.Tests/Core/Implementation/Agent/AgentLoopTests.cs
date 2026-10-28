@@ -11,9 +11,12 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
+using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Agent;
 
@@ -51,12 +54,12 @@ public class AgentLoopTests : IDisposable
         process.WaitForExit(30_000);
     }
 
-    private static AgentLoop CreateLoop(FakeChatProvider chat) =>
+    private static AgentLoop CreateLoop(FakeChatProvider chat, ISnapshotService? snapshotService = null) =>
         new(chat,
             new ConfigurationService(),
             new GitService(),
             new BranchGuard(),
-            new SnapshotService(ImanFileStorageFactory.CreateStorage(), new WorkspaceAnalyzer(ImanFileStorageFactory.CreateStorage())),
+            snapshotService ?? new SnapshotService(ImanFileStorageFactory.CreateStorage(), new WorkspaceAnalyzer(ImanFileStorageFactory.CreateStorage())),
             new ResponseFormatGuard(),
             new WorkspaceCommandExecutor(),
             new ResultFormatter(),
@@ -66,6 +69,24 @@ public class AgentLoopTests : IDisposable
             new BranchNameBuilder(new FakeDateTimeProvider()),
             new FakeDateTimeProvider(),
             null);
+
+    /// <summary>Records snapshot refreshes without touching the filesystem.</summary>
+    private sealed class FakeSnapshotService : ISnapshotService
+    {
+        public int RefreshCalls { get; private set; }
+
+        public Task<Outcome> RefreshAsync(string workspaceRoot)
+        {
+            RefreshCalls++;
+            return Task.FromResult(Outcome.Successful());
+        }
+
+        public Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options)
+            => Task.FromResult(Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]));
+
+        public Task<Outcome<bool>> IsStaleAsync(string workspaceRoot)
+            => Task.FromResult(Outcome.Successful(false));
+    }
 
     private static string DoneReply(string message) =>
         "@@say\n<<<MSG\nworking\nMSG>>>\n@@end\n@@done\n<<<MSG\n" + message + "\nMSG>>>\n@@end\n@@eof\n";
@@ -724,6 +745,53 @@ public class AgentLoopTests : IDisposable
         result.ErrorMessage.Should().BeNull();
         result.DiffStat.Should().Contain("committed-by-agent.txt",
             "the agent branch has one commit ahead of the base branch");
+    }
+
+    [Fact]
+    public async Task RunAsync_RefreshAfterEachBatch_RefreshesBetweenBatches()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Snapshot": { "RefreshAfterEachBatch": true } }""");
+        var snapshot = new FakeSnapshotService();
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand
+            <<<CMD
+            cmd /c echo batch-one
+            CMD>>>
+            @@end
+            @@eof
+            """,
+            DoneReply("second batch done"));
+        var loop = CreateLoop(chat, snapshot);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "two batches with refresh", ui);
+
+        snapshot.RefreshCalls.Should().Be(2,
+            "one refresh after batch 1's results message and the end-of-turn refresh in finally");
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutRefreshAfterEachBatch_OnlyEndOfTurnRefreshRuns()
+    {
+        var snapshot = new FakeSnapshotService();
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand
+            <<<CMD
+            cmd /c echo batch-one
+            CMD>>>
+            @@end
+            @@eof
+            """,
+            DoneReply("second batch done"));
+        var loop = CreateLoop(chat, snapshot);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "two batches without refresh", ui);
+
+        snapshot.RefreshCalls.Should().Be(1, "only the end-of-turn refresh runs");
     }
 
     public void Dispose()

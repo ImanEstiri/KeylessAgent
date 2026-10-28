@@ -689,6 +689,11 @@ internal sealed class AgentLoop : IAgentLoop
                         stoppedReason = $"cannot send results: {sent.Error.Message}";
                         break;
                     }
+
+                    // Per-batch snapshot refresh (off by default): the model sees the workspace
+                    // as of right now when the next attachments are built.
+                    if (options.Snapshot.RefreshAfterEachBatch)
+                        await RefreshSnapshotAsync(ui, workspaceRoot, logger);
                 }
             }
 
