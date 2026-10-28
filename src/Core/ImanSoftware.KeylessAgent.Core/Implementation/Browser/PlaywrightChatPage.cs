@@ -413,19 +413,6 @@ internal sealed class PlaywrightChatPage : IChatPage
             var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
             if (newest is not null)
             {
-                try
-                {
-                    await newest.HoverAsync();
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogDebug("Hover before copy failed: {Message}", ex.Message);
-                }
-
                 foreach (var selector in _selectors.MessageCopyButton)
                 {
                     try
@@ -484,19 +471,6 @@ internal sealed class PlaywrightChatPage : IChatPage
             var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
             if (newest is null)
                 return null;
-
-            try
-            {
-                await newest.HoverAsync();
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // Hover is best-effort.
-            }
 
             var clicked = false;
             foreach (var selector in _selectors.MessageCopyButton)

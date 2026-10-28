@@ -31,3 +31,10 @@
 - Lenient one-line payload: <<<MSG text MSG>>> / <<<FIND text FIND>>> / etc for non-CONTENT sections, normalized to multi-line form (CONTENT never affected).
 - Per-message reminder: ~8-line AgentScript summary + env summary prepended to every user-request message; full system prompt stays on first message only.
 - ReplyExtractor: entity-decoded text in the fake (HtmlEncode in fake page), one-line payload tests with real failing reply.
+
+## Task 4 additions
+- Browser.WindowMode (Minimized default) + Browser.MinimizeAfterLogin (true) config keys.
+- Launch flags: --disable-renderer-backgrounding --disable-background-timer-throttling --disable-backgrounding-occluded-windows (prevents throttling when minimized).
+- Hover calls removed from copy capture (never un-minimizes during normal operation).
+- Window restored ONLY for login/captcha; minimized again after (Browser.MinimizeAfterLogin).
+- Delay defaults changed: MinDelayMs=0, MaxDelayMs=150, HumanDelay=false.

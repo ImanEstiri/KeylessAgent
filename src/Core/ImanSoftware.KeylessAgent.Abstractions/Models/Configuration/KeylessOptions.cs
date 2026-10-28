@@ -147,6 +147,17 @@ public sealed record BrowserOptions
     /// Human-like random delays between browser actions. Default false (event-driven waits only).
     /// </summary>
     public bool HumanDelay { get; init; }
+
+    /// <summary>
+    /// Browser window behavior: Minimized (default, with throttling flags), Offscreen
+    /// (--window-position=-32000,-32000), Normal. Only affects auto-launched Chrome.
+    /// </summary>
+    public string WindowMode { get; init; } = "Minimized";
+
+    /// <summary>
+    /// Minimize the window again after the login completes. Default true.
+    /// </summary>
+    public bool MinimizeAfterLogin { get; init; } = true;
 }
 
 /// <summary>

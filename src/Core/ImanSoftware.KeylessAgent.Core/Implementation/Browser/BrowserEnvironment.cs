@@ -123,6 +123,8 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
             Arguments =
                 $"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1 " +
                 $"--user-data-dir=\"{userDataDir}\" --no-first-run --no-default-browser-check " +
+                "--disable-renderer-backgrounding --disable-background-timer-throttling " +
+                "--disable-backgrounding-occluded-windows " +
                 "https://chat.deepseek.com/",
             UseShellExecute = true,
         };
