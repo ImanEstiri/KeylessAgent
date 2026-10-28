@@ -464,7 +464,6 @@ internal sealed class AgentLoop : IAgentLoop
                 if (replyOutcome.IsFailure)
                 {
                     stoppedReason = $"no reply: {replyOutcome.Error.Message}";
-                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, stoppedReason));
                     break;
                 }
 
@@ -472,7 +471,6 @@ internal sealed class AgentLoop : IAgentLoop
 
                 var replySource = chatSession.LastReplyOrigin;
                 await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply, Source = replySource }, cancellationToken);
-                await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply }, cancellationToken);
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply, "Validating AgentScript"));
                 var verdictOutcome = _guard.Check(reply, options.Limits);
@@ -740,7 +738,9 @@ internal sealed class AgentLoop : IAgentLoop
 
         AgentTurnResult Failed(string message, bool dry, string? errorCode = null)
         {
-            ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, message));
+            // No TurnFinished here: the finally block shows it once with the same message
+            // (stoppedReason drives the finally's display).
+            stoppedReason = message;
             return new AgentTurnResult { ErrorMessage = message, DryRun = dry, Turn = 0, ErrorCode = errorCode };
         }
     }

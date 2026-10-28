@@ -597,6 +597,77 @@ public class AgentLoopTests : IDisposable
         process.ExitCode.Should().Be(0, "git " + string.Join(" ", args));
     }
 
+    [Fact]
+    public async Task RunAsync_TurnLog_RecordsReplyReceivedOncePerReply()
+    {
+        // A two-batch turn: batch 1 runs a command (no @@done), batch 2 finishes the turn —
+        // two replies received, so exactly two reply-received log entries must exist.
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand
+            <<<CMD
+            cmd /c echo probe-ok
+            CMD>>>
+            @@end
+            @@eof
+            """,
+            DoneReply("second batch done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "two batches", ui);
+
+        var logText = (await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "logs", "turn-1.jsonl"))).Data;
+        logText.Should().NotBeNull();
+        CountOccurrences(logText!, "\"Type\": \"reply-received\"").Should().Be(2,
+            "each received reply is logged exactly once (the duplicate had no Source)");
+        logText.Should().Contain("\"Source\": \"Dom\"");
+    }
+
+    [Fact]
+    public async Task RunAsync_TurnFinishedProgress_ShownAtMostOncePerTurn()
+    {
+        // No scripted replies: the turn fails with "no reply", a path that used to show
+        // TurnFinished at the failure point AND again in the finally block.
+        var chat = new FakeChatProvider();
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "empty chat", ui);
+
+        result.StoppedReason.Should().NotBeNull();
+        ui.Progress.Count(p => p.Type == AgentEventType.TurnFinished).Should().Be(1,
+            "the finally block is the only place TurnFinished is shown");
+    }
+
+    [Fact]
+    public async Task RunAsync_FailedTurn_ShowsTurnFinishedOnce()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"), "{ not valid json }");
+        var chat = new FakeChatProvider(DoneReply("ok"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "broken config", ui);
+
+        result.ErrorMessage.Should().NotBeNull();
+        ui.Progress.Count(p => p.Type == AgentEventType.TurnFinished).Should().Be(1,
+            "Failed() no longer shows TurnFinished before the finally block does");
+    }
+
+    private static int CountOccurrences(string text, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+
+        return count;
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
