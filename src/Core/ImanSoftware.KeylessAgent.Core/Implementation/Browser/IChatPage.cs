@@ -121,4 +121,10 @@ internal interface IChatPage
     /// Clicks the first visible toggle matching one of the selectors; true when a click landed.
     /// </summary>
     Task<bool> ClickToggleAsync(string[] selectors, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether a chat-length-limit notice is currently visible (the chat is exhausted and
+    /// cannot take more messages).
+    /// </summary>
+    Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default);
 }

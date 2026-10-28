@@ -183,6 +183,26 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
+    public async Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in _selectors.ChatLimitNotice)
+        {
+            try
+            {
+                var locator = _page.Locator(selector).First;
+                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 500 });
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                // Try the next fallback selector.
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

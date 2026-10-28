@@ -151,6 +151,49 @@ public class ChatDiagnosticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ChatLimitNotice_NotMatched_IsNotApplicableNow()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "ChatLimitNotice");
+        check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+        check.Detail.Should().Contain("has not reached its length limit");
+    }
+
+    [Fact]
+    public async Task ChatLimitNotice_Matched_ReportsExhausted()
+    {
+        var inspector = FullyWorking();
+        inspector.Matched.Add("ChatLimitNotice");
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "ChatLimitNotice");
+        check.Status.Should().Be(SelectorCheckStatus.Matched);
+        check.Detail.Should().Contain("length limit");
+    }
+
+    [Fact]
     public async Task Capture_WritesTrimmedSnapshots()
     {
         var capture = Path.Combine(_root, "capture");

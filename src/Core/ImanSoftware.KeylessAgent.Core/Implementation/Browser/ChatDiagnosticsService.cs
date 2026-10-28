@@ -210,6 +210,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         yield return ("SearchToggle", catalog.SearchToggle);
         yield return ("AttachmentChips", catalog.AttachmentChips);
         yield return ("LoginIndicator", catalog.LoginIndicator);
+        yield return ("ChatLimitNotice", catalog.ChatLimitNotice);
     }
 
     internal static async Task<SelectorCheck> ClassifyAsync(
@@ -234,6 +235,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                 "Reasoning" => "A reasoning block exists (a thinking message is present).",
                 "StopIndicator" => "Generating is in progress.",
                 "AttachmentChips" => "Attachment chips are visible (files attached).",
+                "ChatLimitNotice" => "The chat has reached its length limit (exhausted).",
                 _ => "Selector matched.",
             };
             return new SelectorCheck(key, SelectorCheckStatus.Matched, probe.Value.Index, probe.Value.Count, detail);
@@ -247,6 +249,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             "Reasoning" => "No message with a reasoning block is visible right now.",
             "FinalAnswer" => "No assistant message is visible right now (new chat).",
             "LoginIndicator" => "Not on the login page.",
+            "ChatLimitNotice" => "The chat has not reached its length limit.",
             _ => string.Empty,
         };
 

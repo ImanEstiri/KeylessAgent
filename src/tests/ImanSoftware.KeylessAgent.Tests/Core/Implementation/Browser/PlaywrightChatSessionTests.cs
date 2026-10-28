@@ -1,5 +1,6 @@
 using FluentAssertions;
 using ImanSoftware.FileStorage;
+using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
@@ -162,6 +163,20 @@ public class PlaywrightChatSessionTests : IDisposable
         (await session.SendMessageAsync("request on resumed chat", [])).IsSuccess.Should().BeTrue();
 
         page.ClickedToggles.Should().BeEmpty("a resumed chat keeps whatever its toggles were");
+    }
+
+    [Fact]
+    public async Task WaitForReplyAsync_ChatLimitNotice_ReturnsChatExhausted()
+    {
+        var page = new FakeChatPage { ChatLimitVisible = true };
+        ArrangeFirstReplyDelivered(page);
+        var session = CreateSession(page);
+
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsFailure.Should().BeTrue();
+        reply.Error.Code.Should().Be(ErrorCodes.ChatExhausted);
+        reply.Error.Message.Should().Contain("length limit");
     }
 
     [Fact]

@@ -10,7 +10,9 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
+using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
@@ -54,7 +56,7 @@ public class AgentLoopTests : IDisposable
         process.WaitForExit(30_000);
     }
 
-    private static AgentLoop CreateLoop(FakeChatProvider chat, ISnapshotService? snapshotService = null) =>
+    private static AgentLoop CreateLoop(IChatProvider chat, ISnapshotService? snapshotService = null) =>
         new(chat,
             new ConfigurationService(),
             new GitService(),
@@ -794,8 +796,53 @@ public class AgentLoopTests : IDisposable
         snapshot.RefreshCalls.Should().Be(1, "only the end-of-turn refresh runs");
     }
 
+    [Fact]
+    public async Task RunAsync_ChatExhausted_ClearsSessionAndStops()
+    {
+        var chat = new ExhaustedChatProvider();
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "will hit the limit", ui);
+
+        result.StoppedReason.Should().Contain("chat exhausted");
+        File.Exists(Path.Combine(_root, ".agent", "session.json")).Should().BeFalse(
+            "the exhausted session is cleared so the next request starts a new chat");
+        var store = new SessionStore();
+        var reloaded = await store.LoadAsync(_root);
+        reloaded.IsFailure.Should().BeTrue();
+        reloaded.Error.Code.Should().Be(ErrorCodes.SessionNotFound);
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
     }
+
+/// <summary>
+/// A chat provider whose every reply wait fails with KA_CHAT_EXHAUSTED, simulating a chat
+/// that reached its length limit.
+/// </summary>
+internal sealed class ExhaustedChatProvider : IChatProvider
+{
+    public Task<Outcome<IChatSession>> StartSessionAsync(ChatSessionOptions options, CancellationToken cancellationToken = default)
+        => Task.FromResult(Outcome.Successful<IChatSession>(new ExhaustedSession()));
+
+    private sealed class ExhaustedSession : IChatSession
+    {
+        public string ChatUrl => "https://chat.deepseek.com/a/fake-exhausted";
+
+        public string LastReplyOrigin => "Dom";
+
+        public Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
+            => Task.FromResult(Outcome.Successful());
+
+        public Task<Outcome<string>> WaitForReplyAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Outcome.Failure<string>(new OutcomeError(
+                "The chat reached its length limit.", ErrorCodes.ChatExhausted, OutcomeErrorType.Failure)));
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+
 }

@@ -214,6 +214,9 @@ internal sealed class PlaywrightChatSession : IChatSession
         return read;
     }
 
+    private static Outcome<string> ChatExhausted() => Outcome.Failure<string>(new OutcomeError(
+        "The chat reached its length limit.", ErrorCodes.ChatExhausted, OutcomeErrorType.Failure));
+
     /// <summary>
     /// Syncs the DeepThink and Search toggles with the configuration on a new chat: reads each
     /// toggle's aria-pressed state and clicks when it disagrees with the option. A toggle whose
@@ -261,6 +264,9 @@ internal sealed class PlaywrightChatSession : IChatSession
         var deadline = DateTime.UtcNow + timeout;
         var stableReply = (string?)null;
 
+        if (await _page.IsChatLimitNoticeVisibleAsync(cancellationToken))
+            return ChatExhausted();
+
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -292,6 +298,10 @@ internal sealed class PlaywrightChatSession : IChatSession
 
             await Task.Delay(_pollDelayMs, cancellationToken);
         }
+
+        // The notice may have appeared while waiting (the reply got cut mid-generation).
+        if (await _page.IsChatLimitNoticeVisibleAsync(cancellationToken))
+            return ChatExhausted();
 
         var screenshot = await CaptureDiagnosticsAsync("reply-timeout", cancellationToken);
         return Outcome.Failure<string>(new OutcomeError(

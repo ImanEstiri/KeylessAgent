@@ -477,6 +477,17 @@ internal sealed class AgentLoop : IAgentLoop
                 timings.Stop("reply-wait");
                 if (replyOutcome.IsFailure)
                 {
+                    if (replyOutcome.Error.Code == ErrorCodes.ChatExhausted)
+                    {
+                        // The chat cannot take more messages. This batch's commands already ran;
+                        // resending would re-execute them. Clearing the session makes the next
+                        // request start a new chat — the user re-runs with their progress.
+                        await _sessions.ClearAsync(workspaceRoot);
+                        savedSession = null;
+                        stoppedReason = "chat exhausted; a new chat will be used on the next request. Re-run with your current progress.";
+                        break;
+                    }
+
                     stoppedReason = $"no reply: {replyOutcome.Error.Message}";
                     break;
                 }

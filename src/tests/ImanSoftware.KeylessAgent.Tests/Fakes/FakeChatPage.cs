@@ -248,6 +248,12 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     /// <summary>When true, the fake pretends interception produced nothing (clipboard path).</summary>
     public bool ForceClipboardStrategy { get; set; }
 
+    /// <summary>Whether the chat-length-limit notice is visible (the chat is exhausted).</summary>
+    public bool ChatLimitVisible { get; set; }
+
+    public Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ChatLimitVisible);
+
     public Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (CapturedReply is null)
