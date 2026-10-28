@@ -93,9 +93,12 @@ internal sealed class PlaywrightChatSession : IChatSession
 
             // --- Step 3: insert the whole text and send ---
             await _page.InsertTextAsync(text, cancellationToken);
-            await Task.Delay(_random.Next(
-                _options.Browser.MinDelayMs,
-                Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
+            if (_options.Browser.HumanDelay)
+            {
+                await Task.Delay(_random.Next(
+                    _options.Browser.MinDelayMs,
+                    Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
+            }
 
             // One send attempt = the send button when clickable, otherwise Enter — never both.
             if (!await _page.TryClickSendAsync(cancellationToken))

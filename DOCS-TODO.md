@@ -18,3 +18,11 @@
 - CommandExecutionResult.FailureReason (command_not_found/timeout/denied/declined/non_zero_exit/killed); command_not_found shown as dim note.
 - RunCommandExecutor: tier-based approval policy per mode; Ask auto-approves configured tiers; confirmation shows tier + reason.
 - Error codes: KA_COMMAND_NOT_FOUND, KA_PARSE_BAD_OPTION, KA_PARSE_CONFLICTING_CONTROL, KA_PARSE_SAY_ONLY.
+
+## Task 2 additions (final)
+- AgentLoop: BatchFailureMode logic — ReadOnly failures (command_not_found) never stop; Build/Execute/Risky/file-command/commit failures stop remaining non-say commands with "an earlier command failed (#N)"; StopOnAnyFailure stops on any; Continue never stops.
+- on_error=continue|stop option on @@runcommand parsed and validated (KA_PARSE_BAD_OPTION for unknown values); RunCommandCommand.OnError property.
+- Control directives: @@next (NextCommand + NextExecutor) and @@done — exactly one per reply; conflicting → KA_PARSE_CONFLICTING_CONTROL; say-only → KA_PARSE_SAY_ONLY.
+- @@movefile <from> + <<<TO ... TO>>> (MoveFileCommand + MoveFileExecutor): sandboxed both paths, backup, refuses overwrite (KA_FILE_ALREADY_EXISTS), creates parents, undo-covered.
+- EnvironmentProbe: parallel 3s-timeout probes (OS, git, dotnet, node, npm, python) → [ENVIRONMENT] block in the first message + one-line summary.
+- Browser: MinDelayMs=0, MaxDelayMs=150, HumanDelay=false defaults; random delay only when HumanDelay=true.

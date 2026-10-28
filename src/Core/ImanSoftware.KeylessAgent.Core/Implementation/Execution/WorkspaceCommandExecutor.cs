@@ -25,6 +25,8 @@ internal sealed class WorkspaceCommandExecutor : IWorkspaceCommandExecutor
             new RunCommandExecutor(),
             new AskExecutor(),
             new CommitExecutor(),
+            new NextExecutor(),
+            new MoveFileExecutor(),
             new DoneExecutor())
     {
     }

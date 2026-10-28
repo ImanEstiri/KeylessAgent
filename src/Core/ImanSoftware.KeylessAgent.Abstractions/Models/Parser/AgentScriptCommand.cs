@@ -100,7 +100,7 @@ public sealed record ReadFileCommand(string Path) : AgentScriptCommand
 
 /// <summary>Runs <paramref name="CommandLine"/> after the command policy checks every segment.</summary>
 /// <param name="CommandLine">A single command line; segments split on &amp;&amp;, ||, ; and | are each checked.</param>
-public sealed record RunCommandCommand(string CommandLine) : AgentScriptCommand
+public sealed record RunCommandCommand(string CommandLine, string? OnError = null) : AgentScriptCommand
 {
     /// <inheritdoc />
     public override CommandKind Kind => CommandKind.RunCommand;
@@ -140,4 +140,30 @@ public sealed record DoneCommand(string Summary) : AgentScriptCommand
 
     /// <inheritdoc />
     public override string Target => Summary;
+}
+
+/// <summary>
+/// Control directive: execute this batch, send the per-command results, then keep waiting for
+/// the model's next reply (the turn and chat stay open). Opposite of @@done which ends the turn.
+/// </summary>
+/// <param name="Message">Optional note about what the model will do with the results.</param>
+public sealed record NextCommand(string Message) : AgentScriptCommand
+{
+    /// <inheritdoc />
+    public override CommandKind Kind => CommandKind.Next;
+
+    /// <inheritdoc />
+    public override string Target => Message;
+}
+
+/// <summary>Moves/renames a file (sandboxed, backed up, refuses to overwrite).</summary>
+/// <param name="Path">Source path, workspace-relative.</param>
+/// <param name="ToPath">Destination path, workspace-relative.</param>
+public sealed record MoveFileCommand(string Path, string ToPath) : AgentScriptCommand
+{
+    /// <inheritdoc />
+    public override CommandKind Kind => CommandKind.MoveFile;
+
+    /// <inheritdoc />
+    public override string Target => $"{Path} -> {ToPath}";
 }

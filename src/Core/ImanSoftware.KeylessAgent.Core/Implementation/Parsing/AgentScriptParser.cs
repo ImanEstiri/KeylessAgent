@@ -210,6 +210,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             CommandKind.NewFile or CommandKind.UpdateFile => [SectionNames.Content],
             CommandKind.EditFile => [SectionNames.Find, SectionNames.Replace],
             CommandKind.RunCommand => [SectionNames.Cmd],
+            CommandKind.MoveFile => [SectionNames.To],
             _ => [],
         };
 
@@ -229,7 +230,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         }
 
         var needsArgument = block.Kind is CommandKind.NewFile or CommandKind.UpdateFile
-            or CommandKind.EditFile or CommandKind.DeleteFile or CommandKind.ReadFile;
+            or CommandKind.EditFile or CommandKind.DeleteFile or CommandKind.ReadFile or CommandKind.MoveFile;
 
         if (needsArgument && string.IsNullOrWhiteSpace(block.Argument))
         {
@@ -257,6 +258,8 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             CommandKind.Ask => new AskCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.Commit => new CommitCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.Done => new DoneCommand(Payload(payload, SectionNames.Msg)),
+            CommandKind.Next => new NextCommand(Payload(payload, SectionNames.Msg)),
+            CommandKind.MoveFile => new MoveFileCommand(block.Argument, Payload(payload, SectionNames.To)),
             _ => throw new NotSupportedException($"Unhandled command kind {block.Kind}."),
         };
 
@@ -324,9 +327,10 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         public const string Find = "FIND";
         public const string Replace = "REPLACE";
         public const string Cmd = "CMD";
+        public const string To = "TO";
 
         public static bool IsKnown(string name)
-            => name.ToUpperInvariant() is Msg or Content or Find or Replace or Cmd;
+            => name.ToUpperInvariant() is Msg or Content or Find or Replace or Cmd or To;
     }
 
     private sealed record BlockContext(CommandKind Kind, string Argument, int StartLine, int Number)

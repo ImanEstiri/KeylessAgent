@@ -176,6 +176,12 @@ internal sealed class AgentLoop : IAgentLoop
             if (!noGitMode)
                 await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
 
+            // --- Step 2c: Environment probe (parallel, 3s timeout each) ---
+            var environmentProbe = new EnvironmentProbe();
+            var env = await environmentProbe.ProbeAsync(workspaceRoot, cancellationToken);
+            var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
+            var envSummary = env.IsSuccess ? env.Data.Summary : "";
+
             // --- Step 3+4: Git preconditions (menus) ---
             branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
             var isProtected = !noGitMode && _branchGuard.IsProtected(branch, options.Git);
@@ -507,6 +513,32 @@ internal sealed class AgentLoop : IAgentLoop
                     {
                         completedByDone = true;
                         summary = ((DoneCommand)command).Summary;
+                    }
+                }
+
+                // --- BatchFailureMode: a failed command may stop the remaining commands ---
+                var failedIndex = executed.FindIndex(r => r.Status == CommandStatus.Error);
+                if (failedIndex >= 0 && options.Commands.BatchFailureMode != "Continue")
+                {
+                    var failedCommand = executed[failedIndex];
+                    var isReadOnlyFailure = failedCommand.Kind == CommandKind.RunCommand &&
+                        failedCommand.FailureReason is "command_not_found";
+                    var stop = options.Commands.BatchFailureMode == "StopOnAnyFailure" || !isReadOnlyFailure;
+                    if (stop)
+                    {
+                        foreach (var pending in script.Commands.Where(c => c.Number > failedCommand.Number && c.Kind != CommandKind.Say))
+                        {
+                            if (executed.Any(e => e.Number == pending.Number))
+                                continue;
+                            executed.Add(new CommandExecutionResult
+                            {
+                                Number = pending.Number,
+                                Kind = pending.Kind,
+                                Target = pending.Target,
+                                Status = CommandStatus.Skipped,
+                                ErrorMessage = $"an earlier command failed (#{failedCommand.Number})",
+                            });
+                        }
                     }
                 }
 

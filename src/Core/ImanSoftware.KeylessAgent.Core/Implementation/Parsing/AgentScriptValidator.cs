@@ -28,7 +28,23 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
             }
 
             if (parse.Problems.Count > 0)
-                return Outcome.Successful((IReadOnlyList<FormatProblem>)problems);
+            {
+                // Control-directive rules: exactly one of @@next / @@done per reply.
+            var hasDone = parse.Commands.Any(c => c is DoneCommand);
+            var hasNext = parse.Commands.Any(c => c is NextCommand);
+            var hasSay = parse.Commands.Any(c => c is SayCommand);
+            var hasOther = parse.Commands.Any(c => c is not (SayCommand or DoneCommand or NextCommand));
+
+            if (hasDone && hasNext)
+                problems.Add(new FormatProblem(null, ErrorCodes.ParseConflictingControl,
+                    "Both @@next and @@done in one reply — use exactly one control directive."));
+
+            if (hasSay && !hasDone && !hasNext && !hasOther)
+                problems.Add(new FormatProblem(null, ErrorCodes.ParseSayOnly,
+                    "A reply with only @@say gives me nothing to do — add commands, @@next, or @@done."));
+
+            return Outcome.Successful((IReadOnlyList<FormatProblem>)problems);
+            }
 
             foreach (var command in parse.Commands)
             {

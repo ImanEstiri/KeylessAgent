@@ -37,4 +37,10 @@ public enum CommandKind
 
     /// <summary>Ends the agent turn with a summary message.</summary>
     [Description("done")] Done,
+
+    /// <summary>Control directive: run this batch, send results, keep waiting for the next reply.</summary>
+    [Description("next")] Next,
+
+    /// <summary>Moves/renames a file: argument = source path, TO payload = destination path.</summary>
+    [Description("movefile")] MoveFile,
 }

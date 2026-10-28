@@ -126,12 +126,12 @@ public sealed record BrowserOptions
     /// <summary>
     /// Minimum artificial delay between browser actions. Default 400 ms.
     /// </summary>
-    public int MinDelayMs { get; init; } = 400;
+    public int MinDelayMs { get; init; } = 0;
 
     /// <summary>
     /// Maximum artificial delay between browser actions. Default 1500 ms.
     /// </summary>
-    public int MaxDelayMs { get; init; } = 1500;
+    public int MaxDelayMs { get; init; } = 150;
 
     /// <summary>
     /// Rate limit for messages sent to the chat. Default 6 per minute.
@@ -142,6 +142,11 @@ public sealed record BrowserOptions
     /// Debug mode: saves screenshots on errors and writes a diagnostics log. Default false.
     /// </summary>
     public bool Debug { get; init; }
+
+    /// <summary>
+    /// Human-like random delays between browser actions. Default false (event-driven waits only).
+    /// </summary>
+    public bool HumanDelay { get; init; }
 }
 
 /// <summary>
