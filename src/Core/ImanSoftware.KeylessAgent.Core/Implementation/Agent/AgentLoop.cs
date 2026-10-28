@@ -129,6 +129,7 @@ internal sealed class AgentLoop : IAgentLoop
         string? lastDirtyChoice = null;
         AgentSession? savedSession = null;
         object? changeBaseline = null;
+        var turnChanges = new List<ChangedPath>();
         var noGitModeUsed = false;
         var agentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -216,7 +217,6 @@ internal sealed class AgentLoop : IAgentLoop
             var isAgentBranch = !noGitMode && capabilities.IsAgentBranch;
 
             // Change tracking: baseline before the turn.
-            var turnChanges = new List<ChangedPath>();
             if (!dryRun)
                 changeBaseline = (await _changeTracker.CaptureAsync(workspaceRoot, !noGitMode, cancellationToken)).Data;
 
@@ -671,12 +671,17 @@ internal sealed class AgentLoop : IAgentLoop
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, stoppedReason ?? "turn finished"));
 
             // Persist the agent-changed path set for the next turn's dirty-menu skip — even when
-            // the turn never reached @@done, the files it changed are still agent-made.
+            // the turn never reached @@done, the files it changed are still agent-made. The same
+            // diff feeds ChangeSet on the turn result (Cancellation: the turn is over, so a
+            // cancelled token must not abort the diff inside the finally block).
             if (!dryRun && changeBaseline is not null)
             {
-                var changed = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline, !noGitModeUsed, cancellationToken)).Data;
+                var changed = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline, !noGitModeUsed, CancellationToken.None)).Data;
                 if (changed is not null)
+                {
+                    turnChanges.AddRange(changed);
                     agentPaths.UnionWith(changed.Select(c => c.Path));
+                }
             }
 
             if (errorMessage is null && savedSession is not null)
@@ -703,6 +708,7 @@ internal sealed class AgentLoop : IAgentLoop
             CompletedByDone = completedByDone,
             StoppedReason = stoppedReason,
             ErrorMessage = errorMessage,
+            ChangeSet = turnChanges,
             DryRun = dryRun,
         };
 

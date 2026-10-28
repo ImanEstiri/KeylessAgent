@@ -123,12 +123,16 @@ internal sealed class GitService : IGitService
     /// <inheritdoc />
     public async Task<Outcome<IReadOnlyList<string>>> RunStatusPorcelainAsync(string workspaceRoot)
     {
-        var status = await RunAsync(workspaceRoot, "status --porcelain");
+        // -uall: untracked files inside new directories must be listed individually
+        // (plain porcelain collapses them into "?? dir/").
+        var status = await RunAsync(workspaceRoot, "status --porcelain -uall");
         if (status.IsFailure)
             return Outcome.Failure<IReadOnlyList<string>>(status.Error);
 
+        // Porcelain columns are fixed ("XY path"): trimming would destroy the two-char
+        // status prefix of lines like " M file.txt" and shift every parsed path.
         var lines = status.Data.Output
-            .Split("\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
             .ToList();
         return Outcome.Successful((IReadOnlyList<string>)lines);
     }

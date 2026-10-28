@@ -457,6 +457,93 @@ public class AgentLoopTests : IDisposable
         sessionJson.Data.Should().Contain("changed-by-agent.txt");
     }
 
+    [Fact]
+    public async Task RunAsync_ChangeSet_ReportsFileCreatedViaNewfileCommand()
+    {
+        var chat = new FakeChatProvider(
+            """
+            @@newfile src/New.cs
+            <<<CONTENT
+            class New {}
+            CONTENT>>>
+            @@end
+            @@done
+            <<<MSG
+            created
+            MSG>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "create a file", ui);
+
+        // Git mode: a new untracked file's porcelain status is "??", which ChangeTracker maps
+        // to "modified" ("added" is reserved for staged files and the no-git index path).
+        result.ChangeSet.Should().Contain(c => c.Path == "src/New.cs");
+        result.ChangeSet.Should().Contain(c => c.Path == "src/New.cs" && c.Kind == "modified");
+    }
+
+    [Fact]
+    public async Task RunAsync_ChangeSet_ReportsModifiedFileFromUpdatefileCommand()
+    {
+        File.WriteAllText(Path.Combine(_root, "file.txt"), "original");
+        Git(_root, "init");
+        Git(_root, "add", "file.txt");
+        Git(_root, "-c", "user.name=ka-test", "-c", "user.email=ka@test.local", "commit", "-m", "seed");
+        var chat = new FakeChatProvider(
+            """
+            @@updatefile file.txt
+            <<<CONTENT
+            changed
+            CONTENT>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "edit the file", ui);
+
+        result.ChangeSet.Should().Contain(c => c.Path == "file.txt" && c.Kind == "modified");
+    }
+
+    [Fact]
+    public async Task RunAsync_ChangeSet_ReportsDeletedFileFromDeletefileCommand()
+    {
+        File.WriteAllText(Path.Combine(_root, "file.txt"), "doomed");
+        Git(_root, "init");
+        Git(_root, "add", "file.txt");
+        Git(_root, "-c", "user.name=ka-test", "-c", "user.email=ka@test.local", "commit", "-m", "seed");
+        var chat = new FakeChatProvider(
+            """
+            @@deletefile file.txt
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "remove the file", ui);
+
+        result.ChangeSet.Should().Contain(c => c.Path == "file.txt" && c.Kind == "deleted");
+    }
+
+    private static void Git(string workingDirectory, params string[] args)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("git", string.Join(" ", args))
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using var process = System.Diagnostics.Process.Start(psi)!;
+        process.WaitForExit();
+        process.ExitCode.Should().Be(0, "git " + string.Join(" ", args));
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
