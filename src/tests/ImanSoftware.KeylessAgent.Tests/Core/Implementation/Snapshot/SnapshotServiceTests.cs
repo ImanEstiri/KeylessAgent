@@ -116,6 +116,50 @@ public class SnapshotServiceTests : IDisposable
         (await _service.IsStaleAsync(_root)).Data.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task BuildAttachments_TreeAndChanged_ListsChangesSinceLastRefresh()
+    {
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "one");
+        File.WriteAllText(Path.Combine(_root, "b.txt"), "two");
+        await _service.RefreshAsync(_root);
+
+        // The workspace moves on: one file modified, one added, one deleted.
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "one-changed");
+        File.WriteAllText(Path.Combine(_root, "c.txt"), "three");
+        File.Delete(Path.Combine(_root, "b.txt"));
+
+        var outcome = await _service.BuildAttachmentsAsync(
+            _root, new KeylessOptions { Snapshot = new SnapshotOptions { Mode = SnapshotMode.TreeAndChanged } });
+
+        outcome.IsSuccess.Should().BeTrue();
+        var changed = outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.ChangedFiles);
+        changed.Name.Should().Be("changed-files.txt");
+        changed.Content.Should().Contain("modified a.txt");
+        changed.Content.Should().Contain("added c.txt");
+        changed.Content.Should().Contain("deleted b.txt");
+        outcome.Data.Should().Contain(a => a.Kind == SnapshotAttachmentKind.TreeView, "the tree is still attached");
+        outcome.Data.Should().NotContain(a => a.Kind == SnapshotAttachmentKind.CodeDump,
+            "TreeAndChanged replaces the dump with the changed-files list");
+    }
+
+    [Fact]
+    public async Task BuildAttachments_TreeAndChanged_WithoutBaseline_FallsBackToFullDump()
+    {
+        await _service.RefreshAsync(_root);
+        File.Delete(Path.Combine(_root, ".agent", "snapshot-baseline.json"));
+
+        var outcome = await _service.BuildAttachmentsAsync(
+            _root, new KeylessOptions { Snapshot = new SnapshotOptions { Mode = SnapshotMode.TreeAndChanged } });
+
+        outcome.IsSuccess.Should().BeTrue();
+        outcome.Data.Should().Contain(a => a.Kind == SnapshotAttachmentKind.CodeDump,
+            "without a baseline the full dump keeps the model operational");
+        outcome.Data.Should().Contain(a => a.Kind == SnapshotAttachmentKind.CodeDump && a.Content.Contains("### Program.cs"));
+        outcome.Data.Should().NotContain(a => a.Kind == SnapshotAttachmentKind.ChangedFiles);
+        outcome.Data.Should().NotContain(a => a.Content.Contains("TreeAndChanged mode:"),
+            "the placeholder must be gone");
+    }
+
     public void Dispose()
     {
         try
