@@ -39,6 +39,12 @@ public sealed record CommandExecutionResult
     public string? ErrorMessage { get; init; }
 
     /// <summary>
+    /// Stable machine-readable reason for a failed command:
+    /// command_not_found / timeout / denied / declined / non_zero_exit / killed.
+    /// </summary>
+    public string? FailureReason { get; init; }
+
+    /// <summary>
     /// Output for the model: file content for <c>readfile</c>, the user's answer for <c>ask</c>,
     /// process output for <c>runcommand</c>. Capped by <c>Limits.MaxCommandOutputChars</c> when formatted.
     /// </summary>

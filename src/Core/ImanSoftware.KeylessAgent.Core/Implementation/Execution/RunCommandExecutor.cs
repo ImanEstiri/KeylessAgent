@@ -15,16 +15,18 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 internal sealed class RunCommandExecutor : ICommandExecutor
 {
     private readonly ICommandPolicy _policy;
+    private readonly ICommandRiskClassifier _riskClassifier;
     private readonly ProcessRunner _runner;
 
     public RunCommandExecutor()
-        : this(new CommandPolicy(), new ProcessRunner())
+        : this(new CommandPolicy(), new CommandRiskClassifier(), new ProcessRunner())
     {
     }
 
-    internal RunCommandExecutor(ICommandPolicy policy, ProcessRunner runner)
+    internal RunCommandExecutor(ICommandPolicy policy, ICommandRiskClassifier riskClassifier, ProcessRunner runner)
     {
         _policy = policy;
+        _riskClassifier = riskClassifier;
         _runner = runner;
     }
 
@@ -36,40 +38,77 @@ internal sealed class RunCommandExecutor : ICommandExecutor
     {
         var run = (RunCommandCommand)command;
 
-        var validation = _policy.Validate(run.CommandLine, context.Options.Commands);
-        if (validation.IsFailure)
-            return CommandExecutionResult.Fail(command, validation.Error.Code, validation.Error.Message);
+        var assessment = _riskClassifier.Classify(run.CommandLine, context.WorkspaceRoot);
+        if (assessment.IsFailure)
+            return CommandExecutionResult.Fail(command, assessment.Error.Code, assessment.Error.Message);
+
+        var policy = _policy.Validate(run.CommandLine, context.Options.Commands);
+        if (policy.IsFailure)
+            return CommandExecutionResult.Fail(command, policy.Error.Code, policy.Error.Message);
+
+        if (assessment.Data.Tier == CommandRiskTier.Denied)
+        {
+            return CommandExecutionResult.Fail(command, ErrorCodes.CommandDenied,
+                $"denied: {assessment.Data.Reason}");
+        }
 
         if (context.DryRun)
             return NewFileExecutor.DryRunResult(command);
 
-        var needsConfirmation = context.Options.Mode switch
+        var (program, arguments) = SplitCommandLine(run.CommandLine);
+
+        // Approval policy per mode and tier.
+        var autoApproved = false;
+        var needsConfirmation = false;
+        var tierName = assessment.Data.Tier.ToString();
+        switch (context.Options.Mode)
         {
-            ApprovalMode.Ask => true,
-            ApprovalMode.AutoSafe => !_policy.IsAllowlisted(run.CommandLine, context.Options.Commands),
-            _ => false,
-        };
+            case ApprovalMode.Ask:
+                autoApproved = context.Options.Commands.AutoApprove.Contains(tierName, StringComparer.OrdinalIgnoreCase);
+                needsConfirmation = !autoApproved;
+                break;
+
+            case ApprovalMode.AutoSafe:
+                autoApproved = (assessment.Data.Tier is CommandRiskTier.ReadOnly or CommandRiskTier.Build) ||
+                    (assessment.Data.Tier == CommandRiskTier.Execute &&
+                     _policy.IsAllowlisted(run.CommandLine, context.Options.Commands));
+                needsConfirmation = !autoApproved;
+                break;
+
+            case ApprovalMode.Auto:
+                autoApproved = true;
+                break;
+        }
 
         if (needsConfirmation)
         {
             var confirmed = await context.Ui.ConfirmAsync(new ConfirmRequest(
-                "Run command",
-                $"The model wants to run: {run.CommandLine}"));
+                $"Run command ({tierName})",
+                $"The model wants to run: {run.CommandLine} — {assessment.Data.Reason}"));
             if (!confirmed)
             {
-                return CommandExecutionResult.Fail(command, ErrorCodes.CommandDeclined,
-                    "The user declined this command.");
+                return new CommandExecutionResult
+                {
+                    Number = command.Number,
+                    Kind = command.Kind,
+                    Target = command.Target,
+                    Status = CommandStatus.Error,
+                    ErrorCode = ErrorCodes.CommandDeclined,
+                    FailureReason = "declined",
+                    ErrorMessage = "The user declined this command.",
+                };
             }
         }
-
-        var (program, arguments) = SplitCommandLine(run.CommandLine);
-        ProcessResult result;
-        using (context.Ui.BeginWait($"running: {run.CommandLine}"))
+        else
         {
-            result = await _runner.RunAsync(
-                program, arguments, context.WorkspaceRoot,
-                context.Options.Commands.TimeoutSeconds, context.CancellationToken);
+            context.Ui.ShowProgress(new AgentProgressEvent(
+                AgentEventType.ExecutingCommand,
+                $"Running: {run.CommandLine} (auto-approved: {tierName.ToLowerInvariant()})"));
         }
+
+        var result = await _runner.RunAsync(
+            program, arguments, context.WorkspaceRoot,
+            context.Options.Commands.TimeoutSeconds, context.CancellationToken);
 
         if (result.TimedOut)
         {
@@ -80,6 +119,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
                 Target = command.Target,
                 Status = CommandStatus.Error,
                 ErrorCode = ErrorCodes.Timeout,
+                FailureReason = "timeout",
                 ErrorMessage = $"Command timed out after {context.Options.Commands.TimeoutSeconds}s and was killed.",
                 DurationSeconds = result.DurationSeconds,
             };
@@ -89,14 +129,21 @@ internal sealed class RunCommandExecutor : ICommandExecutor
 
         if (result.ExitCode != 0)
         {
+            var notFoundReason = IsCommandNotFound(result);
+            var failureReason = notFoundReason ? "command_not_found" : "non_zero_exit";
+            var message = notFoundReason
+                ? $"'{program}' was not found: it is not installed or not on PATH."
+                : $"Command exited with code {result.ExitCode}.";
+
             return new CommandExecutionResult
             {
                 Number = command.Number,
                 Kind = command.Kind,
                 Target = command.Target,
                 Status = CommandStatus.Error,
-                ErrorCode = ErrorCodes.CommandFailed,
-                ErrorMessage = $"Command exited with code {result.ExitCode}.",
+                ErrorCode = notFoundReason ? ErrorCodes.CommandNotFound : ErrorCodes.CommandFailed,
+                FailureReason = failureReason,
+                ErrorMessage = message,
                 Output = output,
                 ExitCode = result.ExitCode,
                 DurationSeconds = result.DurationSeconds,
@@ -113,6 +160,20 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             ExitCode = result.ExitCode,
             DurationSeconds = result.DurationSeconds,
         };
+
+    }
+    /// <summary>
+    /// Whether a non-zero exit means the program itself does not exist: cmd's 9009, shell 127,
+    /// or the classic "not recognized" messages.
+    /// </summary>
+    internal static bool IsCommandNotFound(ProcessResult result)
+    {
+        if (result.ExitCode is 9009 or 127)
+            return true;
+
+        var combined = (result.Output + " " + result.Error).ToLowerInvariant();
+        return combined.Contains("is not recognized as an internal or external command") ||
+               combined.Contains("command not found");
     }
 
     internal static (string Program, string Arguments) SplitCommandLine(string commandLine)

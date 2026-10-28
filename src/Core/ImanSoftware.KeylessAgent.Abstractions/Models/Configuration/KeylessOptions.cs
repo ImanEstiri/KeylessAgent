@@ -255,6 +255,17 @@ public sealed record CommandsOptions
     public IReadOnlyList<string> Allowlist { get; init; } = ["dotnet", "git", "npm", "node", "python"];
 
     /// <summary>
+    /// Command tiers that run without confirmation in Ask mode. Default: ReadOnly and Build.
+    /// </summary>
+    public IReadOnlyList<string> AutoApprove { get; init; } = ["ReadOnly", "Build"];
+
+    /// <summary>
+    /// What happens after a failed command: StopOnMutationFailure (default; a ReadOnly probe
+    /// failure never stops, everything else does), StopOnAnyFailure, Continue.
+    /// </summary>
+    public string BatchFailureMode { get; init; } = "StopOnMutationFailure";
+
+    /// <summary>
     /// Timeout for every external process. Default 300 seconds.
     /// </summary>
     public int TimeoutSeconds { get; init; } = 300;

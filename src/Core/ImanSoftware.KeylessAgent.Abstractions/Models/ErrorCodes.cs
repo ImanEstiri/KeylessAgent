@@ -35,6 +35,15 @@ public static class ErrorCodes
     /// <summary>A payload start or end marker line is malformed.</summary>
     public const string ParseBadMarker = "KA_PARSE_BAD_MARKER";
 
+    /// <summary>An unknown command option or option value (e.g. on_error=maybe).</summary>
+    public const string ParseBadOption = "KA_PARSE_BAD_OPTION";
+
+    /// <summary>Both @@next and @@done (or another conflicting control directive) in one reply.</summary>
+    public const string ParseConflictingControl = "KA_PARSE_CONFLICTING_CONTROL";
+
+    /// <summary>A reply contains only @@say and no control directive.</summary>
+    public const string ParseSayOnly = "KA_PARSE_SAY_ONLY";
+
     /// <summary>A path is absolute, contains <c>..</c>, or uses backslashes.</summary>
     public const string ParseBadPath = "KA_PARSE_BAD_PATH";
 
@@ -73,6 +82,9 @@ public static class ErrorCodes
 
     /// <summary>A command was blocked by the command policy deny list or allow list.</summary>
     public const string CommandDenied = "KA_COMMAND_DENIED";
+
+    /// <summary>The program of a command does not exist on this machine.</summary>
+    public const string CommandNotFound = "KA_COMMAND_NOT_FOUND";
 
     /// <summary>The user declined a command that needed confirmation.</summary>
     public const string CommandDeclined = "KA_COMMAND_DECLINED";
