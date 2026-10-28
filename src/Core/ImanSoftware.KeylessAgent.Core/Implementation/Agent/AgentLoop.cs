@@ -483,8 +483,9 @@ internal sealed class AgentLoop : IAgentLoop
                 var verdict = verdictOutcome.Data;
                 var script = verdict.Script!;
 
-                // Show the raw reply panel ONLY when invalid (user needs to see what went wrong)
-                // or with -v for debugging; for valid replies a compact summary suffices.
+                // Show the raw reply panel ONLY when invalid (the user needs to see what went
+                // wrong). The loop has no verbose flag; for valid replies a compact summary
+                // suffices, and the full reply text is always in .agent/logs.
                 if (!verdict.IsValid)
                 {
                     const int MaxConsoleReplyChars = 2000;
