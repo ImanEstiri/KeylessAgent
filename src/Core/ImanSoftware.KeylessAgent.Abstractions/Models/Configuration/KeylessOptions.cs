@@ -74,6 +74,11 @@ public sealed record BrowserOptions
     public bool ReuseExistingTab { get; init; } = true;
 
     /// <summary>
+    /// Maximum turns per chat before opening a new chat automatically. Default 20.
+    /// </summary>
+    public int MaxTurnsPerChat { get; init; } = 20;
+
+    /// <summary>
     /// Opt-in Playwright-managed fallback browser when the real Chrome cannot be found or
     /// started. Default false (an automated browser with its own profile is confusing).
     /// </summary>

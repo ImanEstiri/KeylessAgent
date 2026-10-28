@@ -408,6 +408,15 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (sent.IsFailure)
                     return Failed(sent.Error.Message, dryRun);
+
+                // Auto new chat: clear the session when the turn limit is reached.
+                if (savedSession is not null && savedSession.TurnsInChat >= options.Browser.MaxTurnsPerChat)
+                {
+                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting,
+                        $"Chat has served {savedSession.TurnsInChat} turns; starting a new chat."));
+                    await _sessions.ClearAsync(workspaceRoot);
+                    savedSession = null;
+                }
             }
 
             // --- Step 8: The conversation loop ---

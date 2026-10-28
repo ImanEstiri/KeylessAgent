@@ -54,6 +54,9 @@ internal sealed class SelectorsCatalog
     /// <summary>Uploaded-file chip selectors (the upload has landed in the UI).</summary>
     public string[] AttachmentChips { get; init; } = [];
 
+    /// <summary>Conversation-too-long notice selectors.</summary>
+    public string[] ChatLimitNotice { get; init; } = [];
+
     /// <summary>DeepThink toggle selectors.</summary>
     public string[] DeepThinkToggle { get; init; } = [];
 

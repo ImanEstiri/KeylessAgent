@@ -50,6 +50,11 @@
     "[class*='chips']",
     "[data-testid='file-chip']"
   ],
+  "ChatLimitNotice": [
+    "[class*='conversation-limit']",
+    "[class*='chat-limit']",
+    "div:has-text('conversation has reached')"
+  ],
   "DeepThinkToggle": [
     ".ds-toggle-button:has(span)",
     "[role=\"button\"][aria-pressed]",

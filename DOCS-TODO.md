@@ -42,3 +42,8 @@
 ## Task 5 additions (partial)
 - Raw reply panel shows ONLY when the reply is invalid or with -v; valid replies get a compact summary "Reply: N commands (kinds) via Copy/Dom".
 - script declaration moved before the panel so both the valid and invalid paths can access it.
+
+## Task 6 additions
+- Browser.MaxTurnsPerChat (default 20): when session.TurnsInChat >= max, session cleared and a fresh chat started.
+- Selector key ChatLimitNotice (3 fallbacks) for conversation-too-long detection.
+- Session model: TurnsInChat counter.
