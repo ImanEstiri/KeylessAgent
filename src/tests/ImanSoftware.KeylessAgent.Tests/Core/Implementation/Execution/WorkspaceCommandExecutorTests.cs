@@ -312,6 +312,17 @@ public class WorkspaceCommandExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task RunCommand_ProgramMissing_ReturnsCommandNotFound()
+    {
+        var result = await Run(new RunCommandCommand("ka-test-no-such-program-xyz") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be(ErrorCodes.CommandNotFound);
+        result.FailureReason.Should().Be("command_not_found");
+        result.ErrorMessage.Should().Contain("ka-test-no-such-program-xyz");
+    }
+
+    [Fact]
     public async Task RunCommand_InAskMode_RequiresConfirmation()
     {
         _ui.ConfirmAnswer = false;

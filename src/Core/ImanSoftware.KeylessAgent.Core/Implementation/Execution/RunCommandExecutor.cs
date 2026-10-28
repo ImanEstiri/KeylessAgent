@@ -111,6 +111,21 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             program, arguments, context.WorkspaceRoot,
             context.Options.Commands.TimeoutSeconds, context.CancellationToken);
 
+        if (result.NotStarted)
+        {
+            return new CommandExecutionResult
+            {
+                Number = command.Number,
+                Kind = command.Kind,
+                Target = command.Target,
+                Status = CommandStatus.Error,
+                ErrorCode = ErrorCodes.CommandNotFound,
+                FailureReason = "command_not_found",
+                Tier = assessment.Data.Tier,
+                ErrorMessage = $"'{program}' was not found: it is not installed or not on PATH.",
+            };
+        }
+
         if (result.TimedOut)
         {
             return new CommandExecutionResult

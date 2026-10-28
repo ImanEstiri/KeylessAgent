@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
@@ -10,7 +11,13 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 /// <param name="Error">Captured standard error.</param>
 /// <param name="DurationSeconds">Wall-clock duration in seconds.</param>
 /// <param name="TimedOut">Whether the process exceeded its timeout and was killed.</param>
-internal sealed record ProcessResult(int ExitCode, string Output, string Error, double DurationSeconds, bool TimedOut);
+internal sealed record ProcessResult(int ExitCode, string Output, string Error, double DurationSeconds, bool TimedOut)
+{
+    /// <summary>
+    /// Whether the process never started (executable not found or not accessible).
+    /// </summary>
+    public bool NotStarted { get; init; }
+}
 
 /// <summary>
 /// Runs external processes (git, dotnet, the snapshot bat files) with output capture,
@@ -48,7 +55,15 @@ internal sealed class ProcessRunner
         using var process = new Process { StartInfo = startInfo };
         var startedAt = DateTimeOffset.UtcNow;
 
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception)
+        {
+            // The executable does not exist or cannot be accessed; reported as command_not_found.
+            return new ProcessResult(-1, string.Empty, string.Empty, 0, TimedOut: false) { NotStarted = true };
+        }
         // Close stdin immediately so batch files that end with `pause` can never hang waiting for a key.
         process.StandardInput.Close();
 
