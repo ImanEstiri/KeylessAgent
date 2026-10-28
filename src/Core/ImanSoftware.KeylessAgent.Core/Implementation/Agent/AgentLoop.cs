@@ -408,6 +408,7 @@ internal sealed class AgentLoop : IAgentLoop
             // snapshot attachments. The full system prompt stays on the first message only.
             var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed);
             var message = reminder + "\n\n" + request;
+            if (!dryRun)
             {
                 Outcome sent;
                 using (ui.BeginWait("Sending the request to DeepSeek"))

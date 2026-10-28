@@ -226,6 +226,19 @@ public class AgentLoopTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_DryRun_DoesNotSendAnyMessage()
+    {
+        var chat = new FakeChatProvider(DoneReply("done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface { AskAnswer = "continue" };
+
+        await loop.RunAsync(_root, "dry task", ui, dryRun: true);
+
+        chat.Sent.Should().BeEmpty(
+            "dry-run must never send anything to the chat, not even the system prompt or the request");
+    }
+
+    [Fact]
     public async Task RunAsync_OutsideGitRepository_WithAutoInitDisabled_FailsFast()
     {
         var notARepo = Path.Combine(Path.GetTempPath(), "ka-norepo-" + Guid.CreateVersion7().ToString("N"));
