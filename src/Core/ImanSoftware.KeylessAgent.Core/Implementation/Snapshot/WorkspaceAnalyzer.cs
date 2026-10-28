@@ -182,6 +182,11 @@ internal sealed partial class WorkspaceAnalyzer
                     continue; // the outputs themselves never enter the dump
                 }
 
+                if (!DumpExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                {
+                    continue; // binaries, logs and other data do not belong in the dump
+                }
+
                 yield return file;
             }
 

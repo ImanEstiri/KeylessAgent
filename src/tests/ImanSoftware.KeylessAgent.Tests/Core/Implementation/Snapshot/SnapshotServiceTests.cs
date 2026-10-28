@@ -34,6 +34,27 @@ public class SnapshotServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RefreshAsync_CodeDump_IncludesOnlyKnownExtensions()
+    {
+        File.WriteAllText(Path.Combine(_root, "README.md"), "# readme");
+        File.WriteAllBytes(Path.Combine(_root, "image.png"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(_root, "lib.dll"), [4, 5, 6]);
+        File.WriteAllText(Path.Combine(_root, "trace.log"), "log line");
+        File.WriteAllBytes(Path.Combine(_root, "obj", "native.dll"), [7, 8, 9]);
+
+        await _service.RefreshAsync(_root);
+
+        var dump = await _storage.ReadAllTextAsync(Path.Combine(_root, "code-dump-result.md"));
+        dump.IsSuccess.Should().BeTrue();
+        dump.Data.Should().Contain("### Program.cs");
+        dump.Data.Should().Contain("### README.md");
+        dump.Data.Should().NotContain("### image.png", "binaries never belong in the dump");
+        dump.Data.Should().NotContain("### lib.dll", "binaries never belong in the dump");
+        dump.Data.Should().NotContain("### trace.log", "logs never belong in the dump");
+        dump.Data.Should().NotContain("### obj", "excluded directories never enter the dump");
+    }
+
+    [Fact]
     public async Task RefreshAsync_CompletesQuickly()
     {
         var task = _service.RefreshAsync(_root);
