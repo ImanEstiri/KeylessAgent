@@ -65,6 +65,8 @@ public class BrowserConnectorTests
 
         public string? LastArguments { get; private set; }
 
+        public string? LastWindowMode { get; private set; }
+
         public Func<bool>? PortOpensAfterLaunch { get; set; }
 
         public Task<bool> IsDebugPortOpenAsync(int port, CancellationToken cancellationToken = default)
@@ -83,9 +85,10 @@ public class BrowserConnectorTests
             return Task.FromResult<(object? Browser, object Context)>((new object(), new object()));
         }
 
-        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, CancellationToken cancellationToken = default)
+        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default)
         {
             StartedChrome = true;
+            LastWindowMode = windowMode;
             LastArguments = $"--remote-debugging-port={port} --user-data-dir=\"{userDataDir}\"";
             PortOpen = true;
             return Task.FromResult(4242);
@@ -129,6 +132,48 @@ public class BrowserConnectorTests
         environment.LastArguments.Should().Contain("chrome");
         outcome.Data.Attachment.Kind.Should().Be(BrowserConnectionKind.AutoLaunchedChrome);
         outcome.Data.Attachment.LaunchedProcess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AutoLaunch_PassesWindowModeToTheEnvironment()
+    {
+        var environment = new FakeEnvironment { PortOpen = false };
+        var connector = new BrowserConnector(environment, null)
+        {
+            OpenTabOverride = (_, _) => Task.FromResult(
+                Outcome.Successful<object>("page-stub")),
+        };
+
+        var outcome = await connector.ConnectAsync(Options() with { WindowMode = "Offscreen" }, Ui());
+
+        outcome.IsSuccess.Should().BeTrue();
+        environment.LastWindowMode.Should().Be("Offscreen");
+    }
+
+    [Theory]
+    [InlineData("Minimized", "--start-minimized", "--window-position=-32000,-32000")]
+    [InlineData("Offscreen", "--window-position=-32000,-32000", "--start-minimized")]
+    [InlineData("Normal", "", "--start-minimized")]
+    [InlineData("Nonsense", "--start-minimized", "--window-position=-32000,-32000")]
+    [InlineData("", "--start-minimized", "--window-position=-32000,-32000")]
+    public void ChromeArguments_MapWindowModeToItsFlag(string windowMode, string expectedFlag, string forbiddenFlag)
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", windowMode);
+
+        if (expectedFlag.Length == 0)
+        {
+            arguments.Should().NotContain("--start-minimized", "Normal never forces the window");
+            arguments.Should().NotContain("--window-position");
+        }
+        else
+        {
+            arguments.Should().Contain(expectedFlag);
+        }
+
+        arguments.Should().NotContain(forbiddenFlag);
+        arguments.Should().Contain("--remote-debugging-port=9222");
+        arguments.Should().Contain("--disable-renderer-backgrounding", "the throttling flags are kept");
+        arguments.Should().Contain("https://chat.deepseek.com/");
     }
 
     [Fact]

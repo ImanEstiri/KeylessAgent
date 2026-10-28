@@ -184,7 +184,7 @@ internal sealed class BrowserConnector : IBrowserConnector
         ui.ShowProgress(new AgentProgressEvent(
             AgentEventType.ConnectingToBrowser,
             $"Starting Chrome with the KeylessAgent profile ({userDataDir})…"));
-        var processId = await _environment.StartChromeAsync(chromePath, options.ChromeDebugPort, userDataDir, cancellationToken);
+        var processId = await _environment.StartChromeAsync(chromePath, options.ChromeDebugPort, userDataDir, options.WindowMode, cancellationToken);
 
         // Wait until /json/version answers (30s), then attach.
         var deadline = DateTime.UtcNow.AddSeconds(30);

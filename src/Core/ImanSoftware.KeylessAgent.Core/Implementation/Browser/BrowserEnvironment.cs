@@ -26,8 +26,9 @@ internal interface IBrowserEnvironment
     /// <summary>
     /// Starts the real Chrome with the dedicated profile and the debugging port.
     /// </summary>
+    /// <param name="windowMode">Minimized, Offscreen or Normal; unknown/empty defaults to Minimized.</param>
     /// <returns>The process id of the started Chrome.</returns>
-    Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, CancellationToken cancellationToken = default);
+    Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Connects over CDP to the Chrome on the debug port. Playwright-typed on the real
@@ -115,21 +116,40 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         return (browser, contexts[0]);
     }
 
-    public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, CancellationToken cancellationToken = default)
+    public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = chromePath,
-            Arguments =
-                $"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1 " +
-                $"--user-data-dir=\"{userDataDir}\" --no-first-run --no-default-browser-check " +
-                "--disable-renderer-backgrounding --disable-background-timer-throttling " +
-                "--disable-backgrounding-occluded-windows " +
-                "https://chat.deepseek.com/",
+            Arguments = ComposeChromeArguments(port, userDataDir, windowMode),
             UseShellExecute = true,
         };
 
         using var process = Process.Start(startInfo);
         return Task.FromResult(process?.Id ?? 0);
+    }
+
+    /// <summary>
+    /// Maps the window mode to its Chrome flag: Minimized → --start-minimized, Offscreen → a
+    /// window position far off-screen, Normal → no flag (never forced focus). Unknown or empty
+    /// modes default to Minimized, matching the configuration default.
+    /// </summary>
+    internal static string WindowModeFlag(string windowMode) => windowMode.Trim().ToLowerInvariant() switch
+    {
+        "normal" => "",
+        "offscreen" => "--window-position=-32000,-32000",
+        _ => "--start-minimized",
+    };
+
+    internal static string ComposeChromeArguments(int port, string userDataDir, string windowMode)
+    {
+        var windowFlag = WindowModeFlag(windowMode);
+        var windowPrefix = windowFlag.Length > 0 ? windowFlag + " " : string.Empty;
+        return windowPrefix +
+            $"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1 " +
+            $"--user-data-dir=\"{userDataDir}\" --no-first-run --no-default-browser-check " +
+            "--disable-renderer-backgrounding --disable-background-timer-throttling " +
+            "--disable-backgrounding-occluded-windows " +
+            "https://chat.deepseek.com/";
     }
 }
