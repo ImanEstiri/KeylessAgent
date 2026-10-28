@@ -27,9 +27,8 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                     $"The response is {rawReply.Length} characters; the maximum is {limits.MaxResponseChars}. Split the work across several responses."));
             }
 
-            if (parse.Problems.Count > 0)
-            {
-                // Control-directive rules: exactly one of @@next / @@done per reply.
+            // Control-directive rules: exactly one of @@next / @@done per reply.
+            // These apply to parse-valid replies too, so they run before the early return.
             var hasDone = parse.Commands.Any(c => c is DoneCommand);
             var hasNext = parse.Commands.Any(c => c is NextCommand);
             var hasSay = parse.Commands.Any(c => c is SayCommand);
@@ -43,8 +42,8 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                 problems.Add(new FormatProblem(null, ErrorCodes.ParseSayOnly,
                     "A reply with only @@say gives me nothing to do — add commands, @@next, or @@done."));
 
-            return Outcome.Successful((IReadOnlyList<FormatProblem>)problems);
-            }
+            if (parse.Problems.Count > 0)
+                return Outcome.Successful((IReadOnlyList<FormatProblem>)problems);
 
             foreach (var command in parse.Commands)
             {

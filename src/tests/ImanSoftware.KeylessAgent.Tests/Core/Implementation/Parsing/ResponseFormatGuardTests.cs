@@ -80,6 +80,51 @@ public class ResponseFormatGuardTests
     }
 
     [Fact]
+    public void Check_NextAndDoneInOneReply_IsRejected()
+    {
+        // Parse-valid: no grammar problems, so only the validator's control rules can reject it.
+        // Bare @@next — its optional MSG payload is not accepted by the parser (separate defect).
+        const string script = """
+            @@say
+            <<<MSG
+            continuing
+            MSG>>>
+            @@end
+            @@next
+            @@end
+            @@done
+            <<<MSG
+            all finished
+            MSG>>>
+            @@end
+            @@eof
+            """;
+
+        var outcome = _guard.Check(script, Limits());
+
+        outcome.Data.IsValid.Should().BeFalse();
+        outcome.Data.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseConflictingControl);
+    }
+
+    [Fact]
+    public void Check_SayOnly_IsRejected()
+    {
+        const string script = """
+            @@say
+            <<<MSG
+            just a status line
+            MSG>>>
+            @@end
+            @@eof
+            """;
+
+        var outcome = _guard.Check(script, Limits());
+
+        outcome.Data.IsValid.Should().BeFalse();
+        outcome.Data.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseSayOnly);
+    }
+
+    [Fact]
     public void Check_OversizedReply_IsRejected()
     {
         var limits = new LimitsOptions { MaxResponseChars = 50 };
