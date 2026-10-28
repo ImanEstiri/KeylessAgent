@@ -32,6 +32,7 @@ public class WorkspaceCommandExecutorTests : IDisposable
             new EditFileExecutor(_storage, guard, backup),
             new DeleteFileExecutor(_storage, guard, backup),
             new ReadFileExecutor(_storage),
+            new MoveFileExecutor(_storage, guard, backup),
             new RunCommandExecutor(),
             new AskExecutor(),
             new CommitExecutor(_git, guard),
@@ -288,6 +289,33 @@ public class WorkspaceCommandExecutorTests : IDisposable
 
         result.Status.Should().Be(CommandStatus.Error);
         result.ErrorCode.Should().Be(ErrorCodes.CommandDenied);
+    }
+
+    [Fact]
+    public async Task Move_InAskMode_Declined_DoesNotMove()
+    {
+        await _storage.WriteAllTextAsync(Path.Combine(_root, "a.txt"), "x");
+        _ui.ConfirmAnswer = false;
+
+        var result = await Run(new MoveFileCommand("a.txt", "b.txt") { Number = 1 }, mode: ApprovalMode.Ask);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be(ErrorCodes.CommandDeclined);
+        _storage.FileExists(Path.Combine(_root, "a.txt")).Should().BeTrue("nothing moved on decline");
+        _storage.FileExists(Path.Combine(_root, "b.txt")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Move_InAskMode_Confirmed_MovesAndShowsDiff()
+    {
+        await _storage.WriteAllTextAsync(Path.Combine(_root, "a.txt"), "x");
+
+        var result = await Run(new MoveFileCommand("a.txt", "b.txt") { Number = 1 }, mode: ApprovalMode.Ask);
+
+        result.Status.Should().Be(CommandStatus.Ok);
+        _storage.FileExists(Path.Combine(_root, "b.txt")).Should().BeTrue();
+        _storage.FileExists(Path.Combine(_root, "a.txt")).Should().BeFalse("the source is gone after the move");
+        _ui.Diffs.Should().ContainSingle("the move is shown as a diff together with the confirmation");
     }
 
     [Fact]

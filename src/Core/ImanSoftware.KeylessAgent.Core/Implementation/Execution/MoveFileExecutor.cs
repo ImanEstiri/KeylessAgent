@@ -1,5 +1,6 @@
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
@@ -70,6 +71,18 @@ internal sealed class MoveFileExecutor : ICommandExecutor
 
         if (context.DryRun)
             return NewFileExecutor.DryRunResult(command);
+
+        // Moves are confirmed in Ask AND AutoSafe; only Auto skips (same as deletion). The
+        // diff is shown together with the confirmation prompt, not on its own.
+        if (context.Options.Mode != ApprovalMode.Auto)
+        {
+            context.Ui.ShowDiff(new FileChange(move.Path, FileChangeKind.Edit, null, null));
+            var confirmed = await context.Ui.ConfirmAsync(new ConfirmRequest(
+                "Move file",
+                $"The model wants to move \"{move.Path}\" to \"{move.ToPath}\". A backup of the source is stored in .agent/backups."));
+            if (!confirmed)
+                return CommandExecutionResult.Fail(command, ErrorCodes.CommandDeclined, "The user declined this move.");
+        }
 
         var backup = await _backup.BackupAsync(context.WorkspaceRoot, source.Data);
         if (backup.IsFailure)
