@@ -25,6 +25,15 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
         // chat session for it (its own .agent/session.json); a failure keeps the old workspace.
         async Task<string?> SwitchWorkspace(string oldWorkspace, string newWorkspace, CancellationToken ct)
         {
+            if (oldWorkspace == newWorkspace)
+            {
+                // /newchat: clear the session file so a fresh chat starts
+                var resetResult = await sessions.ClearAsync(newWorkspace);
+                if (resetResult.IsFailure)
+                    return $"Cannot reset the session file: {resetResult.Error.Message}";
+                return null;
+            }
+
             var git = KeylessAgentServiceFactory.CreateGitService();
             var repo = await git.GetRepositoryInfoAsync(newWorkspace);
             if (repo.IsFailure || !repo.Data.IsRepository)

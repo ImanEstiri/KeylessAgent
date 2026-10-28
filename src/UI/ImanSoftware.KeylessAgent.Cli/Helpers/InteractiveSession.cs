@@ -107,6 +107,16 @@ internal sealed class InteractiveSession
                 PrintHelp();
                 return null;
 
+            case "/newchat":
+                var clearError = await _switchWorkspace(workspace, workspace, cancellationToken);
+                if (clearError is not null)
+                {
+                    _console.MarkupLine($"[red][[x]][/] {clearError.EscapeMarkup()}");
+                    return null;
+                }
+                _console.MarkupLine("[cyan]New chat session started (same workspace).[/]");
+                return workspace;
+
             case "/workspace":
                 if (parts.Length < 2 || string.IsNullOrWhiteSpace(parts[1]))
                 {
@@ -142,6 +152,7 @@ internal sealed class InteractiveSession
     {
         _console.MarkupLine("[cyan]Available commands[/]");
         _console.MarkupLine("  [white]/workspace <path>[/]  Switch to another workspace (validated; fresh chat session)");
+        _console.MarkupLine("  [white]/newchat[/]           Start a fresh chat in the same workspace");
         _console.MarkupLine("  [white]/help[/]              Show this list");
         _console.MarkupLine("[grey]Anything else is sent to the agent as a request. An empty line quits.[/]");
     }

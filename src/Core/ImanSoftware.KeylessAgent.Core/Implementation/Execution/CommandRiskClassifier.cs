@@ -33,12 +33,14 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
         ["findstr"] = CommandRiskTier.ReadOnly,
         ["grep"] = CommandRiskTier.ReadOnly,
         ["rg"] = CommandRiskTier.ReadOnly,
+        ["npx"] = CommandRiskTier.ReadOnly,
         ["echo"] = CommandRiskTier.ReadOnly,
     };
 
     private static readonly HashSet<string> ReadOnlyGitSubcommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "status", "log", "diff", "show", "rev-parse", "describe", "ls-files", "version", "--version", "-v",
+        "remote", "branch --list", "branch --show-current", "branch -vv", "remote -v",
     };
 
     private static readonly HashSet<string> BuildDotnetSubcommands = new(StringComparer.OrdinalIgnoreCase)
@@ -215,8 +217,20 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
             if (program.Equals("git", StringComparison.OrdinalIgnoreCase) && args.Count > 0)
             {
                 var sub = args[0].Trim('"', '-');
+
+                // Read-only git subcommands
                 if (ReadOnlyGitSubcommands.Contains(args[0].Trim('"')) || ReadOnlyGitSubcommands.Contains(sub))
                     return (CommandRiskTier.ReadOnly, "read-only git subcommand");
+
+                // git branch is read-only when listing, risky when creating/deleting
+                if (sub.Equals("branch", StringComparison.OrdinalIgnoreCase))
+                {
+                    var branchArgs = args.Skip(1).ToList();
+                    if (branchArgs.Count == 0 || branchArgs.All(a =>
+                        a.StartsWith("--", StringComparison.Ordinal) || a is "-vv" or "-a" or "-r"))
+                        return (CommandRiskTier.ReadOnly, "git branch listing is read-only");
+                    return (CommandRiskTier.Risky, "git branch creates/deletes branches");
+                }
 
                 return (CommandRiskTier.Risky, $"git '{args[0]}' is not a known read-only subcommand");
             }
@@ -232,13 +246,13 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
 
             if (ExecutePrograms.Contains(program) && program != "dotnet")
             {
-                // node/npm/python: bare version flags are read-only; scripts/tests are Execute.
+                // node/npm/python: version flags, bare ls/list, and no-args are read-only.
                 if (args.Count == 0 || args.All(a => a is "-v" or "--version" || a.StartsWith("-")))
-                {
-                    if (program.Equals("npm", StringComparison.OrdinalIgnoreCase) && args.Any(a => a.Equals("ls", StringComparison.OrdinalIgnoreCase)))
-                        return (CommandRiskTier.ReadOnly, "npm ls is read-only");
                     return (CommandRiskTier.ReadOnly, "version/info flag");
-                }
+
+                if (program.Equals("npm", StringComparison.OrdinalIgnoreCase) &&
+                    args.All(a => a is "ls" or "list" or "-g" or "--global" or "--depth=0"))
+                    return (CommandRiskTier.ReadOnly, "npm ls/list is read-only");
 
                 return (CommandRiskTier.Execute, $"runs project code ({program})");
             }
@@ -270,8 +284,12 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
 
     private static bool IsPathEscapingWorkspace(string token, string workspaceRoot)
     {
-        // Only consider path-like tokens (contain \ or / or end with a path-ish extension or start with a drive).
-        if (!(token.Contains('\\') || token.Contains('/')) || token.StartsWith('-'))
+        // Skip flags (/all, /b, -v, ...) and URLs (https://...)
+        if (token.StartsWith("-") || (token.StartsWith("/") && token.Length > 1 && char.IsLetter(token[1])))
+            return false;
+        if (!(token.Contains("\\") || token.Contains("/")))
+            return false;
+        if (token.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return false;
 
         try
