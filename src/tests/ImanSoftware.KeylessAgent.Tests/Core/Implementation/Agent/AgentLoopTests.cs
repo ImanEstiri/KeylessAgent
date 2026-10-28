@@ -819,6 +819,35 @@ public class AgentLoopTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }
     }
 
+    [Fact]
+    public async Task RunAsync_AfterSessionClear_NextTurnStartsANewChat()
+    {
+        // /newchat (InteractiveCommand.SwitchWorkspace with old==new) only clears session.json
+        // via the SessionStore — this test proves the NEXT turn then opens a NEW chat (fresh
+        // ChatUrl, system prompt resent) instead of resuming the cleared one.
+        var chat = new FakeChatProvider(DoneReply("first turn done"), DoneReply("second turn done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "first request", ui);
+        var firstSession = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        firstSession.IsSuccess.Should().BeTrue();
+        firstSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/fake-session-1\"");
+
+        var cleared = await new SessionStore().ClearAsync(_root);
+        cleared.IsSuccess.Should().BeTrue();
+
+        await loop.RunAsync(_root, "second request", ui);
+        var secondSession = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        secondSession.IsSuccess.Should().BeTrue();
+        secondSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/fake-session-2\"",
+            "after the clear the next turn must open a new chat, not resume the old one");
+
+        // Turn 1's messages went to chat 1 and turn 2's to chat 2 — nothing crossed over.
+        chat.MessagesPerSession.Should().BeEquivalentTo([2, 2]);
+        chat.StartCount.Should().Be(2);
+    }
+
 /// <summary>
 /// A chat provider whose every reply wait fails with KA_CHAT_EXHAUSTED, simulating a chat
 /// that reached its length limit.
