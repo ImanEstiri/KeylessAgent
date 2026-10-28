@@ -10,6 +10,8 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
@@ -409,6 +411,50 @@ public class AgentLoopTests : IDisposable
         sessionJson.IsSuccess.Should().BeTrue();
         sessionJson.Data.Should().Contain("\"Turn\": 1");
         sessionJson.Data.Should().Contain("fake-session");
+    }
+
+    [Fact]
+    public async Task RunAsync_MaxTurnsPerChat_StartsNewChatBeforeSendingSecondTurn()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Browser": { "MaxTurnsPerChat": 1, "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+        var chat = new FakeChatProvider(DoneReply("first turn done"), DoneReply("second turn done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "first request", ui);
+        await loop.RunAsync(_root, "second request", ui);
+
+        chat.StartCount.Should().Be(2, "the second turn must start a new chat");
+        chat.MessagesPerSession.Should().BeEquivalentTo([2, 2],
+            "chat A keeps only its first-turn messages (system prompt + request); the second turn goes to the new chat");
+        ui.Progress.Should().Contain(p =>
+            p.Type == AgentEventType.SessionStarting && p.Detail.Contains("starting a new chat"));
+        var sessionJson = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        sessionJson.IsSuccess.Should().BeTrue();
+        sessionJson.Data.Should().Contain("\"TurnsInChat\": 1");
+    }
+
+    [Fact]
+    public async Task RunAsync_AgentChangedPaths_PersistedInSession()
+    {
+        var chat = new FakeChatProvider(
+            """
+            @@newfile changed-by-agent.txt
+            <<<CONTENT
+            agent made this
+            CONTENT>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "create a file", ui);
+
+        var sessionJson = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        sessionJson.IsSuccess.Should().BeTrue();
+        sessionJson.Data.Should().Contain("changed-by-agent.txt");
     }
 
     public void Dispose()

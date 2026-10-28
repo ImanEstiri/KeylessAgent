@@ -128,6 +128,7 @@ internal sealed class AgentLoop : IAgentLoop
         string? errorMessage = null;
         string? lastDirtyChoice = null;
         AgentSession? savedSession = null;
+        object? changeBaseline = null;
         var noGitModeUsed = false;
         var agentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -216,7 +217,6 @@ internal sealed class AgentLoop : IAgentLoop
 
             // Change tracking: baseline before the turn.
             var turnChanges = new List<ChangedPath>();
-            object? changeBaseline = null;
             if (!dryRun)
                 changeBaseline = (await _changeTracker.CaptureAsync(workspaceRoot, !noGitMode, cancellationToken)).Data;
 
@@ -323,7 +323,21 @@ internal sealed class AgentLoop : IAgentLoop
             // --- Step 5: Session state (resume or new chat) ---
             var sessionOutcome = await _sessions.LoadAsync(workspaceRoot);
             var session = sessionOutcome.IsSuccess ? sessionOutcome.Data : null;
+
+            // MaxTurnsPerChat: the limit is checked BEFORE connecting, so the request never
+            // goes to a chat that has already served its turns.
+            if (session is not null && session.TurnsInChat >= options.Browser.MaxTurnsPerChat)
+            {
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting,
+                    $"Chat has served {session.TurnsInChat} turns; starting a new chat."));
+                await _sessions.ClearAsync(workspaceRoot);
+                session = null;
+            }
+
             turn = (session?.Turn ?? 0) + 1;
+
+            // The agent-changed path set persists across turns and is cleared only with the session.
+            agentPaths.UnionWith(session?.AgentChangedPaths ?? []);
             await logger.StartAsync(workspaceRoot, turn, cancellationToken);
             await logger.AppendAsync("turn-started", new { Turn = turn, Request = request, Branch = branch, DryRun = dryRun }, cancellationToken);
 
@@ -348,6 +362,10 @@ internal sealed class AgentLoop : IAgentLoop
                 Turn = turn,
                 SystemPromptSent = session?.SystemPromptSent ?? false,
                 CreatedAtUtc = session?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
+                AgentChangedPaths = [.. agentPaths],
+
+                // Incremented at turn start, not end, so the limit check sees the true count.
+                TurnsInChat = (session?.TurnsInChat ?? 0) + 1,
             };
             await _sessions.SaveAsync(workspaceRoot, savedSession);
 
@@ -391,14 +409,7 @@ internal sealed class AgentLoop : IAgentLoop
                     if (sentPrompt.IsFailure)
                         return Failed(sentPrompt.Error.Message, dryRun);
 
-                    savedSession = new AgentSession
-                    {
-                        ChatUrl = chatSession.ChatUrl,
-                        Branch = branch,
-                        Turn = turn,
-                        SystemPromptSent = true,
-                        CreatedAtUtc = session?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
-                    };
+                    savedSession = savedSession! with { SystemPromptSent = true };
                     await _sessions.SaveAsync(workspaceRoot, savedSession);
                     await logger.AppendAsync("system-prompt-sent", new { Turn = turn }, cancellationToken);
                 }
@@ -418,15 +429,6 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (sent.IsFailure)
                     return Failed(sent.Error.Message, dryRun);
-
-                // Auto new chat: clear the session when the turn limit is reached.
-                if (savedSession is not null && savedSession.TurnsInChat >= options.Browser.MaxTurnsPerChat)
-                {
-                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting,
-                        $"Chat has served {savedSession.TurnsInChat} turns; starting a new chat."));
-                    await _sessions.ClearAsync(workspaceRoot);
-                    savedSession = null;
-                }
             }
 
             // --- Step 8: The conversation loop ---
@@ -615,15 +617,6 @@ internal sealed class AgentLoop : IAgentLoop
 
                 if (completedByDone)
                 {
-                // Update the agent-changed path set (file commands + runcommand side effects):
-                // persisted in session.json so the next turn can skip the dirty menu when all
-                // dirty paths are agent-made.
-                if (!dryRun && changeBaseline is not null)
-                {
-                    var changed = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline, !noGitModeUsed, cancellationToken)).Data;
-                    if (changed is not null)
-                        agentPaths.UnionWith(changed.Select(c => c.Path));
-                }
                         await logger.AppendAsync("turn-done", new { Turn = turn, Summary = summary }, cancellationToken);
                 await logger.AppendAsync("timings", new { Turn = turn, Timings = timings.FormatTable() }, cancellationToken);
                     break;
@@ -677,8 +670,20 @@ internal sealed class AgentLoop : IAgentLoop
             await RefreshSnapshotAsync(ui, workspaceRoot, logger);
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, stoppedReason ?? "turn finished"));
 
+            // Persist the agent-changed path set for the next turn's dirty-menu skip — even when
+            // the turn never reached @@done, the files it changed are still agent-made.
+            if (!dryRun && changeBaseline is not null)
+            {
+                var changed = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline, !noGitModeUsed, cancellationToken)).Data;
+                if (changed is not null)
+                    agentPaths.UnionWith(changed.Select(c => c.Path));
+            }
+
             if (errorMessage is null && savedSession is not null)
+            {
+                savedSession = savedSession with { AgentChangedPaths = [.. agentPaths] };
                 await _sessions.SaveAsync(workspaceRoot, savedSession);
+            }
         }
 
         var commits = new List<string>();

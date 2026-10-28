@@ -24,19 +24,31 @@ internal sealed class FakeChatProvider : IChatProvider
     public int RemainingReplies => _replies.Count;
 
     /// <summary>
+    /// How many chat sessions this provider has started; each session gets a distinct ChatUrl.
+    /// </summary>
+    public int StartCount { get; private set; }
+
+    /// <summary>
+    /// Messages sent per session, indexed by session number minus one.
+    /// </summary>
+    public List<int> MessagesPerSession { get; } = [];
+
+    /// <summary>
     /// Everything sent to the fake chat, in order.
     /// </summary>
     public List<SentMessage> Sent { get; } = [];
 
     public Task<Outcome<IChatSession>> StartSessionAsync(ChatSessionOptions options, CancellationToken cancellationToken = default)
     {
-        IChatSession session = new FakeChatSession(this, "https://chat.deepseek.com/a/fake-session");
+        StartCount++;
+        MessagesPerSession.Add(0);
+        IChatSession session = new FakeChatSession(this, StartCount, $"https://chat.deepseek.com/a/fake-session-{StartCount}");
         return Task.FromResult(Outcome.Successful(session));
     }
 
     internal sealed record SentMessage(string Text, IReadOnlyList<string> AttachmentNames);
 
-    private sealed class FakeChatSession(FakeChatProvider owner, string url) : IChatSession
+    private sealed class FakeChatSession(FakeChatProvider owner, int sessionIndex, string url) : IChatSession
     {
         public string ChatUrl => url;
 
@@ -44,6 +56,7 @@ internal sealed class FakeChatProvider : IChatProvider
 
         public Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
         {
+            owner.MessagesPerSession[sessionIndex - 1]++;
             owner.Sent.Add(new SentMessage(message, attachments.Select(a => a.Name).ToList()));
             return Task.FromResult(Outcome.Successful());
         }
