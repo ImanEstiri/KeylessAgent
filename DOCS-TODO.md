@@ -38,3 +38,7 @@
 - Hover calls removed from copy capture (never un-minimizes during normal operation).
 - Window restored ONLY for login/captcha; minimized again after (Browser.MinimizeAfterLogin).
 - Delay defaults changed: MinDelayMs=0, MaxDelayMs=150, HumanDelay=false.
+
+## Task 5 additions (partial)
+- Raw reply panel shows ONLY when the reply is invalid or with -v; valid replies get a compact summary "Reply: N commands (kinds) via Copy/Dom".
+- script declaration moved before the panel so both the valid and invalid paths can access it.

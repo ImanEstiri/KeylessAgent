@@ -433,14 +433,8 @@ internal sealed class AgentLoop : IAgentLoop
 
                 var reply = replyOutcome.Data;
 
-                // Visible trail: what the model actually returned (truncated here; the full
-                // text is in .agent/logs/turn-N.jsonl). If the browser dies mid-turn, the user
-                // still sees every reply and whether it was usable.
-                const int MaxConsoleReplyChars = 2000;
-                var visibleReply = reply.Length <= MaxConsoleReplyChars
-                    ? reply
-                    : reply[..MaxConsoleReplyChars] + $"… ({reply.Length - MaxConsoleReplyChars} more characters; full text in .agent/logs)";
-                ui.Say($"[raw reply]\n{visibleReply}");
+                var replySource = chatSession.LastReplyOrigin;
+                await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply, Source = replySource }, cancellationToken);
                 await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply }, cancellationToken);
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply, "Validating AgentScript"));
@@ -452,6 +446,24 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 var verdict = verdictOutcome.Data;
+                var script = verdict.Script!;
+
+                // Show the raw reply panel ONLY when invalid (user needs to see what went wrong)
+                // or with -v for debugging; for valid replies a compact summary suffices.
+                if (!verdict.IsValid)
+                {
+                    const int MaxConsoleReplyChars = 2000;
+                    var visibleReply = reply.Length <= MaxConsoleReplyChars
+                        ? reply
+                        : reply[..MaxConsoleReplyChars] + $"… ({reply.Length - MaxConsoleReplyChars} more; full text in .agent/logs)";
+                    ui.Say($"[raw reply]{Environment.NewLine}{visibleReply}");
+                }
+                else
+                {
+                    var commandKinds = string.Join(", ", script.Commands.Select(c => c.Kind.ToString().ToLowerInvariant()));
+                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply,
+                        $"Reply: {script.Commands.Count} commands ({commandKinds}) via {replySource}"));
+                }
                 if (!verdict.IsValid)
                 {
                     if (formatRetries >= options.Limits.MaxFormatRetries)
@@ -493,7 +505,6 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 formatRetries = 0;
-                var script = verdict.Script!;
 
                 // --- Step 8b: Execute (say always; others up to the batch limit; rest skipped) ---
                 var executed = new List<CommandExecutionResult>();
