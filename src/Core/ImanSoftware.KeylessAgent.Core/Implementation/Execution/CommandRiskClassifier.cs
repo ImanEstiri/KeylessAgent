@@ -162,6 +162,12 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
         if (DenyPrograms.Contains(program, StringComparer.OrdinalIgnoreCase))
             return (CommandRiskTier.Denied, $"'{program}' is denied");
 
+        // Shell machinery the segment parser does not model: cmd escape, variable expansion,
+        // history expansion, backgrounding, nested shells, here-strings. The classifier is NOT
+        // a shell parser, so anything of this shape is Risky before any allow-list is consulted.
+        if (IsShellMachinery(segment, program, args))
+            return (CommandRiskTier.Risky, "shell escape, variable expansion, backgrounding or a nested shell");
+
         if (program.Equals("git", StringComparison.OrdinalIgnoreCase) && args.Count > 0)
         {
             var sub = args[0].Trim('-', '"');
@@ -254,6 +260,12 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
                     args.All(a => a is "ls" or "list" or "-g" or "--global" or "--depth=0"))
                     return (CommandRiskTier.ReadOnly, "npm ls/list is read-only");
 
+                // npx fetches and runs an arbitrary package: a bare argument is never ReadOnly
+                // or Execute — the allow-list flow (AutoSafe) is the only auto path for it.
+                if (program.Equals("npx", StringComparison.OrdinalIgnoreCase) &&
+                    args.Any(a => !a.StartsWith("-")))
+                    return (CommandRiskTier.Risky, "npx downloads and runs an arbitrary package");
+
                 return (CommandRiskTier.Execute, $"runs project code ({program})");
             }
 
@@ -268,6 +280,49 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
     {
         "test", "run", "watch", "exec",
     };
+
+    private static bool IsShellMachinery(string segment, string program, List<string> args)
+    {
+        // % and ^ anywhere (even quoted — cmd expands %VAR% inside double quotes), history
+        // expansion, a single & (segment splitting already removed && pairs, so any remaining
+        // & backgrounds the pipeline), and here-string markers.
+        if (segment.Contains('^') || segment.Contains('%') ||
+            segment.Contains("!!", StringComparison.Ordinal) ||
+            segment.Contains('&') ||
+            segment.Contains("@\"", StringComparison.Ordinal) ||
+            segment.Contains("@'", StringComparison.Ordinal))
+            return true;
+
+        if (program is "start" or "powershell" or "pwsh")
+            return true;
+
+        if (program is "cmd" && args.Any(a => a is "/c" or "/C" or "/k" or "/K"))
+            return true;
+
+        return false;
+    }
+
+    private static readonly string[] CmdFlagBodies =
+    [
+        "c", "k", "s", "q", "b", "e", "a", "o", "t", "f", "p", "d", "u", "v",
+        "x", "y", "i", "l", "g", "n", "r", "w", "z", "j", "m", "h", "all", "ir",
+    ];
+
+    /// <summary>
+    /// Whether a <c>/…</c> token is a known cmd.exe-style flag. Anything else starting with
+    /// <c>/</c> is treated as a (Unix-style) path and checked for workspace escape —
+    /// <c>/etc/passwd</c> must not be skipped the way <c>/q</c> is.
+    /// </summary>
+    private static bool IsCmdStyleFlag(string token)
+    {
+        if (token.Length < 2 || token[0] != '/')
+            return false;
+
+        var body = token[1..];
+        return CmdFlagBodies.Any(flag =>
+            body.StartsWith(flag, StringComparison.OrdinalIgnoreCase) &&
+            (body.Length == flag.Length || !char.IsLetter(body[flag.Length])));
+    }
 
     private static bool IsGitWriteSubcommand(List<string> args)
     {
@@ -284,8 +339,9 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
 
     private static bool IsPathEscapingWorkspace(string token, string workspaceRoot)
     {
-        // Skip flags (/all, /b, -v, ...) and URLs (https://...)
-        if (token.StartsWith("-") || (token.StartsWith("/") && token.Length > 1 && char.IsLetter(token[1])))
+        // Skip -flags and known cmd.exe-style /flags; a /token that is NOT a known flag is a
+        // (Unix) path and must be checked for escape.
+        if (token.StartsWith("-") || IsCmdStyleFlag(token))
             return false;
         if (!(token.Contains("\\") || token.Contains("/")))
             return false;

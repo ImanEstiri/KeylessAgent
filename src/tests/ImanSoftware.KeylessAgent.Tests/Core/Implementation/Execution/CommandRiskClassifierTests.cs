@@ -60,6 +60,7 @@ public class CommandRiskClassifierTests
     [InlineData("grep -rn \"TODO\" src/")]
     [InlineData("rg \"pattern\" src/")]
     [InlineData("echo hello")]
+    [InlineData("echo done")]
     public void ReadOnly_Commands_AreClassifiedAsReadOnly(string command)
     {
         TierOf(command).Should().Be(CommandRiskTier.ReadOnly, $"'{command}' is read-only");
@@ -92,7 +93,6 @@ public class CommandRiskClassifierTests
     [InlineData("npm ci")]
     [InlineData("node src/script.js")]
     [InlineData("python src/main.py")]
-    [InlineData("npx prettier --write src/")]
     public void Execute_Commands_AreClassifiedAsExecute(string command)
     {
         TierOf(command).Should().Be(CommandRiskTier.Execute, $"'{command}' runs project code or scripts");
@@ -107,6 +107,22 @@ public class CommandRiskClassifierTests
     [InlineData("powershell -EncodedCommand AAAA")]
     [InlineData("powershell -File script.ps1")]
     [InlineData("cmd /c del /s /q *.cs")]
+    [InlineData("cmd /k del x")]
+    [InlineData("cmd /c echo stepped")]
+    // Shell machinery the parser does not model (cmd escape, expansion, backgrounding,
+    // nested shells, here-strings) — the AutoApprove boundary must treat these as Risky.
+    [InlineData("echo hello ^& del file")]
+    [InlineData("git status %PATH%")]
+    [InlineData("git log --format=\"%H\"")]
+    [InlineData("git status & whoami")]
+    [InlineData("start notepad.exe")]
+    [InlineData("powershell Get-ChildItem")]
+    [InlineData("pwsh -NoProfile ls")]
+    [InlineData("node -e \"s = @'text'@; \"")]
+    [InlineData("echo @'oops")]
+    [InlineData("type /etc/passwd")]
+    [InlineData("npx some-unknown-tool")]
+    [InlineData("npx prettier --write src/")]
     [InlineData("echo hello > output.txt")]
     [InlineData("echo hello >> output.txt")]
     [InlineData("git add -A")]
