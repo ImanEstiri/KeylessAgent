@@ -132,11 +132,11 @@ internal sealed class AgentLoop : IAgentLoop
         var turnChanges = new List<ChangedPath>();
         var noGitModeUsed = false;
         var agentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var timings = new TimingRecorder();
 
         try
         {
             // --- Step 1: Load and validate configuration ---
-            var timings = new TimingRecorder();
             timings.Start("config");
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Loading keyless.json"));
             var configOutcome = await _configuration.LoadAsync(workspaceRoot);
@@ -388,10 +388,16 @@ internal sealed class AgentLoop : IAgentLoop
             // --- Step 6: Snapshot refresh when stale ---
             var staleOutcome = await _snapshot.IsStaleAsync(workspaceRoot);
             if (staleOutcome.IsSuccess && staleOutcome.Data)
+            {
+                timings.Start("snapshot-refresh");
                 await RefreshSnapshotAsync(ui, workspaceRoot, logger);
+                timings.Stop("snapshot-refresh");
+            }
 
             // --- Step 7: Send the request (system prompt on the first message of a new chat) ---
+            timings.Start("attachments");
             var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options);
+            timings.Stop("attachments");
             var attachments = attachmentsOutcome.IsSuccess ? attachmentsOutcome.Data : [];
             if (attachmentsOutcome.IsFailure)
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
@@ -437,11 +443,13 @@ internal sealed class AgentLoop : IAgentLoop
             var message = reminder + "\n\n" + request;
             if (!dryRun)
             {
+                timings.Start("upload");
                 Outcome sent;
                 using (ui.BeginWait("Sending the request to DeepSeek"))
                 {
                     sent = await chatSession.SendMessageAsync(message, attachments, cancellationToken);
                 }
+                timings.Stop("upload");
 
                 if (sent.IsFailure)
                     return Failed(sent.Error.Message, dryRun);
@@ -456,11 +464,13 @@ internal sealed class AgentLoop : IAgentLoop
                 cancellationToken.ThrowIfCancellationRequested();
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.WaitingForReply, $"Waiting for reply {batch}"));
+                timings.Start("reply-wait");
                 Outcome<string> replyOutcome;
                 using (ui.BeginWait($"Waiting for reply {batch}"))
                 {
                     replyOutcome = await chatSession.WaitForReplyAsync(cancellationToken);
                 }
+                timings.Stop("reply-wait");
                 if (replyOutcome.IsFailure)
                 {
                     stoppedReason = $"no reply: {replyOutcome.Error.Message}";
@@ -551,7 +561,9 @@ internal sealed class AgentLoop : IAgentLoop
                 {
                     if (command.Kind == CommandKind.Say)
                     {
+                        timings.Start("execute");
                         var sayResult = await _executor.ExecuteAsync(command, Context());
+                        timings.Stop("execute");
                         executed.Add(sayResult);
                         continue;
                     }
@@ -586,7 +598,9 @@ internal sealed class AgentLoop : IAgentLoop
                         continue;
                     }
 
+                    timings.Start("execute");
                     var result = await _executor.ExecuteAsync(command, Context());
+                    timings.Stop("execute");
                     executed.Add(result);
                     await logger.AppendResultAsync(result, cancellationToken);
 
@@ -644,20 +658,24 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 // --- Step 8c: Send the per-command results back ---
+                timings.Start("attachments");
                 var feedbackAttachments = options.Snapshot.AttachOnFeedback
                     ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options)).Data ?? []
                     : [];
+                timings.Stop("attachments");
 
                 var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits);
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
                 await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)
                 {
+                    timings.Start("results-send");
                     Outcome sent;
                     using (ui.BeginWait("Sending the results to DeepSeek"))
                     {
                         sent = await chatSession.SendMessageAsync(resultsMessage, feedbackAttachments, cancellationToken);
                     }
+                    timings.Stop("results-send");
 
                     if (sent.IsFailure)
                     {
@@ -682,7 +700,9 @@ internal sealed class AgentLoop : IAgentLoop
         finally
         {
             // --- Step 9: Always refresh the snapshot so the next request starts fresh ---
+            timings.Start("snapshot-refresh");
             await RefreshSnapshotAsync(ui, workspaceRoot, logger);
+            timings.Stop("snapshot-refresh");
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.TurnFinished, stoppedReason ?? "turn finished"));
 
             // Persist the agent-changed path set for the next turn's dirty-menu skip — even when
@@ -724,6 +744,7 @@ internal sealed class AgentLoop : IAgentLoop
             StoppedReason = stoppedReason,
             ErrorMessage = errorMessage,
             ChangeSet = turnChanges,
+            Timings = timings.FormatTable(),
             DryRun = dryRun,
         };
 

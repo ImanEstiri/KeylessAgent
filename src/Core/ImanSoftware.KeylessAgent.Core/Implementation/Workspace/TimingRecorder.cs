@@ -20,6 +20,12 @@ internal sealed class TimingRecorder : ITimingRecorder
     /// <inheritdoc />
     public void Start(string phase)
     {
+        // A second Start for an already-running phase would orphan the first stopwatch
+        // (the overwrite loses its entry and Stop would close the wrong one); re-entry
+        // is ignored instead so one Start/Stop pair per phase is always recorded.
+        if (_running.TryGetValue(phase, out _))
+            return;
+
         var sw = new Stopwatch();
         _running[phase] = sw;
         sw.Start();

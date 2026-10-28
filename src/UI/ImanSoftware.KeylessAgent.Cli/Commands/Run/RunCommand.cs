@@ -21,7 +21,7 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
         try
         {
             return await AgentCliRunner.RunTurnAsync(
-                workspace, request, settings.DryRun, settings.Verbose, turnCts.Token);
+                workspace, request, settings.DryRun, settings.Verbose, turnCts.Token, timing: settings.Timing);
         }
         finally
         {

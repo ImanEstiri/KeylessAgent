@@ -21,19 +21,25 @@ internal static class AgentCliRunner
     /// <param name="dryRun">Dry-run mode.</param>
     /// <param name="verbose">Verbose (debug) diagnostics logging.</param>
     /// <param name="cancellationToken">Cancels the current turn (Ctrl+C).</param>
+    /// <param name="timing">Print the per-phase timing table after the turn.</param>
+    /// <param name="chatProvider">Optional chat provider override (tests); defaults to the real browser provider.</param>
     /// <returns>0 on a completed turn, non-zero on failure or cancellation.</returns>
     public static async Task<int> RunTurnAsync(
         string workspaceRoot,
         string request,
         bool dryRun,
         bool verbose,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool timing = false,
+        IChatProvider? chatProvider = null)
     {
         ILoggerFactory? loggerFactory = null;
         if (verbose)
             loggerFactory = KeylessAgentServiceFactory.CreateFileLoggerFactory(workspaceRoot);
 
-        var loop = KeylessAgentServiceFactory.CreateAgentLoop(loggerFactory);
+        var loop = chatProvider is null
+            ? KeylessAgentServiceFactory.CreateAgentLoop(loggerFactory)
+            : KeylessAgentServiceFactory.CreateAgentLoop(chatProvider, loggerFactory);
         var ui = new ConsoleUserInterface();
         var writer = ConsoleWriter.Shared;
         var logPath = System.IO.Path.Combine(workspaceRoot, ".agent", "logs");
@@ -73,6 +79,9 @@ internal static class AgentCliRunner
                 foreach (var change in result.ChangeSet)
                     AnsiConsole.MarkupLine($"  [grey]•[/] {change.Kind,-8} {change.Path.EscapeMarkup()}");
             }
+
+            if (timing && result.Timings is not null)
+                AnsiConsole.WriteLine(result.Timings.TrimEnd());
 
             AnsiConsole.MarkupLine("[grey]keyless undo restores .agent/backups; merge the agent branch yourself; changes made by commands are not undoable.[/]");
 

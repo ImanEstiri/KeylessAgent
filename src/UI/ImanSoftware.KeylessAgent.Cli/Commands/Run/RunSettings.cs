@@ -20,4 +20,8 @@ internal sealed class RunSettings : CommandSettings
     [CommandOption("-v|--verbose")]
     [Description("Write browser diagnostics to .agent/logs/diagnostics.log.")]
     public bool Verbose { get; init; }
+
+    [CommandOption("--timing")]
+    [Description("Print the per-phase timing table after the turn.")]
+    public bool Timing { get; init; }
 }

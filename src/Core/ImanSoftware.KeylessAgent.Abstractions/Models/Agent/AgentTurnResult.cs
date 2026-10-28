@@ -56,4 +56,9 @@ public sealed record AgentTurnResult
     /// The workspace files changed during this turn (added/modified/deleted/renamed).
     /// </summary>
     public IReadOnlyList<ChangedPath> ChangeSet { get; init; } = [];
+
+    /// <summary>
+    /// The per-phase timing table of this turn (the same text that is appended to the turn log).
+    /// </summary>
+    public string? Timings { get; init; }
 }

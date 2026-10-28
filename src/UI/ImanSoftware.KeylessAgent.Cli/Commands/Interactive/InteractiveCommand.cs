@@ -49,7 +49,7 @@ internal sealed class InteractiveCommand : AsyncCommand<InteractiveSettings>
         var session = new InteractiveSession(
             AnsiConsole.Console,
             (currentWorkspace, request, turnCancellationToken) =>
-                AgentCliRunner.RunTurnAsync(currentWorkspace, request, dryRun: false, settings.Verbose, turnCancellationToken),
+                AgentCliRunner.RunTurnAsync(currentWorkspace, request, dryRun: false, settings.Verbose, turnCancellationToken, timing: settings.Timing),
             SwitchWorkspace);
 
         var (exitCode, _) = await session.RunAsync(workspace, cancellationToken);
