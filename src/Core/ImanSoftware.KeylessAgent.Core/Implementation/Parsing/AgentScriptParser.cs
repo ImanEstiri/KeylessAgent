@@ -292,6 +292,24 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         }
 
         var payload = block.Sections;
+        string? onError = null;
+        var argText = block.Argument;
+        if (block.Kind == CommandKind.RunCommand && argText.StartsWith("on_error=", StringComparison.OrdinalIgnoreCase))
+        {
+            var spaceIdx = argText.IndexOf(' ');
+            var optionPart = spaceIdx < 0 ? argText : argText[..spaceIdx];
+            var value = optionPart["on_error=".Length..].Trim().ToLowerInvariant();
+            if (value is not ("continue" or "stop"))
+            {
+                problems.Add(new FormatProblem(block.StartLine, ErrorCodes.ParseBadOption,
+                    $"Unknown on_error value '{value}' (expected continue or stop)."));
+                return;
+            }
+
+            onError = value;
+            argText = spaceIdx < 0 ? string.Empty : argText[(spaceIdx + 1)..].Trim();
+        }
+
         AgentScriptCommand command = block.Kind switch
         {
             CommandKind.Say => new SayCommand(Payload(payload, SectionNames.Msg)),
@@ -301,7 +319,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
                 Payload(payload, SectionNames.Find), Payload(payload, SectionNames.Replace)),
             CommandKind.DeleteFile => new DeleteFileCommand(block.Argument),
             CommandKind.ReadFile => new ReadFileCommand(block.Argument),
-            CommandKind.RunCommand => new RunCommandCommand(Payload(payload, SectionNames.Cmd)),
+            CommandKind.RunCommand => new RunCommandCommand(Payload(payload, SectionNames.Cmd), onError),
             CommandKind.Ask => new AskCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.Commit => new CommitCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.Done => new DoneCommand(Payload(payload, SectionNames.Msg)),

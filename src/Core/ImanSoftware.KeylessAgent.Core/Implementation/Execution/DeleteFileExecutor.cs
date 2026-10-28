@@ -44,8 +44,8 @@ internal sealed class DeleteFileExecutor : ICommandExecutor
         if (resolve.IsFailure)
             return CommandExecutionResult.Fail(command, resolve.Error.Code, resolve.Error.Message);
 
-        // NO-GIT MODE: no branch protection (there is no git to protect).
-        if (!context.NoGitMode)
+        // NO-GIT MODE and DRY RUN: no branch protection (no git, or nothing is mutated).
+        if (!context.NoGitMode && !context.DryRun)
         {
             var guard = await _branchGuard.EnsureModifiableAsync(context.WorkspaceRoot, context.Options.Git);
             if (guard.IsFailure)

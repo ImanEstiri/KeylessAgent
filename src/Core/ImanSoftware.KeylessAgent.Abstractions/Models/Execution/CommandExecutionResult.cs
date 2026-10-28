@@ -1,5 +1,6 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
 
 namespace ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 
@@ -43,6 +44,11 @@ public sealed record CommandExecutionResult
     /// command_not_found / timeout / denied / declined / non_zero_exit / killed.
     /// </summary>
     public string? FailureReason { get; init; }
+
+    /// <summary>
+    /// The risk tier of this command (from the classifier). Used for batch failure decisions.
+    /// </summary>
+    public CommandRiskTier Tier { get; init; } = CommandRiskTier.Risky;
 
     /// <summary>
     /// Output for the model: file content for <c>readfile</c>, the user's answer for <c>ask</c>,

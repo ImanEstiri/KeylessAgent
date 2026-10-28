@@ -461,4 +461,60 @@ public class AgentScriptParserTests
         result.Problems.Select(p => p.Code).Should().Contain([
             ErrorCodes.ParseStrayText, ErrorCodes.ParseUnknownCommand, ErrorCodes.ParseMissingEof]);
     }
+
+    [Fact]
+    public void Parse_RunCommandOnError_AcceptsContinueAndStop()
+    {
+        const string script = """
+            @@runcommand on_error=continue
+            <<<CMD
+            dotnet test
+            CMD>>>
+            @@end
+            @@runcommand on_error=stop
+            <<<CMD
+            dotnet build
+            CMD>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var commands = result.Commands.OfType<RunCommandCommand>().ToList();
+        commands.Should().HaveCount(2);
+        commands[0].OnError.Should().Be("continue");
+        commands[1].OnError.Should().Be("stop");
+        commands[0].CommandLine.Should().Be("dotnet test");
+    }
+
+    [Fact]
+    public void Parse_RunCommandOnError_BadValue_IsRejected()
+    {
+        const string script = """
+            @@runcommand on_error=maybe
+            <<<CMD
+            dotnet test
+            CMD>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseBad(script);
+        result.Problems.Select(p => p.Code).Should().Contain(ErrorCodes.ParseBadOption);
+    }
+
+    [Fact]
+    public void Parse_RunCommandOnError_OnlyOnRunCommand()
+    {
+        // on_error= on a non-runcommand block is not silently consumed as an argument.
+        const string script = """
+            @@deletefile on_error=continue
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var command = result.Commands.OfType<DeleteFileCommand>().Single();
+        command.Target.Should().Be("on_error=continue");
+    }
 }

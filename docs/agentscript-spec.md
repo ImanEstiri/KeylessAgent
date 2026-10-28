@@ -90,7 +90,7 @@ Every command segment is classified:
 ## Batch failure modes
 
 `Commands.BatchFailureMode` controls what happens after a failed command:
-- **StopOnMutationFailure** (default): a ReadOnly probe failure never stops the batch (probes are independent); a Build/Execute/Risky/file-command/@@commit failure stops the remaining non-say commands (reported as skipped with "an earlier command failed (#N)").
+- **StopOnMutationFailure** (default): a ReadOnly probe failure never stops the batch (probes are independent); a Build/Execute/Risky/file-command/@@commit failure stops the remaining non-say commands (reported as skipped with "batch stopped at command #N").
 - **StopOnAnyFailure**: any failure stops the rest.
 - **Continue**: nothing stops.
 

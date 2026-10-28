@@ -50,12 +50,13 @@ internal sealed class CommitExecutor : ICommandExecutor
             };
         }
 
+        // Dry run mutates nothing, so branch protection does not apply.
+        if (context.DryRun)
+            return NewFileExecutor.DryRunResult(command);
+
         var guard = await _branchGuard.EnsureModifiableAsync(context.WorkspaceRoot, context.Options.Git);
         if (guard.IsFailure)
             return CommandExecutionResult.Fail(command, guard.Error.Code, guard.Error.Message);
-
-        if (context.DryRun)
-            return NewFileExecutor.DryRunResult(command);
 
         var stage = await _git.StageAllAsync(context.WorkspaceRoot);
         if (stage.IsFailure)

@@ -42,7 +42,7 @@ Confirmations are yes/no prompts with the default shown in brackets (Enter accep
 
 In `AutoSafe` and `Auto` the agent warns at turn start: **AutoSafe is not a security boundary** — allow-listed programs (dotnet, node, python, …) can execute arbitrary code.
 
-`--dry-run` executes nothing and prints what would happen. Declined-by-user commands are reported to the model as `KA_COMMAND_DECLINED` results — the model sees the refusal and can adapt.
+`--dry-run` executes nothing and prints what would happen. Branch protection does not apply in a dry run — the agent branch is simulated, not created, and mutation commands are previewed instead of enforced. Declined-by-user commands are reported to the model as `KA_COMMAND_DECLINED` results — the model sees the refusal and can adapt.
 
 ## Backups and undo
 

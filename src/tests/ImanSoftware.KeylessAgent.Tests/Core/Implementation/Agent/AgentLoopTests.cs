@@ -10,6 +10,7 @@ using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Agent;
@@ -301,6 +302,99 @@ public class AgentLoopTests : IDisposable
         {
             // Temp cleanup is best-effort.
         }
+    }
+
+    [Fact]
+    public async Task StopOnMutationFailure_ThirdCommandNotExecuted()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+        var chat = new FakeChatProvider(
+            """
+            @@newfile a1.txt
+            <<<CONTENT
+            1
+            CONTENT>>>
+            @@end
+            @@runcommand
+            <<<CMD
+            dotnet build --project nonexistent.csproj
+            CMD>>>
+            @@end
+            @@newfile a2.txt
+            <<<CONTENT
+            2
+            CONTENT>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface { AskAnswer = "y" };
+
+        await loop.RunAsync(_root, "test", ui);
+
+        File.Exists(Path.Combine(_root, "a1.txt")).Should().BeTrue("first command succeeded");
+        File.Exists(Path.Combine(_root, "a2.txt")).Should().BeFalse("third command must not execute after build failure");
+    }
+
+    [Fact]
+    public async Task ReadOnlyProbeFailure_DoesNotStop()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand
+            <<<CMD
+            git rev-parse --verify missing-ref-xyz
+            CMD>>>
+            @@end
+            @@runcommand
+            <<<CMD
+            cmd /c echo probe-2-ok
+            CMD>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface { AskAnswer = "y" };
+
+        await loop.RunAsync(_root, "probe test", ui);
+
+        // Both commands ran (read-only probe failure doesn't stop the batch).
+        var results = chat.Sent.FirstOrDefault(m => m.Text.StartsWith("[KEYLESSAGENT RESULTS]", StringComparison.Ordinal));
+        results.Should().NotBeNull();
+        results.Text.Should().Contain("status: error");
+        results.Text.Should().Contain("probe-2-ok");
+    }
+
+    [Fact]
+    public async Task OnErrorContinue_OverridesStopOnAnyFailure()
+    {
+        File.WriteAllText(Path.Combine(_root, "keyless.json"),
+            """{ "Commands": { "BatchFailureMode": "StopOnAnyFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+        var chat = new FakeChatProvider(
+            """
+            @@runcommand on_error=continue
+            <<<CMD
+            nonexistent-tool-xyz --version
+            CMD>>>
+            @@end
+            @@runcommand
+            <<<CMD
+            cmd /c echo after-failure-ok
+            CMD>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface { AskAnswer = "y" };
+
+        await loop.RunAsync(_root, "test", ui);
+
+        var results = chat.Sent.FirstOrDefault(m => m.Text.StartsWith("[KEYLESSAGENT RESULTS]", StringComparison.Ordinal));
+        results.Should().NotBeNull();
+        results.Text.Should().Contain("after-failure-ok");
     }
 
     [Fact]

@@ -528,6 +528,8 @@ internal sealed class AgentLoop : IAgentLoop
                 // --- Step 8b: Execute (say always; others up to the batch limit; rest skipped) ---
                 var executed = new List<CommandExecutionResult>();
                 var usedSlots = 0;
+                var stopBatch = false;
+                var failedCommandNumber = 0;
                 foreach (var command in script.Commands)
                 {
                     if (command.Kind == CommandKind.Say)
@@ -553,6 +555,20 @@ internal sealed class AgentLoop : IAgentLoop
                     usedSlots++;
                     ui.ShowProgress(new AgentProgressEvent(AgentEventType.ExecutingCommand,
                         $"#{command.Number} {command.Kind} {command.Target}"));
+
+                    if (stopBatch)
+                    {
+                        executed.Add(new CommandExecutionResult
+                        {
+                            Number = command.Number,
+                            Kind = command.Kind,
+                            Target = command.Target,
+                            Status = CommandStatus.Skipped,
+                            ErrorMessage = $"batch stopped at command #{failedCommandNumber}",
+                        });
+                        continue;
+                    }
+
                     var result = await _executor.ExecuteAsync(command, Context());
                     executed.Add(result);
                     await logger.AppendResultAsync(result, cancellationToken);
@@ -562,33 +578,40 @@ internal sealed class AgentLoop : IAgentLoop
                         completedByDone = true;
                         summary = ((DoneCommand)command).Summary;
                     }
-                }
 
-                // --- BatchFailureMode: a failed command may stop the remaining commands ---
-                var failedIndex = executed.FindIndex(r => r.Status == CommandStatus.Error);
-                if (failedIndex >= 0 && options.Commands.BatchFailureMode != "Continue")
-                {
-                    var failedCommand = executed[failedIndex];
-                    var isReadOnlyFailure = failedCommand.Kind == CommandKind.RunCommand &&
-                        failedCommand.FailureReason is "command_not_found";
-                    var stop = options.Commands.BatchFailureMode == "StopOnAnyFailure" || !isReadOnlyFailure;
-                    if (stop)
+                    // Strict failure precedence inside the batch: the command's own
+                    // on_error option wins over the configured batch failure mode, and
+                    // read-only probes never stop a StopOnMutationFailure batch.
+                    if (result.Status == CommandStatus.Error)
                     {
-                        foreach (var pending in script.Commands.Where(c => c.Number > failedCommand.Number && c.Kind != CommandKind.Say))
+                        if (command is RunCommandCommand run && run.OnError is not null)
                         {
-                            if (executed.Any(e => e.Number == pending.Number))
-                                continue;
-                            executed.Add(new CommandExecutionResult
+                            if (run.OnError.Equals("stop", StringComparison.OrdinalIgnoreCase))
                             {
-                                Number = pending.Number,
-                                Kind = pending.Kind,
-                                Target = pending.Target,
-                                Status = CommandStatus.Skipped,
-                                ErrorMessage = $"an earlier command failed (#{failedCommand.Number})",
-                            });
+                                stopBatch = true;
+                                failedCommandNumber = command.Number;
+                            }
+                            continue;
                         }
+
+                        if (options.Commands.BatchFailureMode.Equals("Continue", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (options.Commands.BatchFailureMode.Equals("StopOnAnyFailure", StringComparison.OrdinalIgnoreCase))
+                        {
+                            stopBatch = true;
+                            failedCommandNumber = command.Number;
+                            continue;
+                        }
+
+                        var tier = command.Kind == CommandKind.ReadFile ? CommandRiskTier.ReadOnly : result.Tier;
+                        if (tier == CommandRiskTier.ReadOnly)
+                            continue;
+
+                        stopBatch = true;
+                        failedCommandNumber = command.Number;
                     }
                 }
+
 
                 if (completedByDone)
                 {

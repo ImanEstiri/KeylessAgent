@@ -95,6 +95,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
                     Status = CommandStatus.Error,
                     ErrorCode = ErrorCodes.CommandDeclined,
                     FailureReason = "declined",
+                Tier = assessment.Data.Tier,
                     ErrorMessage = "The user declined this command.",
                 };
             }
@@ -120,6 +121,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
                 Status = CommandStatus.Error,
                 ErrorCode = ErrorCodes.Timeout,
                 FailureReason = "timeout",
+                Tier = assessment.Data.Tier,
                 ErrorMessage = $"Command timed out after {context.Options.Commands.TimeoutSeconds}s and was killed.",
                 DurationSeconds = result.DurationSeconds,
             };
@@ -143,6 +145,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
                 Status = CommandStatus.Error,
                 ErrorCode = notFoundReason ? ErrorCodes.CommandNotFound : ErrorCodes.CommandFailed,
                 FailureReason = failureReason,
+                Tier = assessment.Data.Tier,
                 ErrorMessage = message,
                 Output = output,
                 ExitCode = result.ExitCode,
@@ -159,6 +162,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             Output = output,
             ExitCode = result.ExitCode,
             DurationSeconds = result.DurationSeconds,
+            Tier = assessment.Data.Tier,
         };
 
     }
