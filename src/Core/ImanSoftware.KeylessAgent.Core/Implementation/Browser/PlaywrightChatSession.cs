@@ -35,6 +35,9 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// </summary>
     private AssistantStamp? _preSendStamp;
 
+    /// <summary>Whether the DeepThink/Search toggles were already handled for this chat.</summary>
+    private bool _togglesApplied;
+
     public PlaywrightChatSession(
         IChatPage page,
         Func<ValueTask> disposeAsync,
@@ -74,6 +77,16 @@ internal sealed class PlaywrightChatSession : IChatSession
         try
         {
             await _rateLimiter.WaitAsync(cancellationToken);
+
+            // Feature toggles are per-chat switches: set them once on the first message of a
+            // NEW chat. A new chat has no resume URL (the loop leaves it empty when the saved
+            // session was cleared); a resumed chat keeps whatever it was left with.
+            if (!_togglesApplied)
+            {
+                _togglesApplied = true;
+                if (string.IsNullOrEmpty(_options.ResumeChatUrl))
+                    await ApplyChatTogglesAsync(cancellationToken);
+            }
 
             // --- Step 1: fingerprint the current newest assistant message (pre-send baseline) ---
             _preSendStamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
@@ -199,6 +212,46 @@ internal sealed class PlaywrightChatSession : IChatSession
 
         LastReplyOriginValue = read.Data.Origin;
         return read;
+    }
+
+    /// <summary>
+    /// Syncs the DeepThink and Search toggles with the configuration on a new chat: reads each
+    /// toggle's aria-pressed state and clicks when it disagrees with the option. A toggle whose
+    /// selectors match nothing is logged and skipped — a changed web UI must never fail a turn.
+    /// </summary>
+    private async Task ApplyChatTogglesAsync(CancellationToken cancellationToken)
+    {
+        var selectors = await SelectorsCatalog.LoadAsync(_options.WorkspaceRoot, _options.Browser.SelectorsFile, cancellationToken);
+        if (selectors.IsFailure)
+        {
+            _log.LogWarning("Chat toggles not checked: selectors could not be loaded ({Reason}).", selectors.Error.Message);
+            return;
+        }
+
+        await EnsureToggleAsync("DeepThink", selectors.Data.DeepThinkToggle, _options.Browser.EnableDeepThink, cancellationToken);
+        await EnsureToggleAsync("Search", selectors.Data.SearchToggle, _options.Browser.EnableSearch, cancellationToken);
+    }
+
+    private async Task EnsureToggleAsync(string name, string[] selectors, bool enabled, CancellationToken cancellationToken)
+    {
+        if (selectors.Length == 0)
+            return;
+
+        var state = await _page.GetToggleStateAsync(selectors, cancellationToken);
+        if (state is null)
+        {
+            _log.LogWarning("The {Name} toggle did not match any selector; leaving it as-is.", name);
+            return;
+        }
+
+        var pressed = state.Equals("true", StringComparison.OrdinalIgnoreCase);
+        if (pressed == enabled)
+            return;
+
+        if (await _page.ClickToggleAsync(selectors, cancellationToken))
+            _log.LogInformation("The {Name} toggle was {State}; clicked it to {Enabled}.", name, state, enabled);
+        else
+            _log.LogWarning("The {Name} toggle needed changing but no click landed; leaving it as-is.", name);
     }
 
     /// <inheritdoc />

@@ -202,6 +202,37 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
 
     public string? LastCopyClickedKey { get; set; }
 
+    /// <summary>aria-pressed states by selector; a missing selector matches nothing (null).</summary>
+    public Dictionary<string, string?> ToggleStates { get; } = new();
+
+    /// <summary>Selectors whose toggle was actually clicked, in order.</summary>
+    public List<string> ClickedToggles { get; } = new();
+
+    public Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in selectors)
+        {
+            if (ToggleStates.TryGetValue(selector, out var state))
+                return Task.FromResult(state);
+        }
+
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<bool> ClickToggleAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in selectors)
+        {
+            if (ToggleStates.ContainsKey(selector))
+            {
+                ClickedToggles.Add(selector);
+                return Task.FromResult(true);
+            }
+        }
+
+        return Task.FromResult(false);
+    }
+
     public Task<string?> GetNewestReasoningTextAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(ReasoningText);
 

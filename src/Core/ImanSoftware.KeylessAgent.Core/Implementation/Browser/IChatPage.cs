@@ -110,4 +110,15 @@ internal interface IChatPage
     /// strategies fail.
     /// </summary>
     Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The aria-pressed state of the first visible toggle matching one of the selectors
+    /// ("true"/"false"/other raw attribute text), or null when no selector matched at all.
+    /// </summary>
+    Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clicks the first visible toggle matching one of the selectors; true when a click landed.
+    /// </summary>
+    Task<bool> ClickToggleAsync(string[] selectors, CancellationToken cancellationToken = default);
 }

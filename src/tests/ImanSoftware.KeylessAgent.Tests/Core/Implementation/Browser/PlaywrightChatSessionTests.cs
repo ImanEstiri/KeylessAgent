@@ -24,27 +24,34 @@ public class PlaywrightChatSessionTests : IDisposable
         Directory.CreateDirectory(_root);
     }
 
-    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5)
-        => new(
+    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null)
+    {
+        var browserOptions = new BrowserOptions
+        {
+            MinDelayMs = 0,
+            MaxDelayMs = 0,
+            SendConfirmSeconds = sendConfirmSeconds,
+            UploadWaitSeconds = uploadWaitSeconds,
+            ReplyTimeoutSeconds = 10,
+        };
+        if (configureBrowser is not null)
+            browserOptions = configureBrowser(browserOptions);
+
+        return new(
             page,
             () => ValueTask.CompletedTask,
             new ChatSessionOptions
             {
                 WorkspaceRoot = _root,
-                Browser = new BrowserOptions
-                {
-                    MinDelayMs = 0,
-                    MaxDelayMs = 0,
-                    SendConfirmSeconds = sendConfirmSeconds,
-                    UploadWaitSeconds = uploadWaitSeconds,
-                    ReplyTimeoutSeconds = 10,
-                },
+                Browser = browserOptions,
+                ResumeChatUrl = resumeChatUrl,
             },
             new ReplyExtractor(),
             new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
             new LoggerAdapter<PlaywrightChatSession>(NullLoggerFactory.Instance),
             ImanFileStorageFactory.CreateStorage(),
             pollDelayMs: 20);
+    }
 
     private static void ArrangeFirstReplyDelivered(FakeChatPage page)
     {
@@ -104,6 +111,57 @@ public class PlaywrightChatSessionTests : IDisposable
 
         (await session.SendMessageAsync("second request", [])).IsSuccess.Should().BeTrue();
         (await session.WaitForReplyAsync()).Data.Should().Be("B");
+    }
+
+    [Fact]
+    public async Task FirstSendOfNewChat_SetsToggles_SecondSendDoesNotTouchThem()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+
+        // Config: DeepThink on (default true), Search off. The fake starts opposite on both.
+        // The first two selectors of each toggle array are shared, so the per-toggle state is
+        // keyed by each toggle's own text selector (the third fallback).
+        page.ToggleStates[".ds-toggle-button:has-text(\"DeepThink\")"] = "false";
+        page.ToggleStates[".ds-toggle-button:has-text(\"Search\")"] = "true";
+
+        var sends = 0;
+        page.OnSent = () =>
+        {
+            sends++;
+            var key = $"44{sends + 1}";
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ =>
+                page.SimulateAssistantReply(key, $"reply {sends}", sends + 1));
+        };
+        var session = CreateSession(page, configureBrowser: b => b with { EnableSearch = false });
+
+        (await session.SendMessageAsync("first request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).IsSuccess.Should().BeTrue();
+
+        (await session.SendMessageAsync("second request", [])).IsSuccess.Should().BeTrue();
+
+        page.ClickedToggles.Should().HaveCount(2, "both toggles are clicked once on the first message, never again");
+        page.ClickedToggles.Should().Contain(".ds-toggle-button:has-text(\"DeepThink\")");
+        page.ClickedToggles.Should().Contain(".ds-toggle-button:has-text(\"Search\")");
+    }
+
+    [Fact]
+    public async Task ResumedChat_DoesNotTouchToggles()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.ToggleStates[".ds-toggle-button:has-text(\"DeepThink\")"] = "false";
+        page.ToggleStates[".ds-toggle-button:has-text(\"Search\")"] = "true";
+        page.OnSent = () => page.SimulateUserMessageAccepted();
+
+        var session = CreateSession(page,
+            configureBrowser: b => b with { EnableSearch = false },
+            resumeChatUrl: "https://chat.deepseek.com/a/existing");
+
+        (await session.SendMessageAsync("request on resumed chat", [])).IsSuccess.Should().BeTrue();
+
+        page.ClickedToggles.Should().BeEmpty("a resumed chat keeps whatever its toggles were");
     }
 
     [Fact]

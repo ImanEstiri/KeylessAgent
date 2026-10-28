@@ -142,6 +142,47 @@ internal sealed class PlaywrightChatPage : IChatPage
     }
 
     /// <inheritdoc />
+    public async Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in selectors)
+        {
+            try
+            {
+                var locator = _page.Locator(selector).First;
+                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
+                return await EvaluateAsync(locator, "element => element.getAttribute('aria-pressed')", cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                // Try the next fallback selector.
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ClickToggleAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in selectors)
+        {
+            try
+            {
+                var locator = _page.Locator(selector).First;
+                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
+                await locator.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                // Try the next fallback selector.
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
