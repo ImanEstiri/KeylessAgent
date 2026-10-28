@@ -38,6 +38,15 @@ internal sealed class BackupService : IBackupService
         }
 
         var relative = Path.GetRelativePath(workspaceRoot, fullPath);
+
+        // The sandbox refuses symlink/junction escapes, .git/.agent, streams and traversal —
+        // a source that is a link pointing outside the workspace is never backed up.
+        var sandbox = new PathSandbox(workspaceRoot);
+        var resolved = sandbox.Resolve(relative.Replace('\\', '/'));
+        if (resolved.IsFailure)
+            return Outcome.Failure(new OutcomeError(
+                $"Backup refused: {resolved.Error.Message}", ErrorCodes.PathOutsideWorkspace, OutcomeErrorType.Validation));
+
         var stamp = _time.Now.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", System.Globalization.CultureInfo.InvariantCulture);
         var backupRoot = Path.Combine(workspaceRoot, BackupFolderName, stamp);
         var backupPath = Path.Combine(backupRoot, relative);
@@ -83,10 +92,29 @@ internal sealed class BackupService : IBackupService
             return Outcome.Failure<IReadOnlyList<string>>(files.Error);
 
         var restored = new List<string>();
+        var sandbox = new PathSandbox(workspaceRoot);
         foreach (var file in files.Data)
         {
             var relative = Path.GetRelativePath(newest, file.FullPath);
-            var target = Path.Combine(workspaceRoot, relative);
+
+            // The sandbox refuses traversal, stream spellings, .git/.agent and link escapes —
+            // a planted link in the backup tree must not steer the restore.
+            var resolved = sandbox.Resolve(relative.Replace('\\', '/'));
+            if (resolved.IsFailure)
+            {
+                restored.Add($"skipped: {relative} ({resolved.Error.Message})");
+                continue;
+            }
+
+            var target = resolved.Data;
+
+            // Undo must not write through a reparse point: a target swapped for a symlink
+            // after the backup would redirect the restore outside the workspace.
+            if (File.Exists(target) && File.ResolveLinkTarget(target, returnFinalTarget: false) is not null)
+            {
+                restored.Add($"skipped: {relative} (the target path is a symlink or junction)");
+                continue;
+            }
 
             var createOutcome = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(target)!);
             if (createOutcome.IsFailure)
