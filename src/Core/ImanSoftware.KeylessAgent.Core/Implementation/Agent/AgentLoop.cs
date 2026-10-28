@@ -134,11 +134,14 @@ internal sealed class AgentLoop : IAgentLoop
         try
         {
             // --- Step 1: Load and validate configuration ---
+            var timings = new TimingRecorder();
+            timings.Start("config");
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting, "Loading keyless.json"));
             var configOutcome = await _configuration.LoadAsync(workspaceRoot);
             if (configOutcome.IsFailure)
                 return Failed(configOutcome.Error.Message, dryRun);
             options = configOutcome.Data;
+            timings.Stop("config");
 
             if (options.Mode is ApprovalMode.AutoSafe or ApprovalMode.Auto)
             {
@@ -148,6 +151,7 @@ internal sealed class AgentLoop : IAgentLoop
             }
 
             // --- Step 2: Workspace capabilities (probed ONCE per session, reused everywhere) ---
+            timings.Start("git-checks");
             var capabilitiesOutcome = await _workspaceInspector.InspectAsync(workspaceRoot, options.Git, cancellationToken);
             if (capabilitiesOutcome.IsFailure)
                 return Failed(capabilitiesOutcome.Error.Message, dryRun);
@@ -195,12 +199,15 @@ internal sealed class AgentLoop : IAgentLoop
 
             if (!noGitMode)
                 await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
+            timings.Stop("git-checks");
 
             // --- Step 2c: Environment probe (parallel, 3s timeout each) ---
+            timings.Start("env-probe");
             var environmentProbe = new EnvironmentProbe();
             var env = await environmentProbe.ProbeAsync(workspaceRoot, cancellationToken);
             var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
             var envSummary = env.IsSuccess ? env.Data.Summary : "";
+            timings.Stop("env-probe");
 
             // --- Step 3+4: Git preconditions (menus) ---
             branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
@@ -320,6 +327,7 @@ internal sealed class AgentLoop : IAgentLoop
             await logger.StartAsync(workspaceRoot, turn, cancellationToken);
             await logger.AppendAsync("turn-started", new { Turn = turn, Request = request, Branch = branch, DryRun = dryRun }, cancellationToken);
 
+            timings.Start("connect");
             ui.ShowProgress(new AgentProgressEvent(AgentEventType.ConnectingToBrowser, "Connecting to the chat"));
             var chatOutcome = await _chat.StartSessionAsync(
                 new Abstractions.Models.Chat.ChatSessionOptions
@@ -332,6 +340,7 @@ internal sealed class AgentLoop : IAgentLoop
                 return Failed(chatOutcome.Error.Message, dryRun);
 
             await using var chatSession = chatOutcome.Data;
+            timings.Stop("connect");
             savedSession = new AgentSession
             {
                 ChatUrl = chatSession.ChatUrl,
@@ -591,7 +600,8 @@ internal sealed class AgentLoop : IAgentLoop
                     if (changed is not null)
                         agentPaths.UnionWith(changed.Select(c => c.Path));
                 }
-                    await logger.AppendAsync("turn-done", new { Turn = turn, Summary = summary }, cancellationToken);
+                        await logger.AppendAsync("turn-done", new { Turn = turn, Summary = summary }, cancellationToken);
+                await logger.AppendAsync("timings", new { Turn = turn, Timings = timings.FormatTable() }, cancellationToken);
                     break;
                 }
 

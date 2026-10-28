@@ -264,19 +264,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                 AgentEventType.OpeningChat, "Opened a new DeepSeek tab."));
         }
 
-        // Focus: bring the tab to the front (CDP activateTarget as well).
-        try
-        {
-            await page.BringToFrontAsync();
-            var focusSession = await context.NewCDPSessionAsync(page);
-            await focusSession.SendAsync("Target.activateTarget",
-                new Dictionary<string, object> { ["targetId"] = await GetTargetIdAsync(focusSession) });
-            await focusSession.DetachAsync();
-        }
-        catch
-        {
-            // Focus is best-effort.
-        }
+        // Normal operation: no focus, no restore — the window stays minimized.
 
         return Outcome.Successful((attachment, (object)page));
     }
