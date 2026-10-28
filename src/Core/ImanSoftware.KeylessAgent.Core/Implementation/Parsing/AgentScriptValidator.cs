@@ -72,6 +72,11 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                     case ReadFileCommand readFile:
                         CheckPath(readFile.Path, command, problems);
                         break;
+
+                    case MoveFileCommand moveFile:
+                        CheckPath(moveFile.Path, command, problems);
+                        CheckPath(moveFile.ToPath, command, problems);
+                        break;
                 }
             }
 

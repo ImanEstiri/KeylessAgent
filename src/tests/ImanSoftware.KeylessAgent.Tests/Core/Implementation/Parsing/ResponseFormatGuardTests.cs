@@ -125,6 +125,42 @@ public class ResponseFormatGuardTests
     }
 
     [Fact]
+    public void Check_MoveFileEscapingToPath_IsRejected()
+    {
+        const string script = """
+            @@movefile src/a.txt
+            <<<TO
+            ../outside.txt
+            TO>>>
+            @@end
+            @@eof
+            """;
+
+        var result = _guard.Check(script, Limits()).Data;
+
+        result.IsValid.Should().BeFalse();
+        result.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseBadPath);
+    }
+
+    [Fact]
+    public void Check_MoveFileWithValidPaths_IsAccepted()
+    {
+        const string script = """
+            @@movefile src/a.txt
+            <<<TO
+            src/b.txt
+            TO>>>
+            @@end
+            @@eof
+            """;
+
+        var result = _guard.Check(script, Limits()).Data;
+
+        result.IsValid.Should().BeTrue();
+        result.Problems.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Check_OversizedReply_IsRejected()
     {
         var limits = new LimitsOptions { MaxResponseChars = 50 };
