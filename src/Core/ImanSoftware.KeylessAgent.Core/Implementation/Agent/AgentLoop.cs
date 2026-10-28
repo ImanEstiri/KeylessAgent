@@ -227,12 +227,28 @@ internal sealed class AgentLoop : IAgentLoop
                 ? loadedSession.Data.AgentChangedPaths
                 : null;
 
-            // Skip the dirty menu when every dirty path was changed by the agent itself AND we
-            // are already on an agent branch.
-            var skipDirtyMenu = repoDirty && isAgentBranch && agentChangedPaths is not null &&
-                (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline!, true, cancellationToken))
-                    is { IsSuccess: true } diffResult
-                && diffResult.Data.All(c => agentChangedPaths.Contains(c.Path, StringComparer.OrdinalIgnoreCase));
+            // Skip the dirty menu when every dirty path was changed by the agent itself (the
+            // set persisted in the session) AND we are already on an agent branch. The check
+            // reads porcelain FRESH: diffing against the baseline captured moments ago would
+            // only ever see the state from before this turn started.
+            var skipDirtyMenu = false;
+            if (repoDirty && isAgentBranch && agentChangedPaths is { Count: > 0 })
+            {
+                var statusNow = await _git.RunStatusPorcelainAsync(workspaceRoot);
+                skipDirtyMenu = statusNow is { IsSuccess: true } && statusNow.Data.All(line =>
+                {
+                    // "XY path" — same fixed-column shape ChangeTracker.ParsePorcelain reads.
+                    if (line.Length < 4)
+                        return true;
+
+                    var path = line[3..].Trim('"');
+                    var arrow = path.IndexOf(" -> ", StringComparison.Ordinal);
+                    if (arrow >= 0)
+                        path = path[(arrow + 4)..];
+
+                    return agentChangedPaths.Contains(path.Replace('\\', '/'), StringComparer.OrdinalIgnoreCase);
+                });
+            }
 
 
             if (!noGitMode && repoDirty && !skipDirtyMenu)

@@ -530,6 +530,59 @@ public class AgentLoopTests : IDisposable
         result.ChangeSet.Should().Contain(c => c.Path == "file.txt" && c.Kind == "deleted");
     }
 
+    [Fact]
+    public async Task RunAsync_DirtyMenu_SkippedWhenAllDirtyPathsAreAgentMade()
+    {
+        SeedAgentBranchSession("src/AgentMade.cs");
+        Directory.CreateDirectory(Path.Combine(_root, "src"));
+        File.WriteAllText(Path.Combine(_root, "src", "AgentMade.cs"), "class AgentMade {}");
+        var chat = new FakeChatProvider(DoneReply("ok"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "continue", ui);
+
+        ui.Menus.Should().BeEmpty("every dirty path is agent-made; the dirty menu must be skipped");
+    }
+
+    [Fact]
+    public async Task RunAsync_DirtyMenu_ShownWhenAUserMadePathIsDirty()
+    {
+        SeedAgentBranchSession("src/AgentMade.cs");
+        Directory.CreateDirectory(Path.Combine(_root, "src"));
+        File.WriteAllText(Path.Combine(_root, "src", "AgentMade.cs"), "class AgentMade {}");
+        File.WriteAllText(Path.Combine(_root, "user-note.txt"), "user made this");
+        var chat = new FakeChatProvider(DoneReply("ok"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "continue", ui);
+
+        ui.Menus.Should().Contain(m => m.Title.Contains("uncommitted changes"),
+            "user-note.txt is dirty but not agent-made; the menu must appear");
+    }
+
+    /// <summary>
+    /// Seeds a repo on an agent branch with a session that claims the given agent-made paths.
+    /// Everything present at setup time is committed so only files the test writes afterwards
+    /// appear in git status.
+    /// </summary>
+    private void SeedAgentBranchSession(params string[] agentChangedPaths)
+    {
+        Git(_root, "init");
+        File.WriteAllText(Path.Combine(_root, ".gitignore"),
+            ".agent/\ncode-dump-result.md\ntree-view-result.txt\nkeyless.json\n");
+        Git(_root, "add", "-A");
+        Git(_root, "-c", "user.name=ka-test", "-c", "user.email=ka@test.local", "commit", "-m", "seed");
+        Git(_root, "checkout", "-b", "agent/20260101-1200-test");
+        Directory.CreateDirectory(Path.Combine(_root, ".agent"));
+        var paths = string.Join(", ", agentChangedPaths.Select(p => System.Text.Json.JsonSerializer.Serialize(p)));
+        File.WriteAllText(Path.Combine(_root, ".agent", "session.json"),
+            "{ \"ChatUrl\": \"https://chat.deepseek.com/a/fake\", \"Branch\": \"agent/20260101-1200-test\", " +
+            "\"Turn\": 1, \"SystemPromptSent\": true, \"TurnsInChat\": 1, " +
+            $"\"AgentChangedPaths\": [{paths}] }}");
+    }
+
     private static void Git(string workingDirectory, params string[] args)
     {
         var psi = new System.Diagnostics.ProcessStartInfo("git", string.Join(" ", args))
