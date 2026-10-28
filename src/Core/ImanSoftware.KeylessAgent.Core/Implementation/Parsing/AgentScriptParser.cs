@@ -120,6 +120,24 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
 
                         if (trimmed.StartsWith("<<<", StringComparison.Ordinal))
                         {
+                            // Lenient one-line payload: <<<NAME text NAME>>> for non-CONTENT
+                            // sections. Normalized to the multi-line form.
+                            var oneLineSection = TryMatchOneLinePayload(trimmed);
+                            if (oneLineSection is not null)
+                            {
+                                var (oneName, oneText) = oneLineSection.Value;
+                                if (block!.Sections.ContainsKey(oneName))
+                                {
+                                    problems.Add(new FormatProblem(lineNumber, ErrorCodes.ParseUnexpectedPayload,
+                                        $"Payload section \"{oneName}\" appears twice in one block."));
+                                    break;
+                                }
+
+                                block.Sections[oneName] = oneText;
+                                state = ParseState.InBlock;
+                                break;
+                            }
+
                             var match = PayloadStartRegex().Match(trimmed);
                             if (!match.Success)
                             {
@@ -144,6 +162,21 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
                                 break;
                             }
 
+                            // Lenient one-line payload: <<<NAME text NAME>>> for non-CONTENT
+                            // sections. Normalized to the multi-line form.
+                            if (!name.Equals("CONTENT", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var openLen = trimmed.IndexOf(name, 3, StringComparison.OrdinalIgnoreCase) + name.Length;
+                                var closeMarker = name.ToUpperInvariant() + ">>>";
+                                var closeIdx = trimmed.IndexOf(closeMarker, openLen, StringComparison.Ordinal);
+                                if (closeIdx >= 0)
+                                {
+                                    block!.Sections[name.ToUpperInvariant()] = trimmed[openLen..closeIdx].Trim();
+                                    state = ParseState.InBlock;
+                                    break;
+                                }
+                            }
+
                             section = new SectionContext(name.ToUpperInvariant(), nonce);
                             state = ParseState.InPayload;
                             break;
@@ -163,6 +196,20 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
                             break;
                         }
 
+
+                        // Lenient one-line payload: <<<NAME text NAME>>> for non-CONTENT
+                        // sections (MSG/FIND/REPLACE/CMD/TO). Normalized to multi-line.
+                        if (section.Lines.Count == 0 && !section.Name.Equals("CONTENT", StringComparison.Ordinal))
+                        {
+                            var oneLine = MatchOneLinePayload(trimmed, section.Name);
+                            if (oneLine is not null)
+                            {
+                                block!.Sections[section.Name] = oneLine;
+                                section = null;
+                                state = ParseState.InBlock;
+                                break;
+                            }
+                        }
                         section.Lines.Add(line);
                         break;
                 }
@@ -271,6 +318,53 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
 
     private static string Preview(string text)
         => text.Truncate(60);
+
+    /// <summary>
+    /// Matches a one-line payload: &lt;&lt;&lt;NAME text NAME&gt;&gt;&gt; for MSG/FIND/REPLACE/CMD/TO
+    /// (never CONTENT). Returns the section name and inner text, or null.
+    /// </summary>
+    private static (string Name, string Text)? TryMatchOneLinePayload(string trimmed)
+    {
+        if (!trimmed.StartsWith("<<<", StringComparison.Ordinal))
+            return null;
+
+        foreach (var sectionName in new[] { "MSG", "FIND", "REPLACE", "CMD", "TO" })
+        {
+            var openMarker = "<<<" + sectionName;
+            if (!trimmed.StartsWith(openMarker, StringComparison.Ordinal))
+                continue;
+
+            var rest = trimmed[openMarker.Length..];
+            var closeMarker = sectionName + ">>>";
+            var closeIdx = rest.IndexOf(closeMarker, StringComparison.Ordinal);
+            if (closeIdx < 0)
+                continue;
+
+            var innerText = rest[..closeIdx].Trim();
+            return (sectionName, innerText);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Matches the one-line payload form for non-CONTENT sections (MSG/FIND/REPLACE/CMD/TO).
+    /// Returns the inner text, or null when the line is not a one-line payload.
+    /// </summary>
+    private static string? MatchOneLinePayload(string trimmed, string name)
+    {
+        var openMarker = "<<<" + name;
+        var closeMarker = name + ">>>";
+        if (!trimmed.StartsWith(openMarker, StringComparison.Ordinal))
+            return null;
+
+        var rest = trimmed[openMarker.Length..];
+        var closeIndex = rest.IndexOf(closeMarker, StringComparison.Ordinal);
+        if (closeIndex < 0)
+            return null;
+
+        return rest[..closeIndex].Trim();
+    }
 
     /// <summary>
     /// Splits text into logical lines, accepting CRLF, LF and CR endings.

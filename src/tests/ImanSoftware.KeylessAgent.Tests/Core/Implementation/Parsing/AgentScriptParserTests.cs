@@ -345,6 +345,45 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_OneLinePayload_FindsReplaces_AreNormalized()
+    {
+        const string script = 
+"""
+        @@editfile x/test.txt
+        <<<FIND have a good day FIND>>>
+        <<<REPLACE good night REPLACE>>>
+        @@end
+        @@done
+        <<<MSG
+        Changed x/test.txt content to 'good night'.
+        MSG>>>
+        @@end
+        @@eof
+        """;
+        var result = ParseOk(script);
+        var edit = result.Commands.OfType<EditFileCommand>().Single();
+        edit.Find.Should().Be("have a good day");
+        edit.Replace.Should().Be("good night");
+    }
+
+    [Fact]
+    public void Parse_OneLinePayload_OnlyForNonContentSections()
+    {
+        const string script = 
+"""
+        @@newfile src/a.cs
+        <<<CONTENT
+        this line has <<<BRACKET in it
+        CONTENT>>>
+        @@end
+        @@eof
+        """;
+        var result = ParseOk(script);
+        var command = result.Commands.OfType<NewFileCommand>().Single();
+        command.Content.Should().Contain("<<<BRACKET");
+    }
+
+    [Fact]
     public void Parse_OuterFenceThreeBackticks_IsStripped()
     {
         const string script = "```\n@@say\n<<<MSG\nhi\nMSG>>>\n@@end\n@@eof\n```";

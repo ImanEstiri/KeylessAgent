@@ -26,3 +26,8 @@
 - @@movefile <from> + <<<TO ... TO>>> (MoveFileCommand + MoveFileExecutor): sandboxed both paths, backup, refuses overwrite (KA_FILE_ALREADY_EXISTS), creates parents, undo-covered.
 - EnvironmentProbe: parallel 3s-timeout probes (OS, git, dotnet, node, npm, python) → [ENVIRONMENT] block in the first message + one-line summary.
 - Browser: MinDelayMs=0, MaxDelayMs=150, HumanDelay=false defaults; random delay only when HumanDelay=true.
+
+## Task 3 additions
+- Lenient one-line payload: <<<MSG text MSG>>> / <<<FIND text FIND>>> / etc for non-CONTENT sections, normalized to multi-line form (CONTENT never affected).
+- Per-message reminder: ~8-line AgentScript summary + env summary prepended to every user-request message; full system prompt stays on first message only.
+- ReplyExtractor: entity-decoded text in the fake (HtmlEncode in fake page), one-line payload tests with real failing reply.

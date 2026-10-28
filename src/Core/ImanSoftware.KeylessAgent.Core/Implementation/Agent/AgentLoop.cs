@@ -91,6 +91,26 @@ internal sealed class AgentLoop : IAgentLoop
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// A compact fixed reminder (~8 lines) prepended to every user-request message.
+    /// </summary>
+    private static string BuildPerMessageReminder(string envSummary, bool noGitMode)
+    {
+        var gitNote = noGitMode
+            ? "git is NOT installed — do not use @@commit or git commands."
+            : "You are on an agent branch; use @@commit when done.";
+
+        return string.Join("\n",
+            "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
+            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@movefile <from> + <<<TO ... TO>>> / @@next / @@done",
+            "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
+            "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
+            $"Environment: {envSummary}",
+            gitNote,
+            "Investigate first (read-only commands, readfile) instead of guessing; use @@next to get results before continuing; use @@done to end the turn.",
+            "[/REMINDER]");
+    }
+
     public async Task<AgentTurnResult> RunAsync(
         string workspaceRoot,
         string request,
@@ -334,8 +354,6 @@ internal sealed class AgentLoop : IAgentLoop
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
                     $"Snapshot unavailable: {attachmentsOutcome.Error.Message}"));
 
-            var message = request;
-
             // Message 1 of a new chat: the AgentScript rules ALONE, with the instruction that
             // they apply to the whole conversation. Mixing them into the request made the model
             // skim the grammar and invent formats ("@@command", JSON blocks).
@@ -377,10 +395,10 @@ internal sealed class AgentLoop : IAgentLoop
                 }
             }
 
-            // Message 2: the user's request + the workspace snapshot attachments.
-            ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingMessage, "Sending the request"));
-            await logger.AppendAsync("message-sent", new { Turn = turn, Batch = 0, Attachments = attachments.Select(a => a.Name).ToList() }, cancellationToken);
-            if (!dryRun)
+            // Message 2: the user's request + a compact AgentScript reminder + the workspace
+            // snapshot attachments. The full system prompt stays on the first message only.
+            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed);
+            var message = reminder + "\n\n" + request;
             {
                 Outcome sent;
                 using (ui.BeginWait("Sending the request to DeepSeek"))
