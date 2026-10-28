@@ -1,3 +1,5 @@
+using ImanSoftware.KeylessAgent.Abstractions.Services;
+
 namespace ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 
 /// <summary>
@@ -49,4 +51,9 @@ public sealed record AgentTurnResult
     /// True when the turn ran in dry-run mode (nothing was executed).
     /// </summary>
     public bool DryRun { get; init; }
+
+    /// <summary>
+    /// The workspace files changed during this turn (added/modified/deleted/renamed).
+    /// </summary>
+    public IReadOnlyList<ChangedPath> ChangeSet { get; init; } = [];
 }

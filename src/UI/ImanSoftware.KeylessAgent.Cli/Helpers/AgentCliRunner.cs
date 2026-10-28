@@ -67,6 +67,15 @@ internal static class AgentCliRunner
             if (result.Summary is not null)
                 writer.Info(result.Summary);
 
+            if (result.ChangeSet.Count > 0)
+            {
+                AnsiConsole.MarkupLine("[grey]Changed files:[/]");
+                foreach (var change in result.ChangeSet)
+                    AnsiConsole.MarkupLine($"  [grey]•[/] {change.Kind,-8} {change.Path.EscapeMarkup()}");
+            }
+
+            AnsiConsole.MarkupLine("[grey]keyless undo restores .agent/backups; merge the agent branch yourself; changes made by commands are not undoable.[/]");
+
             return 0;
         }
         catch (OperationCanceledException)

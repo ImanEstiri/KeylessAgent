@@ -215,7 +215,7 @@ internal sealed class AgentLoop : IAgentLoop
             var isAgentBranch = !noGitMode && capabilities.IsAgentBranch;
 
             // Change tracking: baseline before the turn.
-            IReadOnlyList<ChangedPath> turnChanges = [];
+            var turnChanges = new List<ChangedPath>();
             object? changeBaseline = null;
             if (!dryRun)
                 changeBaseline = (await _changeTracker.CaptureAsync(workspaceRoot, !noGitMode, cancellationToken)).Data;
