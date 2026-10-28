@@ -33,6 +33,17 @@ internal sealed class PathSandbox : IPathSandbox
         }
 
         var normalized = relativePath.Trim().Replace('/', Path.DirectorySeparatorChar);
+
+        // Windows attack surface beyond plain relative paths: any ':' is either a drive letter
+        // or an NTFS Alternate Data Stream (file.txt:stream), and UNC / device spellings
+        // (\\server, \\.\, \\?\ and their forward-slash forms) never name a workspace file.
+        if (normalized.Contains(':') ||
+            relativePath.StartsWith(@"\\", StringComparison.Ordinal) ||
+            relativePath.StartsWith("//", StringComparison.Ordinal))
+        {
+            return Reject(relativePath, "stream, UNC and device paths are not allowed");
+        }
+
         if (relativePath.Contains('\\') ||
             Path.IsPathRooted(normalized) ||
             normalized.Split(Path.DirectorySeparatorChar).Any(s => s is ".." or "."))
@@ -65,6 +76,12 @@ internal sealed class PathSandbox : IPathSandbox
 
         return Outcome.Successful(full);
     }
+
+    // TOCTOU NOTE: this sandbox validates a path and returns a STRING — the check and the
+    // actual write are two separate steps, so a symlink/junction planted (or swapped) between
+    // validation and write cannot be caught here. The file executors must therefore not follow
+    // reparse points when writing (IFileStorage writes through the resolved full path; if a
+    // storage implementation ever gains link-following semantics, re-validate at write time).
 
     private static bool EscapesThroughSymlink(string full, string root)
     {

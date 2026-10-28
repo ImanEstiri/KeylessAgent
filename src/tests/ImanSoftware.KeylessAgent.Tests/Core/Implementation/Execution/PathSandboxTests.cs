@@ -60,6 +60,53 @@ public class PathSandboxTests : IDisposable
     }
 
     [Fact]
+    public void Resolve_AlternateDataStream_IsRejected()
+    {
+        var outcome = _sandbox.Resolve("src/file.txt:secret");
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.PathOutsideWorkspace);
+    }
+
+    [Fact]
+    public void Resolve_ShortNameDotDot_IsRejected()
+    {
+        // 8.3 short names are not resolvable sandbox-safely; with ".." present this is
+        // rejected by the traversal check — pinned here so it can never regress.
+        var outcome = _sandbox.Resolve("../~1/x");
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.PathOutsideWorkspace);
+    }
+
+    [Theory]
+    [InlineData("\\\\server\\share\\x")]
+    [InlineData("//server/share/x")]
+    [InlineData("\\\\.\\C:\\x")]
+    [InlineData("//./C:/x")]
+    public void Resolve_UncAndDevicePaths_AreRejected(string path)
+    {
+        var outcome = _sandbox.Resolve(path);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.PathOutsideWorkspace);
+    }
+
+    [Fact]
+    public void Resolve_CaseDifferences_ResolveToTheSameFullPath()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "src"));
+
+        var upper = _sandbox.Resolve("SRC/Foo.cs");
+        var lower = _sandbox.Resolve("src/Foo.cs");
+
+        upper.IsSuccess.Should().BeTrue();
+        lower.IsSuccess.Should().BeTrue();
+        string.Equals(upper.Data, lower.Data, StringComparison.OrdinalIgnoreCase).Should().BeTrue(
+            "Windows paths are case-insensitive; both spellings must land on the same file");
+    }
+
+    [Fact]
     public void Resolve_EmptyPath_IsRejected()
     {
         var outcome = _sandbox.Resolve("  ");
