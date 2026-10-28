@@ -117,9 +117,18 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 var locator = _page.Locator(selector).First;
                 await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
-                var disabled = await EvaluateAsync(locator,
-                    "element => element.getAttribute('aria-disabled') === 'true' || element.className.includes('ds-button--disabled')", cancellationToken);
-                return disabled != "true";
+
+                // The disable state crosses as a JSON string so no bool/string mangling can
+                // flip the result (a raw bool would ToString as "True" and compare unequal).
+                // The disable-value assert is manual via `keyless doctor` (the unit tests run
+                // against FakeChatPage, which returns the bool directly).
+                var disabledJson = await EvaluateAsync(locator,
+                    "element => JSON.stringify({ d: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled') })",
+                    cancellationToken);
+                var isDisabled = !string.IsNullOrEmpty(disabledJson) &&
+                    System.Text.Json.JsonDocument.Parse(disabledJson).RootElement
+                        .TryGetProperty("d", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.True;
+                return !isDisabled;
             }
             catch (TimeoutException)
             {
