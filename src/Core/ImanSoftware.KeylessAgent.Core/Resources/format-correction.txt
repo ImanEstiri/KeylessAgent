@@ -22,6 +22,13 @@ FIND>>>
 replacement text
 REPLACE>>>
 @@end
+@@movefile src/path/old.cs
+<<<TO
+src/path/new.cs
+TO>>>
+@@end
+@@next
+@@end
 @@runcommand
 <<<CMD
 dotnet build
@@ -34,6 +41,6 @@ MSG>>>
 @@end
 @@eof
 
-Valid keywords ONLY: @@say, @@newfile, @@updatefile, @@editfile, @@deletefile, @@readfile, @@runcommand, @@ask, @@commit, @@done — plus the final line @@eof. There is no @@command, no JSON, no markdown fences around the reply. Every block starts with @@keyword, may contain <<<NAME ... NAME>>> payload sections, and ends with @@end.
-Also remember: payload markers are ALONE on their own line (never "<<<CONTENT text CONTENT>>>" on one line); paths never start with "./"; and YOU execute commands yourself via @@runcommand — never give the user commands to run.
+Valid keywords ONLY: @@say, @@newfile, @@updatefile, @@editfile, @@movefile, @@deletefile, @@readfile, @@runcommand, @@ask, @@commit, @@next, @@done — plus the final line @@eof. There is no @@command, no JSON, no markdown fences around the reply. Every block starts with @@keyword, may contain <<<NAME ... NAME>>> payload sections, and ends with @@end.
+Also remember: payload markers are ALONE on their own line (never "<<<CONTENT text CONTENT>>>" on one line); paths never start with "./"; use @@next to get this batch's results before continuing and @@done to end the turn (never both); and YOU execute commands yourself via @@runcommand — never give the user commands to run.
 Resend your COMPLETE response using only AgentScript v1. Do not apologize or explain. Do not add text outside blocks.
