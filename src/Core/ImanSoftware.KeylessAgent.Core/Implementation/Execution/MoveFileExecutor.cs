@@ -18,14 +18,14 @@ internal sealed class MoveFileExecutor : ICommandExecutor
 {
     private readonly IFileStorage _storage;
     private readonly IBranchGuard _branchGuard;
-    private readonly IBackupService _backup;
+    private readonly BackupService _backup;
 
     public MoveFileExecutor()
         : this(ImanFileStorageFactory.CreateStorage(), new BranchGuard(), new BackupService())
     {
     }
 
-    internal MoveFileExecutor(IFileStorage storage, IBranchGuard branchGuard, IBackupService backup)
+    internal MoveFileExecutor(IFileStorage storage, IBranchGuard branchGuard, BackupService backup)
     {
         _storage = storage;
         _branchGuard = branchGuard;
@@ -84,9 +84,9 @@ internal sealed class MoveFileExecutor : ICommandExecutor
                 return CommandExecutionResult.Fail(command, ErrorCodes.CommandDeclined, "The user declined this move.");
         }
 
-        var backup = await _backup.BackupAsync(context.WorkspaceRoot, source.Data);
-        if (backup.IsFailure)
-            return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, backup.Error.Message);
+        var batch = await _backup.BackupToBatchAsync(context.WorkspaceRoot, source.Data);
+        if (batch.IsFailure)
+            return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, batch.Error.Message);
 
         var directory = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(destination.Data)!, context.CancellationToken);
         if (directory.IsFailure)
@@ -99,6 +99,13 @@ internal sealed class MoveFileExecutor : ICommandExecutor
         var delete = await _storage.DeleteAsync(source.Data);
         if (delete.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, delete.Error.Message);
+
+        // Best-effort journal: keyless undo deletes the destination; the batch copy restores
+        // the source.
+        await _backup.AppendJournalAsync(context.WorkspaceRoot, batch.Data, new BackupService.JournalEntry(
+            "move",
+            From: Path.GetRelativePath(context.WorkspaceRoot, source.Data).Replace(Path.DirectorySeparatorChar, '/'),
+            To: move.ToPath.Replace(Path.DirectorySeparatorChar, '/')));
 
         return new CommandExecutionResult
         {

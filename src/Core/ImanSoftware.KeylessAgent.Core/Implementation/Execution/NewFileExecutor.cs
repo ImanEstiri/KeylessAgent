@@ -17,16 +17,18 @@ internal sealed class NewFileExecutor : ICommandExecutor
 {
     private readonly IFileStorage _storage;
     private readonly IBranchGuard _branchGuard;
+    private readonly BackupService _backup;
 
     public NewFileExecutor()
         : this(ImanFileStorageFactory.CreateStorage(), new BranchGuard())
     {
     }
 
-    internal NewFileExecutor(IFileStorage storage, IBranchGuard branchGuard)
+    internal NewFileExecutor(IFileStorage storage, IBranchGuard branchGuard, BackupService? backup = null)
     {
         _storage = storage;
         _branchGuard = branchGuard;
+        _backup = backup ?? new BackupService();
     }
 
     /// <inheritdoc />
@@ -75,6 +77,9 @@ internal sealed class NewFileExecutor : ICommandExecutor
             resolve.Data, LineEndings.Apply(LineEndings.NormalizeToLf(newFile.Content), ending), context.CancellationToken);
         if (write.IsFailure)
             return CommandExecutionResult.Fail(command, ErrorCodes.FileIoFailure, write.Error.Message);
+
+        // Best-effort journal: keyless undo DELETES a created file (nothing to restore).
+        await _backup.RecordCreateAsync(context.WorkspaceRoot, resolve.Data);
 
         return CommandExecutionResult.Ok(command);
     }

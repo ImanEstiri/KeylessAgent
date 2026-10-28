@@ -2,7 +2,12 @@ using System.Diagnostics;
 using FluentAssertions;
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
+using ImanSoftware.KeylessAgent.Core.Implementation.Git;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Execution;
@@ -101,6 +106,55 @@ public class BackupServiceTests : IDisposable
         File.ReadAllText(file).Should().Be("original");
         Directory.EnumerateDirectories(Path.Combine(_root, ".agent", "backups"))
             .Should().BeEmpty("the restored batch is consumed");
+    }
+
+    [Fact]
+    public async Task UndoLatestAsync_CreatedFile_IsDeleted()
+    {
+        var storage = ImanFileStorageFactory.CreateStorage();
+        var git = new FakeGitService { CurrentBranch = "agent/test", HasOrigin = true };
+        var backup = new BackupService(storage, new FakeDateTimeProvider());
+        var executor = new NewFileExecutor(storage, new BranchGuard(git), backup);
+        var created = Path.Combine(_root, "created.txt");
+
+        var result = await executor.ExecuteAsync(
+            new NewFileCommand("created.txt", "created by the agent") { Number = 1 },
+            new AgentExecutionContext { WorkspaceRoot = _root, Options = new KeylessOptions { Mode = ApprovalMode.Auto }, Ui = new FakeAgentUserInterface() });
+
+        result.Status.Should().Be(CommandStatus.Ok);
+        File.Exists(created).Should().BeTrue();
+
+        var outcome = await _service.UndoLatestAsync(_root);
+
+        outcome.IsSuccess.Should().BeTrue();
+        outcome.Data.Should().Contain(entry => entry.StartsWith("removed:", StringComparison.Ordinal));
+        File.Exists(created).Should().BeFalse("undo deletes a file the agent created");
+    }
+
+    [Fact]
+    public async Task UndoLatestAsync_MovedFile_RestoresSourceAndRemovesDestination()
+    {
+        var storage = ImanFileStorageFactory.CreateStorage();
+        var git = new FakeGitService { CurrentBranch = "agent/test", HasOrigin = true };
+        var backup = new BackupService(storage, new FakeDateTimeProvider());
+        var executor = new MoveFileExecutor(storage, new BranchGuard(git), backup);
+        var source = Path.Combine(_root, "source.txt");
+        var destination = Path.Combine(_root, "destination.txt");
+        File.WriteAllText(source, "original content");
+
+        var result = await executor.ExecuteAsync(
+            new MoveFileCommand("source.txt", "destination.txt") { Number = 1 },
+            new AgentExecutionContext { WorkspaceRoot = _root, Options = new KeylessOptions { Mode = ApprovalMode.Auto }, Ui = new FakeAgentUserInterface() });
+
+        result.Status.Should().Be(CommandStatus.Ok);
+        File.Exists(source).Should().BeFalse();
+        File.Exists(destination).Should().BeTrue();
+
+        var outcome = await _service.UndoLatestAsync(_root);
+
+        outcome.IsSuccess.Should().BeTrue();
+        File.ReadAllText(source).Should().Be("original content", "the source comes back from the backup");
+        File.Exists(destination).Should().BeFalse("undo deletes the move's destination");
     }
 
     /// <summary>
