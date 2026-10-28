@@ -76,6 +76,37 @@ public class PlaywrightChatSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task SecondTurn_CopyCapture_ReturnsTheNewReply_NotTheStaleCapturedText()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+
+        // The Copy-capture path runs on every reply: Auto mode + a visible Copy control.
+        page.CopyButtonVisible = true;
+        page.CapturedReply = "A";
+        var turn = 0;
+        page.OnSent = () =>
+        {
+            turn++;
+            var key = $"44{turn + 1}";
+            var text = turn == 1 ? "A" : "B";
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+            {
+                page.CapturedReply = text;
+                page.SimulateAssistantReply(key, text, turn + 1);
+            });
+        };
+        var session = CreateSession(page);
+
+        (await session.SendMessageAsync("first request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("A");
+
+        (await session.SendMessageAsync("second request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("B");
+    }
+
+    [Fact]
     public async Task IdenticalReplyTextTwiceInARow_IsAccepted_WhenTheMessageKeyChanged()
     {
         var page = new FakeChatPage();

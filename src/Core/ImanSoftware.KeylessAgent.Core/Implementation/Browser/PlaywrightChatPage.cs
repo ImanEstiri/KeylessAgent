@@ -398,6 +398,8 @@ internal sealed class PlaywrightChatPage : IChatPage
             return text;
         });
 
+        // Defensive: a fresh capture window must never see the previous reply's copied text.
+        _capturedCopy = null;
         await WithCancellationAsync(_page.EvaluateAsync(InstallInterceptionScript), cancellationToken);
     }
 
@@ -405,6 +407,9 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // A stale capture would return the PREVIOUS reply; the capture window starts empty.
+        _capturedCopy = null;
 
         // Strategy 1: interception (OS clipboard untouched).
         await WithCancellationAsync(_page.EvaluateAsync("() => { window.__keylessCapture = true; window.__keylessCapturedText = null; }"), cancellationToken);
