@@ -41,7 +41,9 @@ internal static class AgentCliRunner
             ? KeylessAgentServiceFactory.CreateAgentLoop(loggerFactory)
             : KeylessAgentServiceFactory.CreateAgentLoop(chatProvider, loggerFactory);
         var ui = new ConsoleUserInterface();
-        var writer = ConsoleWriter.Shared;
+        // Resolved per call, NOT ConsoleWriter.Shared: Shared binds the console at first touch,
+        // so output would go to whichever console was active when it was first used.
+        var writer = new ConsoleWriter(AnsiConsole.Console);
         var logPath = System.IO.Path.Combine(workspaceRoot, ".agent", "logs");
         writer.Info(verbose
             ? "Verbose diagnostics: " + System.IO.Path.Combine(logPath, "diagnostics.log")
@@ -95,7 +97,9 @@ internal static class AgentCliRunner
 
             AnsiConsole.MarkupLine("[grey]keyless undo restores .agent/backups; changes made by commands are NOT undoable with keyless undo.[/]");
 
-            return 0;
+            // Exit codes: 0 success, 1 error, 2 stopped early, 130 cancelled (see the catch
+            // below). A stopped turn is not a successful one — CI must be able to tell.
+            return result.StoppedReason is not null ? 2 : 0;
         }
         catch (OperationCanceledException)
         {
