@@ -32,6 +32,8 @@ Inside the interactive session: `/workspace <path>` switches workspaces, `/newch
 
 **Ctrl+C** is safe: during a turn it cancels only that turn (press again within 2 seconds to exit); at the `keyless>` prompt it exits gracefully. `keyless run` accepts `--timing` to print the per-phase timing table after the turn.
 
+Exit codes for `keyless run`: **0** completed, **1** failed, **2** stopped early (reason printed), **130** cancelled by the user.
+
 First run in a non-git workspace initializes the repository automatically (main branch, .NET .gitignore, initial commit — `Git.AutoInit`). Without git installed, a no-git mode runs file commands with backups only (no branch protection, no commits). Run `keyless chrome` once and log in to DeepSeek in the dedicated profile; since Chrome 136 the debug port only works with a dedicated profile, and the login persists there. Git decisions (dirty tree, branch choice) are presented as numbered menus — arrows, digits, Enter, Esc; no typed answers. Command risk tiers (ReadOnly/Build/Execute/Risky) control what runs automatically; risky commands always ask.
 
 Full documentation — AgentScript, configuration, selectors, reply sources, security model — lives in the main repository:

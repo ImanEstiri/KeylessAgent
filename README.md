@@ -101,6 +101,15 @@ keyless run "G:\Projects\MyApp" "..." --timing                        # print th
 
 The interactive session understands `/workspace <path>` (switch workspaces), `/newchat` (fresh chat, same workspace) and `/help`.
 
+**Exit codes** for `keyless run` / `keyless resume`:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The turn completed. |
+| 1 | The turn failed (`result.ErrorMessage`). |
+| 2 | The turn stopped early (`result.StoppedReason` is printed, e.g. no reply, chat exhausted). |
+| 130 | Cancelled by the user (Ctrl+C during the turn). |
+
 **Ctrl+C** is safe everywhere: during a turn it cancels only that turn (a second press within 2 seconds exits the session); at the idle `keyless>` prompt it exits gracefully with code 0 — logs are flushed and the browser connector is disposed.
 
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
@@ -218,6 +227,10 @@ KeylessAgent/
 ```
 
 ## Building from source
+
+The application version lives in **one place**: `<Version>` in [Directory.Build.props](Directory.Build.props). `Program.cs` reports it from the built assembly, and `publish.ps1` reads and bumps it there — the CLI csproj carries no `<Version>` of its own.
+
+`publish.ps1` packs and pushes to NuGet.org. `-SkipPush` packs only (and auto-bumps the patch version if the artifact already exists) — it does **not** require `NUGET_API_KEY`, which is only checked right before an actual push.
 
 ```bash
 git clone https://github.com/ImanEstiri/KeylessAgent.git

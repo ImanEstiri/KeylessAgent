@@ -107,6 +107,10 @@ Use `@@runcommand on_error=continue` to override the mode for that command only.
 | `MaxFormatRetries` | 3 | After N invalid replies the turn stops and the user sees the raw last reply |
 | `MaxIterationsPerTurn` | 25 | Turn stops with a stop reason |
 
+## @@done ends the turn
+
+A successful `@@done` finishes the turn immediately: commands placed AFTER it in the same reply are reported as `skipped` with the reason `after @@done` and are never executed. `@@say` blocks after `@@done` still reach the user.
+
 ## Results message
 
 After each executed batch the agent sends one message mapping every result to its command:

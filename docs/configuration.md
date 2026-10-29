@@ -110,6 +110,13 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - **WindowMode**: `Minimized` (default), `Offscreen`, or `Normal`. Affects auto-launched Chrome only. When minimized, throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) prevent slow-downs.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
 
+### Snapshot — sensitive content never reaches the chat
+
+- `Snapshot.Filter.SensitiveFilePatterns` (case-insensitive `*` wildcards against the file name) drops dump sections of secret files from the ATTACHED copy: environment files (`.env`), key material (`.pem`, `.key`, `.pfx`, `.p12`, `id_rsa*`, `*.keystore`), and anything named `*secret*`/`*password*`/`*credential*`/`appsettings.Production.json` by default.
+- `Snapshot.Filter.MaskSensitiveLines` (default true) redacts secret-looking VALUES in the remaining sections: `Password=…`, `"ApiKey": "…"`, `Authorization: Bearer …` and PEM private-key blocks become `[redacted]` — key names and structure are kept.
+- The tree attachment reports it: `[N files filtered and M values masked as sensitive]`.
+- **Attachment copy only** — the files on disk (including `code-dump-result.md` and `tree-view-result.txt`) are never modified.
+
 ### Snapshot
 
 - The snapshots are **generated natively in C#** — no `.bat` files need to exist in the workspace. `tree-view-result.txt` and `code-dump-result.md` are written into the workspace root (and excluded from git via `.git/info/exclude`).
@@ -131,7 +138,7 @@ The allow list matches the first program name of the command line. The built-in 
 ## Other files
 
 - `selectors.json` — the editable chat selector catalog (see [browser-automation.md](browser-automation.md)); created with defaults on first run.
-- `.agent/session.json` — the saved chat URL, branch and turn counter (powers `keyless resume`).
+- `.agent/session.json` — the saved chat URL, branch and turn counter (powers `keyless resume`). A corrupt file never crashes a turn: it is renamed to `session.json.corrupt` and treated as no session.
+- `.agent/logs/turn-N.jsonl` — the per-turn transcript is best-effort: the first write failure disables it for the rest of the turn with one warning. Command **output is redacted before writing** (`Password=…`, tokens, Bearer/Basic values → `[redacted]`); requests and replies are stored as received.
 - `.agent/backups/` — timestamped backups of every changed file (powers `keyless undo`).
-- `.agent/logs/turn-N.jsonl` — full per-turn transcript (messages, replies, commands, results).
 - `.git/info/exclude` — the agent adds `.agent/`, `tree-view-result.txt` and `code-dump-result.md` automatically.
