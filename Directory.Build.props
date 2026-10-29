@@ -32,6 +32,9 @@
     </ItemGroup>
 
   <PropertyGroup>
+    <!-- The single source of the application version: Program.cs reads it from the
+         assembly and publish.ps1 bumps it here. -->
+    <Version>1.0.0</Version>
     <Authors>Iman Estiri</Authors>
     <Company>ImanSoftware</Company>
     <Copyright>Copyright (c) $([System.DateTime]::Now.Year) ImanSoftware</Copyright>

@@ -64,7 +64,7 @@ function Bump-PatchVersion {
     return "$major.$minor.$patch$suffix"
 }
 
-function Get-CsprojVersion {
+function Get-BuildPropsVersion {
     param([Parameter(Mandatory = $true)][string]$Path)
     [xml]$xml = Get-Content $Path
     $value = $xml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
@@ -73,7 +73,7 @@ function Get-CsprojVersion {
     return [string]$value
 }
 
-function Set-CsprojVersion {
+function Set-BuildPropsVersion {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$NewVersion
@@ -213,10 +213,16 @@ try {
     # Pack (auto-bumping the patch version if it was already packed)
     # ---------------------------------------------------------------
 
-    $version = Get-CsprojVersion -Path $csprojPath
+    # The version lives in ONE place: Directory.Build.props (the csproj no longer carries it).
+    $buildPropsPath = Join-Path $solutionRoot "Directory.Build.props"
+    if (-not (Test-Path $buildPropsPath)) {
+        Write-Error "Could not find $buildPropsPath."
+    }
+
+    $version = Get-BuildPropsVersion -Path $buildPropsPath
 
     if (-not $version) {
-        Write-Error "Could not read <Version> from $csprojPath. Make sure it's set explicitly in the project file."
+        Write-Error "Could not read <Version> from $buildPropsPath. Make sure it's set explicitly in Directory.Build.props."
     }
 
     $originalVersion = $version
@@ -236,9 +242,9 @@ try {
     Write-Step "version $version is free; no existing artifact found."
 
     if ($version -ne $originalVersion) {
-        Set-CsprojVersion -Path $csprojPath -NewVersion $version
-        Write-Step "updated <Version> in $csprojPath : $originalVersion -> $version"
-        Add-Summary "csproj updated: $ProjectName Version $originalVersion -> $version"
+        Set-BuildPropsVersion -Path $buildPropsPath -NewVersion $version
+        Write-Step "updated <Version> in $buildPropsPath : $originalVersion -> $version"
+        Add-Summary "Directory.Build.props updated: Version $originalVersion -> $version"
     } else {
         Add-Summary "Version used: $ProjectName $version (no bump needed)"
     }

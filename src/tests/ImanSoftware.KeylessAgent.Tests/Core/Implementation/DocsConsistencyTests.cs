@@ -3,6 +3,7 @@ using System.Text.Json;
 using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
+using ImanSoftware.KeylessAgent.Cli;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation;
 
@@ -33,6 +34,28 @@ public class DocsConsistencyTests
             "the format-correction template must list every keyword the parser accepts");
         correction.Should().Contain("@@next",
             "the format-correction template must list every keyword the parser accepts");
+    }
+
+    [Fact]
+    public void VersionMatchesDirectoryBuildProps()
+    {
+        // The version lives in ONE place: Directory.Build.props. The CLI assembly reads it
+        // (Program.cs uses the assembly version), publish.ps1 bumps it there, and the csproj
+        // carries no <Version> of its own.
+        var props = ReadSourceFile("Directory.Build.props");
+        var match = System.Text.RegularExpressions.Regex.Match(
+            props, "<Version>([^<]+)</Version>");
+        match.Success.Should().BeTrue("Directory.Build.props must carry <Version>");
+
+        var documented = match.Groups[1].Value;
+        var assembly = typeof(Program).Assembly.GetName().Version;
+        var assemblyVersion = assembly == null ? "0.0.0" : $"{assembly.Major}.{assembly.Minor}.{assembly.Build}";
+
+        assemblyVersion.Should().Be(documented,
+            "the CLI assembly version is built from Directory.Build.props and must equal it");
+
+        ReadSourceFile(Path.Combine("src", "UI", "ImanSoftware.KeylessAgent.Cli", "ImanSoftware.KeylessAgent.Cli.csproj"))
+            .Should().NotContain("<Version>", "a second <Version> would drift from the single source");
     }
 
     [Fact]

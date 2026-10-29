@@ -25,7 +25,7 @@ var app = new CommandApp<InteractiveCommand>();
 app.Configure(config =>
 {
     config.SetApplicationName("keyless");
-    config.SetApplicationVersion("1.0.0");
+    config.SetApplicationVersion(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
 
     config.AddCommand<RunCommand>("run")
         .WithDescription("Run one agent turn on a workspace. The workspace path is the first argument (or the first thing you are asked for).")
