@@ -247,6 +247,25 @@ public sealed record SnapshotFilterOptions
     /// Code-dump section filters: sections whose <c>###</c> heading matches any of these are dropped.
     /// </summary>
     public IReadOnlyList<string> ExcludeDumpHeadings { get; init; } = ["tree-view-result", "code-dump-result"];
+
+    /// <summary>
+    /// Files whose sections are dropped from the ATTACHED copy entirely (never from disk):
+    /// case-insensitive <c>*</c> wildcards matched against the file name. Environment files,
+    /// key material and anything whose name suggests credentials.
+    /// </summary>
+    public IReadOnlyList<string> SensitiveFilePatterns { get; init; } =
+    [
+        ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", "*.keystore",
+        "secrets.json", "*secret*", "*password*", "*credential*", "appsettings.Production.json",
+        "appsettings.*.Production.json",
+    ];
+
+    /// <summary>
+    /// Replace secret-looking VALUES in the remaining attached sections with [redacted]
+    /// (Password=/Pwd=/ApiKey/… assignments, JSON secret keys, Authorization tokens, PEM
+    /// private-key blocks). Key names and structure are kept. Default true.
+    /// </summary>
+    public bool MaskSensitiveLines { get; init; } = true;
 }
 
 /// <summary>

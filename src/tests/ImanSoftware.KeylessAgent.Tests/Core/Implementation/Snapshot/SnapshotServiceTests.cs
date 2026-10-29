@@ -160,6 +160,78 @@ public class SnapshotServiceTests : IDisposable
             "the placeholder must be gone");
     }
 
+    [Fact]
+    public async Task SensitiveFiles_FilteredFromAttachmentOnly()
+    {
+        File.WriteAllText(Path.Combine(_root, ".env"), "SECRET_TOKEN=abc123");
+        File.WriteAllText(Path.Combine(_root, "secrets.json"), "{ \"ApiKey\": \"abc123\" }");
+        File.WriteAllText(Path.Combine(_root, "appsettings.Production.json"), "{ \"Password\": \"prod-key\" }");
+        await _service.RefreshAsync(_root);
+
+        var outcome = await _service.BuildAttachmentsAsync(_root, new KeylessOptions());
+
+        outcome.IsSuccess.Should().BeTrue();
+        var dump = outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.CodeDump);
+        dump.Content.Should().NotContain("abc123", "secret values never reach the chat");
+        dump.Content.Should().NotContain("prod-key");
+        dump.Content.Should().NotContain("secrets.json", "sensitive files are dropped from the dump");
+        dump.Content.Should().NotContain("appsettings.Production.json");
+        outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.TreeView).Content
+            .Should().Contain("[2 files filtered and 0 values masked as sensitive]");
+
+        // The disk outputs are never modified.
+        var onDisk = await _storage.ReadAllTextAsync(Path.Combine(_root, "code-dump-result.md"));
+        onDisk.Data.Should().Contain("abc123").And.Contain("prod-key");
+        var treeOnDisk = await _storage.ReadAllTextAsync(Path.Combine(_root, "tree-view-result.txt"));
+        treeOnDisk.Data.Should().Contain(".env", "the tree on disk still lists everything");
+    }
+
+    [Fact]
+    public async Task SecretValues_MaskedInAttachment()
+    {
+        var settings = string.Join("\n",
+            "{",
+            "  \"ApiKey\": \"abc123\",",
+            "  \"Password\": \"hunter2\",",
+            "  \"Retention\": 30",
+            "}");
+        File.WriteAllText(Path.Combine(_root, "appsettings.json"), settings);
+        await _service.RefreshAsync(_root);
+
+        var outcome = await _service.BuildAttachmentsAsync(_root, new KeylessOptions());
+
+        var dump = outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.CodeDump);
+        dump.Content.Should().NotContain("abc123");
+        dump.Content.Should().NotContain("hunter2");
+        dump.Content.Should().Contain("\"ApiKey\": \"[redacted]\"", "the key name and JSON shape are kept");
+        dump.Content.Should().Contain("\"Password\": \"[redacted]\"");
+        dump.Content.Should().Contain("\"Retention\": 30", "non-secret values are untouched");
+        outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.TreeView).Content
+            .Should().Contain("[0 files filtered and 2 values masked as sensitive]");
+
+        var onDisk = await _storage.ReadAllTextAsync(Path.Combine(_root, "code-dump-result.md"));
+        onDisk.Data.Should().Contain("hunter2").And.Contain("abc123");
+        (await _storage.ReadAllTextAsync(Path.Combine(_root, "appsettings.json"))).Data
+            .Should().Contain("hunter2", "the source file on disk is never modified");
+    }
+
+    [Fact]
+    public async Task CommentMentioningPassword_IsNotMasked()
+    {
+        File.WriteAllText(Path.Combine(_root, "normal.cs"),
+            string.Join("\n", "// the password policy is documented elsewhere", "var retryCount = 1;"));
+        await _service.RefreshAsync(_root);
+
+        var outcome = await _service.BuildAttachmentsAsync(_root, new KeylessOptions());
+
+        var dump = outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.CodeDump);
+        dump.Content.Should().Contain("// the password policy is documented elsewhere",
+            "a comment mentioning the word is not a secret");
+        dump.Content.Should().Contain("var retryCount = 1;");
+        outcome.Data.Single(a => a.Kind == SnapshotAttachmentKind.TreeView).Content
+            .Should().NotContain("masked as sensitive", "nothing was filtered or masked");
+    }
+
     public void Dispose()
     {
         try

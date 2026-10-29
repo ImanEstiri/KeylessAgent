@@ -48,7 +48,9 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "RefreshAfterEachBatch": false,
     "Filter": {
       "ExcludeTreePatterns": [ "bin", "obj", ".git", "node_modules", ".agent", "artifacts" ],
-      "ExcludeDumpHeadings": [ "tree-view-result", "code-dump-result" ]
+      "ExcludeDumpHeadings": [ "tree-view-result", "code-dump-result" ],
+      "SensitiveFilePatterns": [ ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", "*.keystore", "secrets.json", "*secret*", "*password*", "*credential*", "appsettings.Production.json", "appsettings.*.Production.json" ],
+      "MaskSensitiveLines": true
     }
   },
 

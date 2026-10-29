@@ -148,6 +148,15 @@ internal sealed class SnapshotService : ISnapshotService
         var tree = string.Join("\n", SnapshotFilter.FilterTreeLines(
             treeText.Data.Replace("\r\n", "\n").Split('\n'), filter.ExcludeTreePatterns)) + "\n";
 
+        // Sensitive content never reaches the chat: secret files are dropped from the attached
+        // dump and secret-looking values in the remaining sections are redacted — the copies
+        // only; code-dump-result.md and tree-view-result.txt on disk stay untouched.
+        var dump = SnapshotFilter.FilterDumpSections(dumpText.Data, filter.ExcludeDumpHeadings);
+        var (sanitizedDump, filesDropped, valuesMasked) =
+            SanitizeSensitiveContent(dump, filter.SensitiveFilePatterns, filter.MaskSensitiveLines);
+        if (filesDropped + valuesMasked > 0)
+            tree = $"[{filesDropped} files filtered and {valuesMasked} values masked as sensitive]\n" + tree;
+
         var attachments = new List<SnapshotAttachment>
         {
             new(TreeResultName, SnapshotAttachmentKind.TreeView, tree),
@@ -166,8 +175,7 @@ internal sealed class SnapshotService : ISnapshotService
             }
         }
 
-        var dump = SnapshotFilter.FilterDumpSections(dumpText.Data, filter.ExcludeDumpHeadings);
-        var parts = SnapshotFilter.ChunkDump(dump, MaxAttachmentChars);
+        var parts = SnapshotFilter.ChunkDump(sanitizedDump, MaxAttachmentChars);
         for (var i = 0; i < parts.Count; i++)
         {
             var name = parts.Count == 1 ? CodeDumpResultName : $"code-dump-result-part{i + 1}.md";
@@ -223,6 +231,145 @@ internal sealed class SnapshotService : ISnapshotService
         bool GitAvailable,
         List<string>? Porcelain,
         Dictionary<string, long[]>? Index);
+
+    // --- Sensitive-content sanitation (attachment copy only; disk outputs stay untouched) ---
+
+    /// <summary>
+    /// Drops dump sections whose file name matches a sensitive pattern and redacts
+    /// secret-looking values in the remaining sections. Returns the sanitized dump plus the
+    /// counters for the tree marker line.
+    /// </summary>
+    internal static (string Dump, int FilesDropped, int ValuesMasked) SanitizeSensitiveContent(
+        string dump, IReadOnlyList<string> sensitivePatterns, bool maskValues)
+    {
+        var filesDropped = 0;
+        var valuesMasked = 0;
+        var result = new System.Text.StringBuilder();
+
+        // Sections are delimited by "### heading" lines — the same convention
+        // SnapshotFilter.FilterDumpSections uses.
+        var lines = dump.Replace("\r\n", "\n").Split('\n');
+        var skipping = false;
+        var inPem = false;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                var heading = line["### ".Length..].Trim();
+                var fileName = HeadingFileName(heading);
+                skipping = MatchesSensitivePattern(fileName, sensitivePatterns);
+                if (skipping)
+                {
+                    filesDropped++;
+                    continue;
+                }
+            }
+
+            if (skipping)
+                continue;
+
+            if (maskValues)
+            {
+                // PEM private-key blocks are redacted line-wise between BEGIN and END.
+                if (inPem)
+                {
+                    result.AppendLine("[redacted]");
+                    if (PemEndRegex.IsMatch(line))
+                        inPem = false;
+                    continue;
+                }
+
+                var (masked, count) = MaskSecretLine(line);
+                valuesMasked += count;
+                if (PemBeginRegex.IsMatch(masked))
+                    inPem = true;
+                result.AppendLine(masked);
+            }
+            else
+            {
+                result.AppendLine(line);
+            }
+        }
+
+        return (result.ToString(), filesDropped, valuesMasked);
+    }
+
+    /// <summary>The file name a dump heading refers to (headings use " &gt; " separators).</summary>
+    internal static string HeadingFileName(string heading)
+    {
+        var lastSegment = heading
+            .Split(" > ", StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault()?.Trim() ?? heading;
+        var slash = lastSegment.LastIndexOfAny(['/', '\\']);
+        return slash >= 0 ? lastSegment[(slash + 1)..] : lastSegment;
+    }
+
+    /// <summary>Case-insensitive <c>*</c> wildcard match against the file name.</summary>
+    internal static bool MatchesSensitivePattern(string fileName, IEnumerable<string> patterns)
+    {
+        foreach (var pattern in patterns)
+        {
+            if (pattern.Length == 0)
+                continue;
+
+            var regex = "^" + System.Text.RegularExpressions.Regex
+                .Escape(pattern)
+                .Replace("\\*", ".*", StringComparison.Ordinal) + "$";
+            if (System.Text.RegularExpressions.Regex.IsMatch(fileName, regex,
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex AssignmentSecretQuotedRegex = new(
+        "(\\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|connection[_-]?string)s?\\b\\\"?\\s*[=:]\\s*)(\\\"[^\\\"]*\\\")",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex AssignmentSecretRegex = new(
+        "(\\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential|connection[_-]?string)s?\\b\\\"?\\s*[=:]\\s*)(\\\"[^\\\"]*\\\"|\\S+)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex AuthorizationRegex = new(
+        "((?:authorization|auth)\\b\\s*[=:]\\s*\"?(?:bearer|basic)\\s+)[^\"]+",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex PemBeginRegex = new(
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex PemEndRegex = new(
+        "-----END [A-Z ]*PRIVATE KEY-----",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Redacts the value part of one secret-looking line, keeping the key name and structure:
+    /// assignments and JSON keys become key=[redacted] (quotes dropped on assignments,
+    /// JSON keeps the shape), Authorization/Bearer tokens are redacted wholesale. PEM blocks
+    /// are handled line-wise by the caller (begin/end state). Returns the (possibly
+    /// unchanged) line and how many values were masked.
+    /// </summary>
+    internal static (string Line, int MaskedCount) MaskSecretLine(string line)
+    {
+        if (PemBeginRegex.IsMatch(line))
+            return ("[redacted: PEM private key]", 1);
+
+        var authorization = AuthorizationRegex.Replace(line, "$1\"[redacted]\"");
+        if (authorization != line)
+            return (authorization, 1);
+
+        var quoted = AssignmentSecretQuotedRegex.Replace(line, "$1\"[redacted]\"");
+        if (quoted != line)
+            return (quoted, 1);
+
+        var assignment = AssignmentSecretRegex.Replace(line, "$1[redacted]");
+        if (assignment != line)
+            return (assignment, 1);
+
+        return (line, 0);
+    }
 
     /// <inheritdoc />
     public async Task<Outcome<bool>> IsStaleAsync(string workspaceRoot)
