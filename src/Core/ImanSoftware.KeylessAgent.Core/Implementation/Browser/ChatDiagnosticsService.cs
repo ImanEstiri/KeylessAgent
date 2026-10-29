@@ -103,12 +103,12 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             return Outcome.Failure<(IChatPageInspector, Func<ValueTask>, IChatPage)>(selectors.Error);
 
         var provider = new PlaywrightChatProvider();
-        await provider.WaitForLoginIfNeeded(page, selectors.Data, session.Browser, minimizeAfterLogin: false, cancellationToken);
 
         IChatPage chatPage = new PlaywrightChatPage(
             page, selectors.Data, session.Browser.Debug,
             new ImanSoftware.Logging.LoggerAdapter<ImanSoftware.KeylessAgent.Core.Implementation.Browser.PlaywrightChatPage>(
                 Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance));
+        await provider.WaitForLoginIfNeeded(chatPage, selectors.Data, session, cancellationToken);
         await chatPage.PrepareReplyCaptureAsync(cancellationToken);
 
         IChatPageInspector inspector = new PlaywrightChatInspector(page);

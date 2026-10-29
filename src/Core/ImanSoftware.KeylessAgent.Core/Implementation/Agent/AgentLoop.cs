@@ -369,6 +369,7 @@ internal sealed class AgentLoop : IAgentLoop
                     Browser = options.Browser,
                     WorkspaceRoot = workspaceRoot,
                     ResumeChatUrl = session?.ChatUrl,
+                    Timings = timings,
                 }, cancellationToken);
             if (chatOutcome.IsFailure)
                 return Failed(chatOutcome.Error.Message, dryRun);
@@ -498,7 +499,16 @@ internal sealed class AgentLoop : IAgentLoop
                 await logger.AppendAsync("reply-received", new { Turn = turn, Batch = batch, Reply = reply, Source = replySource }, cancellationToken);
 
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply, "Validating AgentScript"));
-                var verdictOutcome = _guard.Check(reply, options.Limits);
+                timings.Start("parse");
+                Outcome<FormatGuardResult> verdictOutcome;
+                try
+                {
+                    verdictOutcome = _guard.Check(reply, options.Limits);
+                }
+                finally
+                {
+                    timings.Stop("parse");
+                }
                 if (verdictOutcome.IsFailure)
                 {
                     stoppedReason = $"guard failure: {verdictOutcome.Error.Message}";
@@ -507,6 +517,19 @@ internal sealed class AgentLoop : IAgentLoop
 
                 var verdict = verdictOutcome.Data;
                 var script = verdict.Script!;
+
+                // Compact per-reply summary (the raw panel stays reserved for invalid replies
+                // and -v debugging): one line instead of the raw event dump. Script is null
+                // for invalid replies, where the raw panel below tells the user what broke.
+                if (verdict.Script is not null)
+                {
+                    var kinds = script.Commands
+                        .GroupBy(c => c.Kind)
+                        .Select(g => $"{g.Key} x{g.Count()}");
+                    ui.ShowProgress(new AgentProgressEvent(
+                        AgentEventType.ValidatingReply,
+                        $"Reply: {script.Commands.Count} commands ({string.Join(", ", kinds)})"));
+                }
 
                 // Show the raw reply panel ONLY when invalid (the user needs to see what went
                 // wrong). The loop has no verbose flag; for valid replies a compact summary

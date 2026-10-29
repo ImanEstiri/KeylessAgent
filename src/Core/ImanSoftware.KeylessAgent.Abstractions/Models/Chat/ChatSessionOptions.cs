@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
 
 namespace ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 
@@ -21,4 +22,9 @@ public sealed record ChatSessionOptions
     /// URL of an existing chat to resume; null opens a new chat.
     /// </summary>
     public string? ResumeChatUrl { get; init; }
+
+    /// <summary>
+    /// Optional per-phase timing recorder (the --timing table). Null when timing is off.
+    /// </summary>
+    public ITimingRecorder? Timings { get; init; }
 }

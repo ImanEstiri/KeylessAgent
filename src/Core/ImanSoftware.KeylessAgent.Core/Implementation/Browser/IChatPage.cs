@@ -127,4 +127,20 @@ internal interface IChatPage
     /// cannot take more messages).
     /// </summary>
     Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Instant presence+visibility check across the fallback list in ONE round trip (no
+    /// waiting) — for "is it there right now" questions: polling loops, login probes, notices.
+    /// </summary>
+    Task<bool> IsAnyVisibleAsync(string[] selectors, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Waits ONCE (single parallel wait over the whole fallback list, one timeout) for any
+    /// selector to become visible and returns the matched fallback index — null on timeout.
+    /// Used for the positive-first login probe (input OR login indicator race).
+    /// </summary>
+    Task<int?> WaitForAnyVisibleAsync(string[] selectors, int timeoutMs, CancellationToken cancellationToken = default);
+
+    /// <summary>Brings the tab to the front so the user can act on it (best-effort).</summary>
+    Task FocusTabAsync(CancellationToken cancellationToken = default);
 }

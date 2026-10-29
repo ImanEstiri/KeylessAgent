@@ -254,6 +254,43 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     public Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(ChatLimitVisible);
 
+    /// <summary>Round-trip counter for the instant any-visible check.</summary>
+    public int IsAnyVisibleCalls { get; private set; }
+
+    /// <summary>Scripted answers for IsAnyVisibleAsync, in order; defaults to true.</summary>
+    public Queue<bool> AnyVisibleResults { get; } = new();
+
+    /// <summary>Which selector list last hit the instant check (by first selector).</summary>
+    public string? LastAnyVisibleFirstSelector { get; private set; }
+
+    public Task<bool> IsAnyVisibleAsync(string[] selectors, CancellationToken cancellationToken = default)
+    {
+        IsAnyVisibleCalls++;
+        LastAnyVisibleFirstSelector = selectors.FirstOrDefault();
+        return Task.FromResult(AnyVisibleResults.Count > 0 ? AnyVisibleResults.Dequeue() : true);
+    }
+
+    /// <summary>Round-trip counter for the single parallel wait.</summary>
+    public int WaitForAnyVisibleCalls { get; private set; }
+
+    /// <summary>Scripted results for WaitForAnyVisibleAsync (matched fallback index or null), in order.</summary>
+    public Queue<int?> AnyVisibleWaitResults { get; } = new();
+
+    public Task<int?> WaitForAnyVisibleAsync(string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
+    {
+        WaitForAnyVisibleCalls++;
+        return Task.FromResult(AnyVisibleWaitResults.Count > 0 ? AnyVisibleWaitResults.Dequeue() : 0);
+    }
+
+    /// <summary>How often the fake tab was focused (login-required flow).</summary>
+    public List<string> FocusedTabs { get; } = new();
+
+    public Task FocusTabAsync(CancellationToken cancellationToken = default)
+    {
+        FocusedTabs.Add(Url);
+        return Task.CompletedTask;
+    }
+
     public Task<string?> TryCaptureCopiedReplyAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (CapturedReply is null)

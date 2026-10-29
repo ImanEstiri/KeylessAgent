@@ -46,7 +46,7 @@ internal sealed class PlaywrightChatSession : IChatSession
         RateLimiter rateLimiter,
         ILoggerAdapter<PlaywrightChatSession> log,
         IFileStorage storage,
-        int pollDelayMs = 1_000)
+        int pollDelayMs = 100)
     {
         _page = page;
         _disposeAsync = disposeAsync;
@@ -94,14 +94,26 @@ internal sealed class PlaywrightChatSession : IChatSession
 
             // --- Step 2: deliver attachments (upload with wait, paste fallback) ---
             var text = message;
-            var delivery = await DeliverAttachmentsAsync(attachments, cancellationToken);
+            _options.Timings?.Start("upload");
+            Outcome<AttachmentDelivery> delivery;
+            try
+            {
+                delivery = await DeliverAttachmentsAsync(attachments, cancellationToken);
+            }
+            finally
+            {
+                _options.Timings?.Stop("upload");
+            }
+
             if (delivery.IsFailure)
                 return delivery;
             if (delivery.Data == AttachmentDelivery.FellBackToPaste)
             {
+                _options.Timings?.Start("paste");
                 _log.LogWarning("Attachment upload unavailable; pasting the content into the message.");
                 text = message + "\n\n" + string.Join("\n\n", attachments.Select(a =>
                     $"--- attached: {a.Name} ---\n{a.Content}"));
+                _options.Timings?.Stop("paste");
             }
 
             // --- Step 3: insert the whole text and send ---
@@ -114,11 +126,30 @@ internal sealed class PlaywrightChatSession : IChatSession
             }
 
             // One send attempt = the send button when clickable, otherwise Enter — never both.
-            if (!await _page.TryClickSendAsync(cancellationToken))
-                await _page.PressEnterAsync(cancellationToken);
+            _options.Timings?.Start("send");
+            try
+            {
+                if (!await _page.TryClickSendAsync(cancellationToken))
+                    await _page.PressEnterAsync(cancellationToken);
+            }
+            finally
+            {
+                _options.Timings?.Stop("send");
+            }
 
             // --- Step 4: confirm the send actually happened ---
-            if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
+            _options.Timings?.Start("send-confirm");
+            Outcome<bool> confirmed;
+            try
+            {
+                confirmed = Outcome.Successful(await ConfirmSendAsync(itemCountBefore, cancellationToken));
+            }
+            finally
+            {
+                _options.Timings?.Stop("send-confirm");
+            }
+
+            if (!confirmed.Data)
             {
                 // The list is virtualized: a constant item count proves nothing. An emptied input
                 // means the text left the composer — the message was sent.
@@ -134,7 +165,18 @@ internal sealed class PlaywrightChatSession : IChatSession
                 _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once with Enter.", _options.Browser.SendConfirmSeconds);
                 await _page.PressEnterAsync(cancellationToken);
 
-                if (!await ConfirmSendAsync(itemCountBefore, cancellationToken))
+                _options.Timings?.Start("send-confirm");
+                Outcome<bool> confirmedAfterRetry;
+                try
+                {
+                    confirmedAfterRetry = Outcome.Successful(await ConfirmSendAsync(itemCountBefore, cancellationToken));
+                }
+                finally
+                {
+                    _options.Timings?.Stop("send-confirm");
+                }
+
+                if (!confirmedAfterRetry.Data)
                 {
                     if (await _page.IsInputClearedAsync(cancellationToken))
                     {
@@ -201,11 +243,20 @@ internal sealed class PlaywrightChatSession : IChatSession
         }
 
         var reasoning = await _page.GetNewestReasoningTextAsync(cancellationToken);
-        var read = await ReplyReader.ReadAsync(
-            mode,
-            new ReplyReadContext(domText, reasoning, ct => _page.TryCaptureCopiedReplyAsync(TimeSpan.FromSeconds(5), ct)),
-            summary => _log.LogInformation("Reply copy validation: {Summary}", summary),
-            cancellationToken);
+        _options.Timings?.Start("copy");
+        Outcome<ReplyReadResult> read;
+        try
+        {
+            read = await ReplyReader.ReadAsync(
+                mode,
+                new ReplyReadContext(domText, reasoning, ct => _page.TryCaptureCopiedReplyAsync(TimeSpan.FromSeconds(5), ct)),
+                summary => _log.LogInformation("Reply copy validation: {Summary}", summary),
+                cancellationToken);
+        }
+        finally
+        {
+            _options.Timings?.Stop("copy");
+        }
 
         if (read.IsFailure)
             return read;
@@ -224,15 +275,23 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// </summary>
     private async Task ApplyChatTogglesAsync(CancellationToken cancellationToken)
     {
-        var selectors = await SelectorsCatalog.LoadAsync(_options.WorkspaceRoot, _options.Browser.SelectorsFile, cancellationToken);
-        if (selectors.IsFailure)
+        _options.Timings?.Start("toggles");
+        try
         {
-            _log.LogWarning("Chat toggles not checked: selectors could not be loaded ({Reason}).", selectors.Error.Message);
-            return;
-        }
+            var selectors = await SelectorsCatalog.LoadAsync(_options.WorkspaceRoot, _options.Browser.SelectorsFile, cancellationToken);
+            if (selectors.IsFailure)
+            {
+                _log.LogWarning("Chat toggles not checked: selectors could not be loaded ({Reason}).", selectors.Error.Message);
+                return;
+            }
 
-        await EnsureToggleAsync("DeepThink", selectors.Data.DeepThinkToggle, _options.Browser.EnableDeepThink, cancellationToken);
-        await EnsureToggleAsync("Search", selectors.Data.SearchToggle, _options.Browser.EnableSearch, cancellationToken);
+            await EnsureToggleAsync("DeepThink", selectors.Data.DeepThinkToggle, _options.Browser.EnableDeepThink, cancellationToken);
+            await EnsureToggleAsync("Search", selectors.Data.SearchToggle, _options.Browser.EnableSearch, cancellationToken);
+        }
+        finally
+        {
+            _options.Timings?.Stop("toggles");
+        }
     }
 
     private async Task EnsureToggleAsync(string name, string[] selectors, bool enabled, CancellationToken cancellationToken)
@@ -263,40 +322,59 @@ internal sealed class PlaywrightChatSession : IChatSession
         var timeout = TimeSpan.FromSeconds(_options.Browser.ReplyTimeoutSeconds);
         var deadline = DateTime.UtcNow + timeout;
         var stableReply = (string?)null;
+        var firstTokenSeen = false;
 
         if (await _page.IsChatLimitNoticeVisibleAsync(cancellationToken))
             return ChatExhausted();
 
-        while (DateTime.UtcNow < deadline)
+        _options.Timings?.Start("first-token");
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var stillGenerating = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
-            var stamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
-            var isNewMessage = stamp is not null && stamp.IsDifferentFrom(_preSendStamp);
-            var reply = isNewMessage && await _page.GetNewestAssistantHtmlAsync(cancellationToken) is { } html
-                ? _replyExtractor.ExtractFinalAnswer(html)
-                : null;
-
-            if (!stillGenerating &&
-                isNewMessage &&
-                !string.IsNullOrWhiteSpace(reply) &&
-                reply == stableReply)
+            while (DateTime.UtcNow < deadline)
             {
-                // Completion detected. The DOM text is the baseline; the reply SOURCE (raw
-                // Markdown from the Copy button vs DOM extraction) is decided per config.
-                var readOutcome = await ReadReplyTextAsync(reply, cancellationToken);
-                if (readOutcome.IsFailure)
-                    return Outcome.Failure<string>(readOutcome.Error);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                _preSendStamp = stamp;
-                return Outcome.Successful(readOutcome.Data.Text);
+                var stillGenerating = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
+                var stamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
+                var isNewMessage = stamp is not null && stamp.IsDifferentFrom(_preSendStamp);
+                var reply = isNewMessage && await _page.GetNewestAssistantHtmlAsync(cancellationToken) is { } html
+                    ? _replyExtractor.ExtractFinalAnswer(html)
+                    : null;
+
+                if (!firstTokenSeen && (stillGenerating || (!string.IsNullOrWhiteSpace(reply) && isNewMessage)))
+                {
+                    firstTokenSeen = true;
+                    _options.Timings?.Stop("first-token");
+                    _options.Timings?.Start("completion");
+                }
+
+                if (!stillGenerating &&
+                    isNewMessage &&
+                    !string.IsNullOrWhiteSpace(reply) &&
+                    reply == stableReply)
+                {
+                    // Completion detected. The DOM text is the baseline; the reply SOURCE (raw
+                    // Markdown from the Copy button vs DOM extraction) is decided per config.
+                    var readOutcome = await ReadReplyTextAsync(reply, cancellationToken);
+                    if (readOutcome.IsFailure)
+                        return Outcome.Failure<string>(readOutcome.Error);
+
+                    _preSendStamp = stamp;
+                    return Outcome.Successful(readOutcome.Data.Text);
+                }
+
+                // Only the NEW message's text may accumulate stability; the old reply never counts.
+                stableReply = isNewMessage && !string.IsNullOrWhiteSpace(reply) ? reply : null;
+
+                await Task.Delay(_pollDelayMs, cancellationToken);
             }
-
-            // Only the NEW message's text may accumulate stability; the old reply never counts.
-            stableReply = isNewMessage && !string.IsNullOrWhiteSpace(reply) ? reply : null;
-
-            await Task.Delay(_pollDelayMs, cancellationToken);
+        }
+        finally
+        {
+            if (firstTokenSeen)
+                _options.Timings?.Stop("completion");
+            else
+                _options.Timings?.Stop("first-token");
         }
 
         // The notice may have appeared while waiting (the reply got cut mid-generation).

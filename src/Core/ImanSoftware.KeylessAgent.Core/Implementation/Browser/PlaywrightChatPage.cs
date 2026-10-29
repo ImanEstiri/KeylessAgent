@@ -83,8 +83,9 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var found = await FirstVisibleAsync(_page, _selectors.StopIndicator, timeoutMs: 400, cancellationToken);
-        return found is not null;
+        // Instant check: polling loops call this every ~100 ms, so an absent Stop button
+        // must cost one round trip, never a per-selector wait.
+        return await IsAnyVisibleAsync(_page, _selectors.StopIndicator, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -116,8 +117,8 @@ internal sealed class PlaywrightChatPage : IChatPage
             try
             {
                 var locator = _page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
 
+                // Instant probe: absent elements cost one Evaluate round trip, never a wait.
                 // The disable state crosses as a JSON string so no bool/string mangling can
                 // flip the result (a raw bool would ToString as "True" and compare unequal).
                 // The disable-value assert is manual via `keyless doctor` (the unit tests run
@@ -125,12 +126,19 @@ internal sealed class PlaywrightChatPage : IChatPage
                 var disabledJson = await EvaluateAsync(locator,
                     "element => JSON.stringify({ d: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled') })",
                     cancellationToken);
+                if (disabledJson is null)
+                    continue; // selector matched nothing; try the next fallback.
+
                 var isDisabled = !string.IsNullOrEmpty(disabledJson) &&
                     System.Text.Json.JsonDocument.Parse(disabledJson).RootElement
                         .TryGetProperty("d", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.True;
                 return !isDisabled;
             }
-            catch (TimeoutException)
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
             {
                 // Try the next fallback selector.
             }
@@ -146,16 +154,11 @@ internal sealed class PlaywrightChatPage : IChatPage
     {
         foreach (var selector in selectors)
         {
-            try
-            {
-                var locator = _page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
-                return await EvaluateAsync(locator, "element => element.getAttribute('aria-pressed')", cancellationToken);
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
+            // Instant probe: one round trip per fallback, no waiting.
+            var state = await EvaluateAsync(_page.Locator(selector).First,
+                "element => element.getAttribute('aria-pressed')", cancellationToken);
+            if (state is not null)
+                return state;
         }
 
         return null;
@@ -169,11 +172,14 @@ internal sealed class PlaywrightChatPage : IChatPage
             try
             {
                 var locator = _page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 1_000 });
                 await locator.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
                 return true;
             }
-            catch (TimeoutException)
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
             {
                 // Try the next fallback selector.
             }
@@ -184,47 +190,51 @@ internal sealed class PlaywrightChatPage : IChatPage
 
     /// <inheritdoc />
     public async Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default)
-    {
-        foreach (var selector in _selectors.ChatLimitNotice)
-        {
-            try
-            {
-                var locator = _page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 500 });
-                return true;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
-        }
+        => await IsAnyVisibleAsync(_page, _selectors.ChatLimitNotice, cancellationToken);
 
-        return false;
+    /// <inheritdoc />
+    public async Task<bool> IsAnyVisibleAsync(string[] selectors, CancellationToken cancellationToken = default)
+        => await IsAnyVisibleAsync(_page, selectors, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<int?> WaitForAnyVisibleAsync(string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
+    {
+        var winner = await FirstVisibleAsync(_page, selectors, timeoutMs, cancellationToken);
+        return winner?.Index;
+    }
+
+    private static async Task<string> GetTargetIdAsync(ICDPSession session)
+    {
+        var response = await session.SendAsync("Target.getTargetInfo");
+        var element = (System.Text.Json.JsonElement)response;
+        return element.GetProperty("targetInfo").GetProperty("targetId").GetString() ?? string.Empty;
+    }
+
+    /// <inheritdoc />
+    public async Task FocusTabAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await WithCancellationAsync(_page.BringToFrontAsync(), cancellationToken);
+            var focusSession = await WithCancellationAsync(_page.Context.NewCDPSessionAsync(_page), cancellationToken);
+            await focusSession.SendAsync("Target.activateTarget",
+                new Dictionary<string, object> { ["targetId"] = await GetTargetIdAsync(focusSession) });
+            await focusSession.DetachAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Focus is best-effort.
+        }
     }
 
     /// <inheritdoc />
     public async Task<bool> AreAttachmentChipsVisibleAsync(CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        foreach (var selector in _selectors.AttachmentChips)
-        {
-            try
-            {
-                await _page.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = 300,
-                });
-                return true;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
-        }
-
-        return false;
-    }
+        => await IsAnyVisibleAsync(_page, _selectors.AttachmentChips, cancellationToken);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<string>> GetInputFileNamesAsync(CancellationToken cancellationToken = default)
@@ -718,28 +728,103 @@ internal sealed class PlaywrightChatPage : IChatPage
         }
     }
 
-    internal static async Task<ILocator?> FirstVisibleAsync(IPage page, string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Waits for the FIRST VISIBLE match of any fallback selector — all selectors race in ONE
+    /// combined Or-locator with ONE timeout, so an absent element costs the timeout once, not
+    /// once per fallback. Returns the winning locator and the matched fallback index.
+    /// </summary>
+    internal static async Task<(ILocator Locator, int Index)?> FirstVisibleAsync(
+        IPage page, string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
     {
-        foreach (var selector in selectors)
+        if (selectors.Length == 0)
+            return null;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var combined = page.Locator(selectors[0]);
+        for (var index = 1; index < selectors.Length; index++)
+            combined = combined.Or(page.Locator(selectors[index]));
+
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            await combined.First.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = timeoutMs,
+            });
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+
+        // The combined wait fired: identify the winner with instant (no-wait) probes.
+        for (var index = 0; index < selectors.Length; index++)
+        {
+            var locator = page.Locator(selectors[index]).First;
             try
             {
-                var locator = page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = timeoutMs,
-                });
-                return locator;
+                if (await locator.IsVisibleAsync())
+                    return (locator, index);
             }
-            catch (TimeoutException)
+            catch (OperationCanceledException)
             {
-                // Try the next fallback selector.
+                throw;
+            }
+            catch
+            {
+                // The element vanished between the wait and the probe; try the next fallback.
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Instant presence+visibility check across the fallback list in ONE round trip
+    /// (an Or-locator's IsVisibleAsync never waits) — for "is it there right now" questions:
+    /// polling loops, login probes, notices, toggles.
+    /// </summary>
+    internal static async Task<bool> IsAnyVisibleAsync(IPage page, string[] selectors, CancellationToken cancellationToken = default)
+    {
+        if (selectors.Length == 0)
+            return false;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var combined = page.Locator(selectors[0]);
+        for (var index = 1; index < selectors.Length; index++)
+            combined = combined.Or(page.Locator(selectors[index]));
+
+        try
+        {
+            return await combined.First.IsVisibleAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Builds one Or-locator over the fallback list (single round-trip primitive).</summary>
+    internal static ILocator CombinedLocator(IPage page, string[] selectors)
+    {
+        var combined = page.Locator(selectors[0]);
+        for (var index = 1; index < selectors.Length; index++)
+            combined = combined.Or(page.Locator(selectors[index]));
+        return combined;
+    }
+
+    /// <summary>Non-generic task variant of the cancellation race.</summary>
+    private static async Task WithCancellationAsync(Task task, CancellationToken cancellationToken)
+    {
+        await WithCancellationAsync(
+            task.ContinueWith(_ => true, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default),
+            cancellationToken);
     }
 
     /// <summary>

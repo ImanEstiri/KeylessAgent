@@ -68,11 +68,16 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             if (selectors.IsFailure)
                 return Outcome.Failure<IChatSession>(selectors.Error);
 
-            await WaitForLoginIfNeeded(page, selectors.Data, options.Browser, minimizeAfterLogin: true, cancellationToken);
-
             IChatPage chatPage = new PlaywrightChatPage(
                 page, selectors.Data, options.Browser.Debug,
                 new LoggerAdapter<PlaywrightChatPage>(_loggerFactory));
+
+            await WaitForLoginIfNeeded(chatPage, selectors.Data, options, cancellationToken);
+
+            // Logged in (or just logged in): get the window out of the user's way.
+            if (options.Browser.MinimizeAfterLogin)
+                await MinimizeWindowAsync(page, cancellationToken);
+
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
                 () => DisposeAsync(page, options.Browser),
@@ -98,50 +103,53 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
-    /// Brings the tab to front and waits until the login indicator disappears
-    /// (the user logs in manually; the agent continues automatically).
+    /// Positive-first login detection: ONE parallel wait races the chat InputBox against the
+    /// LoginIndicator. If the input appears first the user is logged in — no login wait ever
+    /// runs, and absent elements never consume a per-fallback timeout. Only a winning login
+    /// indicator focuses the tab and waits for the manual login (LoginWaitSeconds).
     /// </summary>
     internal async Task WaitForLoginIfNeeded(
-        IPage page, SelectorsCatalog selectors, BrowserOptions browserOptions,
-        bool minimizeAfterLogin = false, CancellationToken cancellationToken = default)
+        IChatPage page, SelectorsCatalog selectors, ChatSessionOptions options,
+        CancellationToken cancellationToken = default)
     {
-        var loginLocator = await PlaywrightChatPage.FirstVisibleAsync(page, selectors.LoginIndicator, 5_000, cancellationToken);
-        if (loginLocator is null)
-        {
-            // Already logged in: get the window out of the user's way.
-            if (minimizeAfterLogin)
-                await MinimizeWindowAsync(page, cancellationToken);
-            return;
-        }
-
-        // Focus the tab so the user sees the login page.
+        var probeSelectors = selectors.InputBox.Concat(selectors.LoginIndicator).ToArray();
+        options.Timings?.Start("login-probe");
+        int? winner;
         try
         {
-            await page.BringToFrontAsync();
-            var focusSession = await page.Context.NewCDPSessionAsync(page);
-            await focusSession.SendAsync("Target.activateTarget",
-                new Dictionary<string, object> { ["targetId"] = await GetTargetIdAsync(focusSession) });
-            await focusSession.DetachAsync();
+            winner = await page.WaitForAnyVisibleAsync(
+                probeSelectors, options.Browser.LoginProbeSeconds * 1_000, cancellationToken);
         }
-        catch
+        finally
         {
-            // Focus is best-effort.
+            options.Timings?.Stop("login-probe");
         }
+
+        if (winner is null || winner < selectors.InputBox.Length)
+            return; // the chat input is there (or nothing matched — the send path will tell).
 
         var logger = new LoggerAdapter<PlaywrightChatProvider>(NullLoggerFactory.Instance);
         logger.LogWarning("Login page detected; waiting up to {Seconds}s for a manual login…", LoginWaitSeconds);
+        await page.FocusTabAsync(cancellationToken);
+
         var deadline = DateTime.UtcNow.AddSeconds(LoginWaitSeconds);
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await page.WaitForTimeoutAsync(2_000);
-            if (await PlaywrightChatPage.FirstVisibleAsync(page, selectors.LoginIndicator, 1_000, cancellationToken) is null)
+            await Task.Delay(2_000, cancellationToken);
+            options.Timings?.Start("login-probe");
+            bool stillOnLogin;
+            try
             {
-                // Login done: get the window out of the user's way.
-                if (minimizeAfterLogin)
-                    await MinimizeWindowAsync(page, cancellationToken);
-                return;
+                stillOnLogin = await page.IsAnyVisibleAsync(selectors.LoginIndicator, cancellationToken);
             }
+            finally
+            {
+                options.Timings?.Stop("login-probe");
+            }
+
+            if (!stillOnLogin)
+                return; // login done; the caller minimizes.
         }
 
         throw new TimeoutException("The chat was still not logged in after 5 minutes.");

@@ -163,6 +163,12 @@ public sealed record BrowserOptions
     /// Minimize the window again after the login completes. Default true.
     /// </summary>
     public bool MinimizeAfterLogin { get; init; } = true;
+
+    /// <summary>
+    /// Upper bound of the positive-first login probe: wait this long for EITHER the chat
+    /// input (logged in) OR a login indicator, in one parallel wait. Default 15 seconds.
+    /// </summary>
+    public int LoginProbeSeconds { get; init; } = 15;
 }
 
 /// <summary>
