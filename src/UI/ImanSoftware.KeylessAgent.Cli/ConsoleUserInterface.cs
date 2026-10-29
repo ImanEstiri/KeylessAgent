@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using Spectre.Console;
 
@@ -76,9 +77,27 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
     /// <inheritdoc />
     public void ShowProgress(AgentProgressEvent progressEvent)
     {
+        // One consistent step renderer: "› step: detail" — never raw enum names.
         WithGate(() => _console.MarkupLine(
-            $"[grey]{progressEvent.Type}[/] {progressEvent.Detail.EscapeMarkup()}"));
+            $"[grey]› {StepLabel(progressEvent.Type)}:[/] {progressEvent.Detail.EscapeMarkup()}"));
     }
+
+    /// <summary>Stable, lowercase step labels for the progress renderer.</summary>
+    private static string StepLabel(AgentEventType type) => type switch
+    {
+        AgentEventType.SessionStarting => "setup",
+        AgentEventType.ConnectingToBrowser => "connect",
+        AgentEventType.OpeningChat => "chat",
+        AgentEventType.UploadingAttachments => "attachments",
+        AgentEventType.SendingMessage => "send",
+        AgentEventType.WaitingForReply => "reply",
+        AgentEventType.ValidatingReply => "reply",
+        AgentEventType.ExecutingCommand => "execute",
+        AgentEventType.SendingResults => "results",
+        AgentEventType.RefreshingSnapshot => "snapshot",
+        AgentEventType.TurnFinished => "done",
+        _ => type.ToString().ToLowerInvariant(),
+    };
 
     /// <inheritdoc />
     public Task<ChoiceResult> ChooseAsync(ChoiceRequest request, CancellationToken cancellationToken = default)

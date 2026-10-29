@@ -834,6 +834,8 @@ public class AgentLoopTests : IDisposable
         chat.Sent.Should().Contain(m => m.AttachmentNames.Contains("code-dump-result.md"),
             "the file content reached the model only as a snapshot attachment (data), not as a command");
         result.CompletedByDone.Should().BeTrue();
+        ui.Progress.Should().Contain(p => p.Type == AgentEventType.ValidatingReply && p.Detail.StartsWith("Reply: 2 commands"),
+            "valid replies get one compact summary line");
     }
 
     [Fact]
