@@ -1,5 +1,7 @@
 using FluentAssertions;
 using ImanSoftware.FileStorage;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Core.Implementation.Agent;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
@@ -56,6 +58,55 @@ public class TurnLoggerTests : IDisposable
         warnings.Should().BeEmpty();
         File.Exists(logger.LogPath).Should().BeTrue();
         (await File.ReadAllTextAsync(logger.LogPath)).Should().Contain("\"note\"");
+    }
+
+    [Fact]
+    public async Task ResultOutput_SecretsAreRedacted()
+    {
+        var logger = new TurnLogger(
+            ImanFileStorageFactory.CreateStorage(), new FakeDateTimeProvider());
+        await logger.StartAsync(_root, 1);
+
+        await logger.AppendResultAsync(new CommandExecutionResult
+        {
+            Number = 1,
+            Kind = CommandKind.RunCommand,
+            Target = "print-credentials",
+            Status = CommandStatus.Ok,
+            Output = "password=secret123\nDB_HOST=localhost",
+        });
+
+        var log = await File.ReadAllTextAsync(logger.LogPath);
+        log.Should().NotContain("secret123", "credentials never reach the turn log");
+        log.Should().Contain("[redacted]");
+        log.Should().Contain("password=[redacted]");
+        log.Should().Contain("DB_HOST=localhost", "non-secret lines are untouched");
+    }
+
+    [Fact]
+    public async Task ResultOutput_JsonAndBearerSecrets_AreRedacted()
+    {
+        var logger = new TurnLogger(
+            ImanFileStorageFactory.CreateStorage(), new FakeDateTimeProvider());
+        await logger.StartAsync(_root, 1);
+
+        await logger.AppendResultAsync(new CommandExecutionResult
+        {
+            Number = 1,
+            Kind = CommandKind.RunCommand,
+            Target = "print-credentials",
+            Status = CommandStatus.Ok,
+            Output = "\"ApiKey\": \"sk-123\"\nAuthorization: Bearer eyJhbGci\nREGION=eu",
+        });
+
+        var log = await File.ReadAllTextAsync(logger.LogPath);
+        log.Should().NotContain("sk-123");
+        log.Should().NotContain("eyJhbGci");
+        // The serializer escapes quotes as unicode escapes, so the redacted values are counted instead of
+        // asserted verbatim: one for the JSON key, one for the Bearer token.
+        log.Split("[redacted]").Length.Should().Be(3);
+        log.Should().Contain("Authorization: Bearer [redacted]", "the token is gone, the scheme is kept");
+        log.Should().Contain("REGION=eu");
     }
 
     public void Dispose()

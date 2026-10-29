@@ -93,12 +93,14 @@ internal sealed class TurnLogger
     }
 
     /// <summary>
-    /// Appends one command result to the log.
+    /// Appends one command result to the log. The Output is redacted BEFORE serialization —
+    /// command output can contain credentials (connection strings, tokens) and the transcript
+    /// must not store them. Other payloads (requests, replies) are logged as received.
     /// </summary>
     /// <param name="result">The executed command's result.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public Task AppendResultAsync(CommandExecutionResult result, CancellationToken cancellationToken = default)
-        => AppendAsync("result", result, cancellationToken);
+        => AppendAsync("result", result with { Output = SecretRedactor.Redact(result.Output) }, cancellationToken);
 
     /// <summary>Stops logging for the rest of the turn and warns exactly once.</summary>
     private void Disable(string reason)
