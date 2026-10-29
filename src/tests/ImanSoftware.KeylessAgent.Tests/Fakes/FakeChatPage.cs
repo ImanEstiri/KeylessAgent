@@ -286,9 +286,29 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     /// <summary>Scripted results for WaitForAnyVisibleAsync (matched fallback index or null), in order.</summary>
     public Queue<int?> AnyVisibleWaitResults { get; } = new();
 
+    /// <summary>
+    /// DOM-order visibility per selector for WaitForAnyVisibleAsync. When any entry is set,
+    /// the fake models a real page: it returns the index of the FIRST VISIBLE selector in
+    /// fallback order — a hidden earlier match never hides a later visible one. Missing
+    /// selectors count as hidden.
+    /// </summary>
+    public Dictionary<string, bool> DomVisibility { get; } = new();
+
     public Task<int?> WaitForAnyVisibleAsync(string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
     {
         WaitForAnyVisibleCalls++;
+
+        if (DomVisibility.Count > 0)
+        {
+            for (var index = 0; index < selectors.Length; index++)
+            {
+                if (DomVisibility.TryGetValue(selectors[index], out var visible) && visible)
+                    return Task.FromResult<int?>(index);
+            }
+
+            return Task.FromResult<int?>(null);
+        }
+
         return Task.FromResult(AnyVisibleWaitResults.Count > 0 ? AnyVisibleWaitResults.Dequeue() : 0);
     }
 

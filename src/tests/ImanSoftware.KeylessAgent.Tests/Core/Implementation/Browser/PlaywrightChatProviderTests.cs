@@ -68,4 +68,44 @@ public class PlaywrightChatProviderTests
         page.FocusedTabs.Should().BeEmpty();
         page.IsAnyVisibleCalls.Should().Be(0);
     }
+
+    [Fact]
+    public async Task HiddenEarlierMatch_DoesNotHideALaterVisibleMatch()
+    {
+        // A real page can render a HIDDEN element matching the first fallback while a later
+        // fallback is visible: the visibility race must pick the later visible selector, not
+        // stop at the hidden first-in-DOM-order match.
+        var page = new FakeChatPage();
+        page.DomVisibility[_catalog.InputBox[0]] = false; // hidden, but first in fallback order
+        page.DomVisibility[_catalog.LoginIndicator[0]] = true;
+        page.AnyVisibleResults.Enqueue(false); // then the indicator is gone: login done
+
+        await RunLoginProbeAsync(page);
+
+        page.WaitForAnyVisibleCalls.Should().Be(1);
+        page.FocusedTabs.Should().ContainSingle("the visible LOGIN indicator wins the race");
+    }
+
+    [Fact]
+    public async Task WinnerRule_PicksFirstVisibleSelectorInFallbackOrder()
+    {
+        // The winner rule is pure over per-selector visibility: the first VISIBLE selector in
+        // fallback order wins; hidden earlier matches are skipped; nothing visible → null.
+        var selectors = new[] { "a", "b", "c" };
+        var visibility = new Dictionary<string, bool>
+        {
+            ["a"] = false, // a hidden earlier match must not win
+            ["b"] = true,
+            ["c"] = true,
+        };
+
+        var winner = await PlaywrightChatPage.SelectVisibleWinnerAsync(
+            selectors, selector => Task.FromResult(visibility[selector]));
+
+        winner.Should().Be(1, "b is the first VISIBLE selector in fallback order");
+
+        var noneVisible = await PlaywrightChatPage.SelectVisibleWinnerAsync(
+            selectors, _ => Task.FromResult(false));
+        noneVisible.Should().BeNull();
+    }
 }

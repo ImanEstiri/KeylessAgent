@@ -739,9 +739,14 @@ internal sealed class PlaywrightChatPage : IChatPage
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Filter(Visible) matters: without it, combined.First is the first match in DOM
+        // ORDER — a hidden element listed first would make the visible wait time out even
+        // though a later fallback is visible. With the filter, the race is over VISIBLE
+        // matches only, and the winner selection below agrees with it.
         var combined = resolve(selectors[0]);
         for (var index = 1; index < selectors.Length; index++)
             combined = combined.Or(resolve(selectors[index]));
+        combined = combined.Filter(new LocatorFilterOptions { Visible = true });
 
         try
         {
@@ -756,25 +761,30 @@ internal sealed class PlaywrightChatPage : IChatPage
             return null;
         }
 
-        // The combined wait fired: identify the winner with instant (no-wait) probes,
-        // resolved at the SAME scope the race ran at (a nested probe would search inside
-        // the already-matched element and find nothing).
-        for (var index = 0; index < selectors.Length; index++)
+        // The combined wait fired: identify the winner with instant (no-wait) visibility
+        // probes resolved at the SAME scope the race ran at (a nested probe would search
+        // inside the already-matched element and find nothing).
+        var winnerIndex = await SelectVisibleWinnerAsync(
+            selectors, async selector => await resolve(selector).First.IsVisibleAsync(), cancellationToken);
+        if (winnerIndex is null)
+            return null;
+
+        return (resolve(selectors[winnerIndex.Value]).First, winnerIndex.Value);
+    }
+
+    /// <summary>
+    /// The winner rule of the visibility race: the FIRST selector (in fallback order) whose
+    /// element is visible right now. A hidden earlier match never hides a later visible one —
+    /// null when nothing is visible (the element vanished between wait and probe).
+    /// </summary>
+    internal static async Task<int?> SelectVisibleWinnerAsync(
+        string[] selectors, Func<string, Task<bool>> isVisible, CancellationToken cancellationToken = default)
+    {
+        foreach (var selector in selectors)
         {
-            var locator = resolve(selectors[index]).First;
-            try
-            {
-                if (await locator.IsVisibleAsync())
-                    return (locator, index);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // The element vanished between the wait and the probe; try the next fallback.
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await isVisible(selector))
+                return Array.IndexOf(selectors, selector);
         }
 
         return null;
