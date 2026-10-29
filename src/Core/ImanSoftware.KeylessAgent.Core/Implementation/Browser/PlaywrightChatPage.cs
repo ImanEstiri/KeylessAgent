@@ -288,26 +288,20 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task InsertTextAsync(string text, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        for (var index = 0; index < _selectors.InputBox.Length; index++)
+
+        // ONE parallel wait over the whole fallback list: an absent input costs the 10s
+        // upper bound once, never once per fallback selector.
+        var match = await FirstVisibleAsync(_page, _selectors.InputBox, 10_000, cancellationToken);
+        if (match is null)
         {
-            var selector = _selectors.InputBox[index];
-            try
-            {
-                var input = _page.Locator(selector).First;
-                await input.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 10_000 });
-                _log.LogDebug("InputBox matched selector #{Index}: {Selector}", index, selector);
-                await input.FillAsync(string.Empty);
-                await _page.Keyboard.InsertTextAsync(text);
-                return;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
+            throw new InvalidOperationException(
+                $"Input box not found; none of the selectors matched: {string.Join(", ", _selectors.InputBox)}");
         }
 
-        throw new InvalidOperationException(
-            $"Input box not found; none of the selectors matched: {string.Join(", ", _selectors.InputBox)}");
+        var (input, index) = match.Value;
+        _log.LogDebug("InputBox matched selector #{Index}: {Selector}", index, _selectors.InputBox[index]);
+        await input.FillAsync(string.Empty);
+        await _page.Keyboard.InsertTextAsync(text);
     }
 
     /// <inheritdoc />
@@ -315,58 +309,58 @@ internal sealed class PlaywrightChatPage : IChatPage
     {
         // Pick the first visible candidate that is not aria-disabled; Enter stays the last fallback.
         cancellationToken.ThrowIfCancellationRequested();
-        for (var index = 0; index < _selectors.SendButton.Length; index++)
+
+        // ONE parallel wait over the whole fallback list (3s upper bound once, not per
+        // fallback); the per-candidate disabled/paperclip screen stays sequential because
+        // it must skip non-sending candidates in fallback order.
+        var match = await FirstVisibleAsync(_page, _selectors.SendButton, 3_000, cancellationToken);
+        if (match is null)
         {
-            try
-            {
-                var locator = _page.Locator(_selectors.SendButton[index]).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = 3_000,
-                });
-
-                var state = await EvaluateAsync(locator,
-                    "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
-                    cancellationToken);
-                if (!string.IsNullOrEmpty(state))
-                {
-                    var parsed = System.Text.Json.JsonDocument.Parse(state);
-                    var dis = parsed.RootElement.TryGetProperty("dis", out var disValue) && disValue.ValueKind == System.Text.Json.JsonValueKind.True;
-                    var paperclip = parsed.RootElement.TryGetProperty("paperclip", out var paperclipValue) && paperclipValue.ValueKind == System.Text.Json.JsonValueKind.True;
-
-                    // Disabled buttons can never send...
-                    if (dis)
-                    {
-                        _log.LogDebug("SendButton #{Index} matched but is disabled; trying next", index);
-                        continue;
-                    }
-
-                    // ...and the iconLabelPrimary button next to the file input is the PAPERCLIP:
-                    // clicking it opens the OS file dialog ("Open" window) instead of sending.
-                    if (paperclip)
-                    {
-                        _log.LogDebug("SendButton #{Index} matched the paperclip (file attach); skipping", index);
-                        continue;
-                    }
-                }
-
-                _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
-                await locator.ClickAsync();
-                return true;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning("Send click failed on #{Index}: {Message}", index, ex.Message);
-            }
+            _log.LogDebug("No SendButton selector matched");
+            return false;
         }
 
-        _log.LogDebug("No SendButton selector matched");
-        return false;
+        var (locator, index) = match.Value;
+        try
+        {
+            var state = await EvaluateAsync(locator,
+                "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
+                cancellationToken);
+            if (!string.IsNullOrEmpty(state))
+            {
+                var parsed = System.Text.Json.JsonDocument.Parse(state);
+                var dis = parsed.RootElement.TryGetProperty("dis", out var disValue) && disValue.ValueKind == System.Text.Json.JsonValueKind.True;
+                var paperclip = parsed.RootElement.TryGetProperty("paperclip", out var paperclipValue) && paperclipValue.ValueKind == System.Text.Json.JsonValueKind.True;
+
+                // Disabled buttons can never send...
+                if (dis)
+                {
+                    _log.LogDebug("SendButton #{Index} matched but is disabled; Enter is the fallback", index);
+                    return false;
+                }
+
+                // ...and the iconLabelPrimary button next to the file input is the PAPERCLIP:
+                // clicking it opens the OS file dialog ("Open" window) instead of sending.
+                if (paperclip)
+                {
+                    _log.LogDebug("SendButton #{Index} matched the paperclip (file attach); Enter is the fallback", index);
+                    return false;
+                }
+            }
+
+            _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
+            await locator.ClickAsync();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Send click failed on #{Index}: {Message}", index, ex.Message);
+            return false;
+        }
     }
 
     /// <inheritdoc />
@@ -442,29 +436,14 @@ internal sealed class PlaywrightChatPage : IChatPage
             _log.LogDebug("Hover before copy failed: {Message}", ex.Message);
         }
 
-        foreach (var selector in _selectors.MessageCopyButton)
-        {
-            try
-            {
-                await newest.Locator(selector).First.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = (float)timeout.TotalMilliseconds,
-                });
-                _log.LogDebug("MessageCopyButton matched selector: {Selector}", selector);
-                return true;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback selector.
-            }
-        }
+        // ONE parallel wait over the whole fallback list, scoped to the newest message: the
+        // timeout is the caller's upper bound once, never once per fallback selector.
+        var match = await FirstVisibleAsync(newest, _selectors.MessageCopyButton, (int)timeout.TotalMilliseconds, cancellationToken);
+        if (match is null)
+            return false;
 
-        return false;
+        _log.LogDebug("MessageCopyButton matched selector #{Index}: {Selector}", match.Value.Index, _selectors.MessageCopyButton[match.Value.Index]);
+        return true;
     }
 
     /// <inheritdoc />
@@ -579,10 +558,19 @@ internal sealed class PlaywrightChatPage : IChatPage
             if (!clicked)
                 return null;
 
-            await Task.Delay(500, cancellationToken);
-            var text = await EvaluateAsync(_page.Locator("body").First,
-                "async () => { try { return await navigator.clipboard.readText(); } catch { return null; } }",
-                cancellationToken);
+            // Poll the clipboard briefly instead of one fixed 500 ms sleep: the Copy click
+            // usually lands within one or two polls, and the total budget (500 ms) is unchanged.
+            string? text = null;
+            var clipboardDeadline = DateTime.UtcNow.AddMilliseconds(500);
+            while (string.IsNullOrEmpty(text) && DateTime.UtcNow < clipboardDeadline)
+            {
+                text = await EvaluateAsync(_page.Locator("body").First,
+                    "async () => { try { return await navigator.clipboard.readText(); } catch { return null; } }",
+                    cancellationToken);
+                if (string.IsNullOrEmpty(text) && DateTime.UtcNow < clipboardDeadline)
+                    await Task.Delay(75, cancellationToken);
+            }
+
             return string.IsNullOrEmpty(text) ? null : text;
         }
         catch (OperationCanceledException)
@@ -735,15 +723,25 @@ internal sealed class PlaywrightChatPage : IChatPage
     /// </summary>
     internal static async Task<(ILocator Locator, int Index)?> FirstVisibleAsync(
         IPage page, string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
+        => await FirstVisibleAsync(selector => page.Locator(selector), selectors, timeoutMs, cancellationToken);
+
+    /// <summary>Scope-based variant: the fallbacks race within a parent element.</summary>
+    internal static async Task<(ILocator Locator, int Index)?> FirstVisibleAsync(
+        ILocator scope, string[] selectors, int timeoutMs, CancellationToken cancellationToken = default)
+        => await FirstVisibleAsync(selector => scope.Locator(selector), selectors, timeoutMs, cancellationToken);
+
+    /// <param name="resolve">Builds a locator for one selector at the wait's root scope.</param>
+    private static async Task<(ILocator Locator, int Index)?> FirstVisibleAsync(
+        Func<string, ILocator> resolve, string[] selectors, int timeoutMs, CancellationToken cancellationToken)
     {
         if (selectors.Length == 0)
             return null;
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var combined = page.Locator(selectors[0]);
+        var combined = resolve(selectors[0]);
         for (var index = 1; index < selectors.Length; index++)
-            combined = combined.Or(page.Locator(selectors[index]));
+            combined = combined.Or(resolve(selectors[index]));
 
         try
         {
@@ -758,10 +756,12 @@ internal sealed class PlaywrightChatPage : IChatPage
             return null;
         }
 
-        // The combined wait fired: identify the winner with instant (no-wait) probes.
+        // The combined wait fired: identify the winner with instant (no-wait) probes,
+        // resolved at the SAME scope the race ran at (a nested probe would search inside
+        // the already-matched element and find nothing).
         for (var index = 0; index < selectors.Length; index++)
         {
-            var locator = page.Locator(selectors[index]).First;
+            var locator = resolve(selectors[index]).First;
             try
             {
                 if (await locator.IsVisibleAsync())
@@ -808,15 +808,6 @@ internal sealed class PlaywrightChatPage : IChatPage
         {
             return false;
         }
-    }
-
-    /// <summary>Builds one Or-locator over the fallback list (single round-trip primitive).</summary>
-    internal static ILocator CombinedLocator(IPage page, string[] selectors)
-    {
-        var combined = page.Locator(selectors[0]);
-        for (var index = 1; index < selectors.Length; index++)
-            combined = combined.Or(page.Locator(selectors[index]));
-        return combined;
     }
 
     /// <summary>Non-generic task variant of the cancellation race.</summary>
