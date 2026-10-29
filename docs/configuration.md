@@ -23,11 +23,12 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
+    "MaxTurnsPerChat": 20,           // turns per chat before a new chat starts automatically
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
     "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
     "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
-    "MinDelayMs": 400,              // random human-like delay between actions
-    "MaxDelayMs": 1500,
+    "MinDelayMs": 0,                // random delay between actions (default: event-driven only)
+    "MaxDelayMs": 150,
     "MaxMessagesPerMinute": 6,      // local rate limiter
     "Debug": false                  // screenshots on errors
   },
@@ -53,7 +54,6 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
 
   "Git": {
     "AutoInit": true,               // auto git init + .gitignore + initial commit when the workspace is not a repo
-    "MaxTurnsPerChat": 20,          // (in Browser section) turns per chat before a new chat starts
     "BranchPrefix": "agent/",
     "ProtectedBranchPatterns": [ "main", "master", "release*" ]
   },

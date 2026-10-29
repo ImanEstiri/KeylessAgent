@@ -1,4 +1,8 @@
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation;
 
@@ -86,6 +90,122 @@ public class DocsConsistencyTests
         readme.Should().Contain("/newchat");
         readme.Should().Contain("/workspace");
         readme.Should().Contain("Ctrl+C");
+    }
+
+    [Fact]
+    public void DefaultKeylessOptions_SerializeMatchesDocumentedJson()
+    {
+        var doc = ReadSourceFile(Path.Combine("docs", "configuration.md"));
+        var documented = ParseDocumentedJsonBlocks(doc);
+
+        var serializer = ConfigurationService.CreateSerializer();
+        var serialized = serializer.Serialize(new KeylessOptions());
+        using var actual = JsonDocument.Parse(serialized);
+
+        var problems = new List<string>();
+        foreach (var block in documented)
+            CompareJson(block.RootElement, actual.RootElement, "", problems);
+
+        problems.Should().BeEmpty(
+            "docs/configuration.md must document every KeylessOptions property with its real default value, and only real ones: {0}",
+            string.Join(" | ", problems));
+    }
+
+    /// <summary>Extracts the ```jsonc blocks and strips line comments (string-aware).</summary>
+    private static List<JsonDocument> ParseDocumentedJsonBlocks(string markdown)
+    {
+        var blocks = new List<JsonDocument>();
+        var lines = markdown.Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!lines[i].TrimStart().StartsWith("```jsonc", StringComparison.Ordinal))
+                continue;
+
+            var body = new StringBuilder();
+            i++;
+            while (i < lines.Length && !lines[i].TrimStart().StartsWith("```"))
+                body.AppendLine(lines[i++]);
+
+            var json = StripLineComments(body.ToString());
+            blocks.Add(JsonDocument.Parse(json, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip,
+            }));
+        }
+
+        return blocks;
+    }
+
+    private static string StripLineComments(string json)
+    {
+        var result = new StringBuilder(json.Length);
+        foreach (var line in json.Split('\n'))
+        {
+            var inString = false;
+            for (var i = 0; i < line.Length; i++)
+            {
+                var c = line[i];
+                if (c == '"' && (i == 0 || line[i - 1] != '\\'))
+                    inString = !inString;
+                if (!inString && c == '/' && i + 1 < line.Length && line[i + 1] == '/')
+                    break;
+                result.Append(c);
+            }
+
+            result.Append('\n');
+        }
+
+        return result.ToString();
+    }
+
+    /// <summary>
+    /// Both directions: every documented key must exist with the same value as the serialized
+    /// default, and every KeylessOptions property must be documented. Arrays compare
+    /// element-wise, numbers numerically (the doc may write 300 where the serializer writes 300).
+    /// </summary>
+    private static void CompareJson(JsonElement documented, JsonElement actual, string path, List<string> problems)
+    {
+        if (documented.ValueKind == JsonValueKind.Object && actual.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in documented.EnumerateObject())
+            {
+                if (!actual.TryGetProperty(prop.Name, out var actualValue))
+                {
+                    problems.Add($"{path}{prop.Name}: documented, but KeylessOptions has no such property");
+                    continue;
+                }
+
+                CompareJson(prop.Value, actualValue, $"{path}{prop.Name}.", problems);
+            }
+
+            foreach (var prop in actual.EnumerateObject())
+            {
+                if (!documented.TryGetProperty(prop.Name, out _))
+                    problems.Add($"{path}{prop.Name}: KeylessOptions property missing from the documented JSON");
+            }
+
+            return;
+        }
+
+        if (documented.ValueKind == JsonValueKind.Array && actual.ValueKind == JsonValueKind.Array)
+        {
+            var documentedItems = documented.EnumerateArray().Select(e => e.ToString()).ToList();
+            var actualItems = actual.EnumerateArray().Select(e => e.ToString()).ToList();
+            if (!documentedItems.SequenceEqual(actualItems))
+                problems.Add($"{path}: documented [{string.Join(", ", documentedItems)}] but the default is [{string.Join(", ", actualItems)}]");
+            return;
+        }
+
+        if (documented.ValueKind == JsonValueKind.Number && actual.ValueKind == JsonValueKind.Number)
+        {
+            if (documented.GetDecimal() != actual.GetDecimal())
+                problems.Add($"{path}: documented {documented.GetRawText()} but the default is {actual.GetRawText()}");
+            return;
+        }
+
+        if (!string.Equals(documented.ToString(), actual.ToString(), StringComparison.OrdinalIgnoreCase))
+            problems.Add($"{path}: documented {documented.ToString()} but the default is {actual.ToString()}");
     }
 
     private static string ReadSourceFile(string relativePath)
