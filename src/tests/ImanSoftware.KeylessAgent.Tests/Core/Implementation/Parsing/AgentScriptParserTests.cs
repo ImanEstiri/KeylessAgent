@@ -463,6 +463,53 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_NextWithMsgPayload_IsAccepted()
+    {
+        const string script = """
+            @@next
+            <<<MSG
+            still working
+            MSG>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var next = result.Commands.OfType<NextCommand>().Single();
+        next.Message.Should().Be("still working");
+    }
+
+    [Fact]
+    public void Parse_BareNext_IsAccepted()
+    {
+        const string script = """
+            @@next
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var next = result.Commands.OfType<NextCommand>().Single();
+        next.Message.Should().Be(string.Empty, "an empty MSG payload is valid");
+    }
+
+    [Fact]
+    public void Parse_NextWithUnknownSection_IsRejected()
+    {
+        const string script = """
+            @@next
+            <<<CMD
+            not-a-command
+            CMD>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseBad(script);
+        result.Problems.Select(p => p.Code).Should().Contain(ErrorCodes.ParseUnexpectedPayload);
+    }
+
+    [Fact]
     public void Parse_RunCommandOnError_AcceptsContinueAndStop()
     {
         const string script = """

@@ -116,6 +116,32 @@ public class DocsConsistencyTests
     }
 
     [Fact]
+    public void ErrorCodes_AppearExactlyOnceInTheCatalogTable()
+    {
+        var doc = ReadSourceFile(Path.Combine("docs", "agentscript-spec.md"));
+
+        // The catalog table only: rows of the shape | `KA_...` | description |. Codes also
+        // appear in command tables on purpose — those must not be counted.
+        var rows = doc.Split('\n')
+            .Where(l => l.StartsWith("| `KA_", StringComparison.Ordinal))
+            .ToList();
+
+        var codes = typeof(ImanSoftware.KeylessAgent.Abstractions.Models.ErrorCodes)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => ((string)f.GetValue(null)!))
+            .Where(c => c.StartsWith("KA_", StringComparison.Ordinal))
+            .ToList();
+
+        codes.Should().NotBeEmpty();
+        foreach (var code in codes)
+        {
+            rows.Count(r => r.Contains(code, StringComparison.Ordinal)).Should().Be(1,
+                "{0} must appear in exactly one catalog row (duplicates drift apart)", code);
+        }
+    }
+
+    [Fact]
     public void DefaultKeylessOptions_SerializeMatchesDocumentedJson()
     {
         var doc = ReadSourceFile(Path.Combine("docs", "configuration.md"));

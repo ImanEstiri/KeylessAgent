@@ -196,15 +196,11 @@ Every failure the agent reports carries a stable code.
 | `KA_PARSE_BAD_OPTION` | unknown command option or option value |
 | `KA_PARSE_CONFLICTING_CONTROL` | both @@next and @@done in one reply |
 | `KA_PARSE_SAY_ONLY` | reply contains only @@say and no control directive |
-| `KA_PARSE_CONFLICTING_CONTROL` | both @@next and @@done in one reply |
-| `KA_PARSE_BAD_OPTION` | unknown command option or option value (e.g. on_error=maybe) |
-| `KA_COMMAND_NOT_FOUND` | the program of a command does not exist on this machine |
 | `KA_BRANCH_PROTECTED` | current branch matches a protected pattern |
 | `KA_NOT_A_GIT_REPOSITORY` | workspace is not a git repo |
 | `KA_GIT_FAILURE` | a git command failed |
 | `KA_GIT_NOT_INSTALLED` | git is not installed (workspace not a repo, `Git.AutoInit` needs it) |
 | `KA_GIT_INIT_FAILED` | automatic repository initialization failed |
-| `KA_GIT_NOT_INSTALLED` | git is not installed (no-git mode / commit unavailable) |
 
 ### Chat / browser
 

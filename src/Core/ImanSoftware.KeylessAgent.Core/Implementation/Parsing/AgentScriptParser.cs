@@ -270,7 +270,11 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             }
         }
 
-        foreach (var extra in block.Sections.Keys.Where(k => !required.Contains(k)))
+        // "Allowed but optional" payloads: @@next takes an optional <<<MSG (bare @@next and
+        // an empty MSG are both valid); everything not required and not optional is rejected.
+        var optional = block.Kind == CommandKind.Next ? new[] { SectionNames.Msg } : Array.Empty<string>();
+
+        foreach (var extra in block.Sections.Keys.Where(k => !required.Contains(k) && !optional.Contains(k)))
         {
             problems.Add(new FormatProblem(block.StartLine, ErrorCodes.ParseUnexpectedPayload,
                 $"Command \"{block.Kind.GetDescription()}\" does not accept a <<<{extra} payload."));

@@ -85,6 +85,9 @@ MSG>>>
 @@end
 
 @@next
+<<<MSG
+optional status note (may be empty)
+MSG>>>
 @@end
 
 @@done

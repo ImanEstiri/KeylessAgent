@@ -129,9 +129,7 @@ internal sealed class PlaywrightChatPage : IChatPage
                 if (disabledJson is null)
                     continue; // selector matched nothing; try the next fallback.
 
-                var isDisabled = !string.IsNullOrEmpty(disabledJson) &&
-                    System.Text.Json.JsonDocument.Parse(disabledJson).RootElement
-                        .TryGetProperty("d", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.True;
+                var isDisabled = IsDisabledFromJson(disabledJson);
                 return !isDisabled;
             }
             catch (OperationCanceledException)
@@ -808,6 +806,28 @@ internal sealed class PlaywrightChatPage : IChatPage
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Parses the disable state out of the evaluated JSON ({"d":true|false}).
+    /// Null, empty or invalid JSON reads as NOT disabled (the send probe then behaves as
+    /// before: enabled unless proven otherwise).
+    /// </summary>
+    internal static bool IsDisabledFromJson(string? disabledJson)
+    {
+        if (string.IsNullOrWhiteSpace(disabledJson))
+            return false;
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(disabledJson);
+            return document.RootElement.TryGetProperty("d", out var d) &&
+                   d.ValueKind == System.Text.Json.JsonValueKind.True;
         }
         catch
         {

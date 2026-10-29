@@ -903,6 +903,50 @@ public class AgentLoopTests : IDisposable
         log.Should().Contain("\"ErrorMessage\": \"after @@done\"");
     }
 
+    [Fact]
+    public async Task SayAfterDone_IsShown()
+    {
+        var chat = new FakeChatProvider(
+            """
+            @@say
+            <<<MSG
+            message A
+            MSG>>>
+            @@end
+            @@done
+            <<<MSG
+            done
+            MSG>>>
+            @@end
+            @@say
+            <<<MSG
+            message B (after done)
+            MSG>>>
+            @@end
+            @@newfile x.txt
+            <<<CONTENT
+            x
+            CONTENT>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "done then say", ui);
+
+        result.CompletedByDone.Should().BeTrue();
+        ui.Said.Should().Contain("message A");
+        ui.Said.Should().Contain("message B (after done)",
+            "says after @@done are plain user-facing text and still reach the user");
+        File.Exists(Path.Combine(_root, "x.txt")).Should().BeFalse();
+
+        var log = (await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "logs", "turn-1.jsonl"))).Data!;
+        log.Should().Contain("\"Kind\": \"NewFile\"");
+        log.Should().Contain("\"Status\": \"Skipped\"");
+        log.Should().Contain("\"ErrorMessage\": \"after @@done\"");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

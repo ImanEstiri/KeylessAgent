@@ -103,7 +103,7 @@ internal sealed class AgentLoop : IAgentLoop
 
         return string.Join("\n",
             "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
-            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@movefile <from> + <<<TO ... TO>>> / @@next / @@done",
+            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
             "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
             $"Environment: {envSummary}",
@@ -669,9 +669,21 @@ internal sealed class AgentLoop : IAgentLoop
                         // running the remaining commands is unchanged.)
                         if (result.Status == CommandStatus.Ok)
                         {
-                            foreach (var remaining in script.Commands
-                                .Where(c => c.Number > command.Number && c.Kind != CommandKind.Say))
+                            // @@say blocks after @@done are plain user-facing text: they still
+                            // reach the user and never count toward MaxCommandsPerResponse.
+                            // Every other remaining command is reported as skipped.
+                            foreach (var remaining in script.Commands.Where(c => c.Number > command.Number))
                             {
+                                if (remaining.Kind == CommandKind.Say)
+                                {
+                                    timings.Start("execute");
+                                    var sayAfterDone = await _executor.ExecuteAsync(remaining, Context());
+                                    timings.Stop("execute");
+                                    executed.Add(sayAfterDone);
+                                    await logger.AppendResultAsync(sayAfterDone, cancellationToken);
+                                    continue;
+                                }
+
                                 var skipped = new CommandExecutionResult
                                 {
                                     Number = remaining.Number,
