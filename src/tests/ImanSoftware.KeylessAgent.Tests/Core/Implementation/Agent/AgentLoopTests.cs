@@ -865,6 +865,44 @@ public class AgentLoopTests : IDisposable
         result.StoppedReason.Should().NotBeNull("the fake has no corrected resend, so the turn stops");
     }
 
+    [Fact]
+    public async Task CommandsAfterDone_AreNotExecuted()
+    {
+        var chat = new FakeChatProvider(
+            """
+            @@say
+            <<<MSG
+            finishing
+            MSG>>>
+            @@end
+            @@done
+            <<<MSG
+            done
+            MSG>>>
+            @@end
+            @@newfile x.txt
+            <<<CONTENT
+            x
+            CONTENT>>>
+            @@end
+            @@eof
+            """);
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        var result = await loop.RunAsync(_root, "done then extra", ui);
+
+        result.CompletedByDone.Should().BeTrue();
+        File.Exists(Path.Combine(_root, "x.txt")).Should().BeFalse(
+            "commands after @@done are leftovers, not instructions");
+
+        // The skipped command shows up in the turn log's result list.
+        var log = (await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "logs", "turn-1.jsonl"))).Data!;
+        log.Should().Contain("\"Kind\": \"NewFile\"");
+        log.Should().Contain("\"Status\": \"Skipped\"");
+        log.Should().Contain("\"ErrorMessage\": \"after @@done\"");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

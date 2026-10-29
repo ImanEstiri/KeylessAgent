@@ -649,6 +649,30 @@ internal sealed class AgentLoop : IAgentLoop
                     {
                         completedByDone = true;
                         summary = ((DoneCommand)command).Summary;
+
+                        // Blocks after @@done are leftovers, not instructions: they are
+                        // reported as skipped WITHOUT executing, and the batch ends here.
+                        // (If @@done itself failed — it cannot today — the old behavior of
+                        // running the remaining commands is unchanged.)
+                        if (result.Status == CommandStatus.Ok)
+                        {
+                            foreach (var remaining in script.Commands
+                                .Where(c => c.Number > command.Number && c.Kind != CommandKind.Say))
+                            {
+                                var skipped = new CommandExecutionResult
+                                {
+                                    Number = remaining.Number,
+                                    Kind = remaining.Kind,
+                                    Target = remaining.Target,
+                                    Status = CommandStatus.Skipped,
+                                    ErrorMessage = "after @@done",
+                                };
+                                executed.Add(skipped);
+                                await logger.AppendResultAsync(skipped, cancellationToken);
+                            }
+
+                            break;
+                        }
                     }
 
                     // Strict failure precedence inside the batch: the command's own
