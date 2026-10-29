@@ -446,6 +446,36 @@ internal sealed class PlaywrightChatPage : IChatPage
         return true;
     }
 
+    /// <summary>
+    /// Clicks the newest message's Copy control: ONE visible-filtered Or-wait over the whole
+    /// fallback list (the 3s-per-fallback total upper bound is spent once, never once per
+    /// selector), then clicks the matched element. Returns false when no fallback is visible
+    /// or the click did not land.
+    /// </summary>
+    private async Task<bool> ClickNewestCopyControlAsync(ILocator newest, CancellationToken cancellationToken)
+    {
+        var totalMs = 3_000 * _selectors.MessageCopyButton.Length;
+        var match = await FirstVisibleAsync(newest, _selectors.MessageCopyButton, totalMs, cancellationToken);
+        if (match is null)
+            return false;
+
+        _log.LogDebug("MessageCopyButton matched selector #{Index}: {Selector}", match.Value.Index, _selectors.MessageCopyButton[match.Value.Index]);
+        try
+        {
+            await match.Value.Locator.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Copy click failed on #{Index}: {Message}", match.Value.Index, ex.Message);
+            return false;
+        }
+    }
+
     /// <inheritdoc />
     public async Task PrepareReplyCaptureAsync(CancellationToken cancellationToken = default)
     {
@@ -477,22 +507,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
             if (newest is not null)
             {
-                foreach (var selector in _selectors.MessageCopyButton)
-                {
-                    try
-                    {
-                        await newest.Locator(selector).First.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
-                        break;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (TimeoutException)
-                    {
-                        // Try the next fallback selector.
-                    }
-                }
+                await ClickNewestCopyControlAsync(newest, cancellationToken);
             }
 
             var deadline = DateTime.UtcNow.Add(timeout);
@@ -536,27 +551,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             if (newest is null)
                 return null;
 
-            var clicked = false;
-            foreach (var selector in _selectors.MessageCopyButton)
-            {
-                try
-                {
-                    await newest.Locator(selector).First.ClickAsync(new LocatorClickOptions { Timeout = 3_000 });
-                    clicked = true;
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (TimeoutException)
-                {
-                    // Try the next fallback selector.
-                }
-            }
-
-            if (!clicked)
-                return null;
+            await ClickNewestCopyControlAsync(newest, cancellationToken);
 
             // Poll the clipboard briefly instead of one fixed 500 ms sleep: the Copy click
             // usually lands within one or two polls, and the total budget (500 ms) is unchanged.

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
 using NSubstitute;
 using NSubstitute.Core;
+using System.Text.Json;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Browser;
 
@@ -133,5 +134,75 @@ public class PlaywrightChatPageRoundTripTests
 
         visible.Should().BeFalse();
         _locator.Received(1).IsVisibleAsync();
+    }
+    [Fact]
+    public async Task CopyClick_AbsentFirstFallback_ClicksTheLaterVisibleOne_AfterOneWait()
+    {
+        // The copy-capture click loop: ONE combined Or-wait over all MessageCopyButton
+        // fallbacks (the 3s-per-fallback total budget spent once), then a click on the
+        // MATCHED element — never a 3s click timeout per absent fallback.
+        var page = Substitute.For<IPage>();
+        var combined = Substitute.For<ILocator>();
+        var newest = Substitute.For<ILocator>();
+        var messages = Substitute.For<ILocator>();
+        var body = Substitute.For<ILocator>();
+        var absent0 = Substitute.For<ILocator>();
+        var absent1 = Substitute.For<ILocator>();
+        var visible2 = Substitute.For<ILocator>();
+
+        // The newest assistant message exists.
+        page.Locator(Arg.Any<string>()).Returns(messages);
+        messages.CountAsync().Returns(1);
+        messages.Nth(Arg.Any<int>()).Returns(newest);
+
+        // The three MessageCopyButton fallbacks resolve from the newest-message scope:
+        // the first two are ABSENT (a click there can never land), the third is visible.
+        var copySelectors = Catalog.MessageCopyButton;
+        newest.Locator(Arg.Any<string>()).Returns(absent0); // catch-all first: NSubstitute is last-config-wins
+        newest.Locator(Arg.Is<string>(s => s == copySelectors[0])).Returns(absent0);
+        newest.Locator(Arg.Is<string>(s => s == copySelectors[1])).Returns(absent1);
+        newest.Locator(Arg.Is<string>(s => s == copySelectors[2])).Returns(visible2);
+
+        // The combined Or-chain races ONCE (succeeds: some fallback is visible).
+        absent0.Or(Arg.Any<ILocator>()).Returns(combined);
+        absent1.Or(Arg.Any<ILocator>()).Returns(combined);
+        visible2.Or(Arg.Any<ILocator>()).Returns(combined);
+        combined.Or(Arg.Any<ILocator>()).Returns(combined);
+        combined.Filter(Arg.Any<LocatorFilterOptions>()).Returns(combined);
+        combined.First.Returns(combined);
+
+        // Winner probes in fallback order: absent, absent, visible.
+        absent0.First.Returns(absent0);
+        absent0.IsVisibleAsync().Returns(false);
+        absent1.First.Returns(absent1);
+        absent1.IsVisibleAsync().Returns(false);
+        visible2.First.Returns(visible2);
+        visible2.IsVisibleAsync().Returns(true);
+
+        // The clipboard read (strategy 2) returns the copied text; the interception poll
+        // (strategy 1) finds nothing, so strategy 2 with its click actually runs.
+        page.Locator(Arg.Is<string>(s => s == "body")).Returns(body);
+        body.First.Returns(body);
+        // ILocator.EvaluateAsync (3-arg overload) returns Task<JsonElement?>: the interception
+        // poll (window.__keylessCapturedText) finds nothing — forcing strategy 2 — while the
+        // clipboard readText probes return the copied text.
+        body.EvaluateAsync(Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<LocatorEvaluateOptions?>())
+            .Returns(ci => ci.ArgAt<string>(0).Contains("__keylessCapturedText")
+                ? (JsonElement?)null
+                : System.Text.Json.JsonSerializer.SerializeToElement("copied text"));
+
+        var chatPage = new PlaywrightChatPage(
+            page, Catalog, debug: false,
+            new LoggerAdapter<PlaywrightChatPage>(NullLoggerFactory.Instance));
+
+        var text = await chatPage.TryCaptureCopiedReplyAsync(TimeSpan.FromMilliseconds(300), CancellationToken.None);
+
+        // BOTH capture strategies click: each does ONE combined wait carrying the whole
+        // 3s-per-fallback total budget (never one 3s click timeout per absent fallback).
+        combined.Received(2).WaitForAsync(Arg.Is<LocatorWaitForOptions>(o => o.Timeout == 3_000 * copySelectors.Length));
+        // The click lands on the matched element only — no 3s click timeouts on absent fallbacks.
+        absent0.DidNotReceive().ClickAsync(Arg.Any<LocatorClickOptions>());
+        absent1.DidNotReceive().ClickAsync(Arg.Any<LocatorClickOptions>());
+        visible2.Received(2).ClickAsync(Arg.Any<LocatorClickOptions>());
     }
 }
