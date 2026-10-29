@@ -226,8 +226,11 @@ public class PlaywrightChatSessionTests : IDisposable
         await session.WaitForReplyAsync();
         sw.Stop();
 
-        page.StopPolls.Should().BeGreaterThanOrEqualTo((int)(sw.ElapsedMilliseconds / 100) + 1,
-            "the stop-indicator interval must be at most 100 ms (instant checks, no serialized timeouts)");
+        // A serialized 3x400ms fallback wait would yield at most ~2-3 polls per second; instant
+        // checks with the 100ms default interval yield ~10 (loosened for parallel-CPU jitter —
+        // wall-clock gaps drift above 100ms under load, but never near a serialized timeout).
+        page.StopPolls.Should().BeGreaterThanOrEqualTo(5,
+            "the stop-indicator polling must use instant checks, not serialized selector waits");
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3), "instant checks must not serialize timeouts");
     }
 

@@ -168,7 +168,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
 
         var deepThink = await inspector.GetToggleStateAsync(catalog.DeepThinkToggle, cancellationToken);
         var search = await inspector.GetToggleStateAsync(catalog.SearchToggle, cancellationToken);
-        var inputEditable = await inspector.IsInputEditableAsync(cancellationToken);
+        var inputEditable = await inspector.IsInputEditableAsync(catalog.InputBox, cancellationToken);
 
         if (captureDirectory is not null)
         {

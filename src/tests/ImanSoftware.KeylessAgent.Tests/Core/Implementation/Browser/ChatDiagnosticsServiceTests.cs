@@ -33,6 +33,9 @@ public class ChatDiagnosticsServiceTests : IDisposable
     {
         public List<string> Matched { get; } = [];
 
+        /// <summary>The fallback lists handed to IsInputEditableAsync, in call order.</summary>
+        public List<string[]> EditableSelectors { get; } = [];
+
         public string? ToggleState { get; set; } = "true";
 
         public bool InputEditable { get; set; } = true;
@@ -54,8 +57,11 @@ public class ChatDiagnosticsServiceTests : IDisposable
         public Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default)
             => Task.FromResult(ToggleState);
 
-        public Task<bool> IsInputEditableAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(InputEditable);
+        public Task<bool> IsInputEditableAsync(string[] selectors, CancellationToken cancellationToken = default)
+        {
+            EditableSelectors.Add(selectors);
+            return Task.FromResult(InputEditable);
+        }
 
         public Task<string?> CaptureTrimmedAsync(string[] selectors, CancellationToken cancellationToken = default)
         {
@@ -148,6 +154,29 @@ public class ChatDiagnosticsServiceTests : IDisposable
 
         report.Data.LoggedIn.Should().BeFalse();
         report.Data.Checks.First(c => c.Key == "LoginIndicator").Status.Should().Be(SelectorCheckStatus.Matched);
+    }
+
+    [Fact]
+    public async Task InputEditable_UsesCatalogSelectors()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        report.IsSuccess.Should().BeTrue();
+        inspector.EditableSelectors.Should().ContainSingle(
+            "the editability check probes exactly one fallback list per doctor run");
+        inspector.EditableSelectors[0].Should().Equal(Catalog().InputBox,
+            "the editable check must use the selectors.json fallback list, not hardcoded selectors");
     }
 
     [Fact]

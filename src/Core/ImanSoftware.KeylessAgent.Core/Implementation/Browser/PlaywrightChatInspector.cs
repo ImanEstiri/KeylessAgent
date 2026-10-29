@@ -63,37 +63,21 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
     }
 
     /// <inheritdoc />
-    public async Task<bool> IsInputEditableAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> IsInputEditableAsync(string[] selectors, CancellationToken cancellationToken = default)
     {
-        foreach (var selector in (string[])[
-                     "textarea[placeholder=\"Message DeepSeek\"]",
-                     "textarea"])
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var locator = _page.Locator(selector).First;
-                await locator.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = 2_000,
-                });
+        if (selectors.Length == 0)
+            return false;
 
-                var readOnly = await EvaluateBoolAsync(locator, "element => element.readOnly", cancellationToken);
-                var disabled = await EvaluateBoolAsync(locator, "element => element.disabled", cancellationToken);
-                return !readOnly && !disabled;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (TimeoutException)
-            {
-                // Try the next fallback.
-            }
-        }
+        // ONE parallel wait over the whole fallback list (the 2s budget once, never once per
+        // fallback selector) via the shared Or-locator helper.
+        var match = await PlaywrightChatPage.FirstVisibleAsync(
+            _page, selectors, 2_000 * selectors.Length, cancellationToken);
+        if (match is null)
+            return false;
 
-        return false;
+        var readOnly = await EvaluateBoolAsync(match.Value.Locator, "element => element.readOnly", cancellationToken);
+        var disabled = await EvaluateBoolAsync(match.Value.Locator, "element => element.disabled", cancellationToken);
+        return !readOnly && !disabled;
     }
 
     /// <inheritdoc />

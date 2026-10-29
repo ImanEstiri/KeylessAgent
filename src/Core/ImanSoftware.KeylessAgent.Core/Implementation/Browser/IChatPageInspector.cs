@@ -22,8 +22,11 @@ internal interface IChatPageInspector
     /// </summary>
     Task<string?> GetToggleStateAsync(string[] selectors, CancellationToken cancellationToken = default);
 
-    /// <summary>Whether the input box exists and is editable.</summary>
-    Task<bool> IsInputEditableAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Whether the input box exists and is editable, probed through the given fallback list
+    /// (usually <c>InputBox</c> from the catalog).
+    /// </summary>
+    Task<bool> IsInputEditableAsync(string[] selectors, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Captures a trimmed outerHTML snapshot of the first element matched by the fallback list
