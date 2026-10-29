@@ -78,9 +78,15 @@ public class BrowserConnectorTests
 
         public int AttachAttempts { get; private set; }
 
+        /// <summary>When true, AttachCdpAsync throws (the port answers but CDP attach fails).</summary>
+        public bool FailAttach { get; set; }
+
         public Task<(object? Browser, object Context)> AttachCdpAsync(IPlaywright playwright, int port, CancellationToken cancellationToken = default)
         {
             AttachAttempts++;
+            if (FailAttach)
+                throw new InvalidOperationException("cdp attach refused");
+
             // Real Playwright context is impossible in a unit test; the tab-open is overridden,
             // so a plain object carries the role.
             return Task.FromResult<(object? Browser, object Context)>((new object(), new object()));
@@ -167,6 +173,23 @@ public class BrowserConnectorTests
         var outcome = await connector.ConnectAsync(Options(), Ui());
 
         outcome.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PortOpenButAttachFails_DoesNotLaunchChrome()
+    {
+        // The port answers but CDP attach fails: the connector must stop with the actionable
+        // failure — launching a SECOND Chrome on an owned port would only fail again.
+        var environment = new FakeEnvironment { PortOpen = true, FailAttach = true };
+        var connector = new BrowserConnector(environment, null);
+
+        var outcome = await connector.ConnectAsync(Options(), Ui());
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.BrowserConnectionFailed);
+        outcome.Error.Message.Should().Contain("attach failed");
+        outcome.Error.Message.Should().Contain("Close the Chrome that owns port 9222");
+        environment.StartedChrome.Should().BeFalse("a failed attach must not fall through to auto-launch");
     }
 
     [Fact]

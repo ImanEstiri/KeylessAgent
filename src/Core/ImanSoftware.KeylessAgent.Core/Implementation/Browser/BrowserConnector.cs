@@ -73,6 +73,10 @@ internal sealed class BrowserConnector : IBrowserConnector
                 ui.ShowProgress(new AgentProgressEvent(
                     AgentEventType.ConnectingToBrowser,
                     $"Port {options.ChromeDebugPort} is open but attach failed: {attach.Error.Message}"));
+                return Outcome.Failure<(BrowserAttachment, object)>(new OutcomeError(
+                    $"Port {options.ChromeDebugPort} is open but CDP attach failed: {attach.Error.Message}. " +
+                    $"Close the Chrome that owns port {options.ChromeDebugPort} or change Browser.ChromeDebugPort.",
+                    ErrorCodes.BrowserConnectionFailed, OutcomeErrorType.Problem));
             }
 
             // --- Step 2: auto-launch the real Chrome with the dedicated profile ---
