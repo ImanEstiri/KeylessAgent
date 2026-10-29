@@ -22,6 +22,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
     "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
+    "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
     "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
     "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
@@ -85,7 +86,11 @@ mandatory. KeylessAgent therefore uses one dedicated profile and one login:
 3. **Playwright fallback**: only with `AllowPlaywrightLaunch: true` (default false) — a separate automated browser, clearly warned.
 4. If Chrome cannot be found or started, the agent fails with `KA_BROWSER_CONNECTION_FAILED` and prints the exact manual-start command line.
 
-Tab rules: an existing `chat.deepseek.com` tab is reused (`ReuseExistingTab`); otherwise a new TAB is opened in the existing window (`Target.createTarget … newWindow:false`). The agent never navigates your other tabs. The chosen tab is focused (`BringToFrontAsync` + `Target.activateTarget`), also when a login is required.
+Tab rules: an existing `chat.deepseek.com` tab is reused (`ReuseExistingTab`); otherwise a new TAB is opened in the existing window (`Target.createTarget … newWindow:false`). The agent never navigates your other tabs. The chosen tab is focused (`BringToFrontAsync` + `Target.activateTarget`) only when the user must act (login page detected).
+
+**Login detection is positive-first**: one parallel wait races the chat InputBox against the login indicators (`LoginProbeSeconds`, default 15 — all selectors in a single combined wait, never one timeout per fallback). If the input appears first you are logged in and no login wait happens; only a winning login indicator focuses the tab and waits for the manual login (5 minutes, polled with instant checks). Absent elements cost their wait once — not once per fallback.
+
+**Fast waits by design**: presence questions (stop indicator, chat-limit notice, chips, toggles, send button) are answered with instant single-round-trip checks, and reply polling runs at a ~100 ms cadence. `keyless run … --timing` prints the per-phase timing table (login probe, toggles, upload, send, send-confirm, first token, completion, copy, parse, execute, results-send) after the turn; the same table is always appended to `.agent/logs/turn-N.jsonl`.
 
 Dispose policy: only the tab the agent opened is closed; the Chrome window stays running by default (`CloseChromeOnExit: false`) so the next run reuses the warm session.
 

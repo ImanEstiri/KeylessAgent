@@ -95,10 +95,13 @@ keyless config "G:\Projects\MyApp"                                    # show / c
 keyless chrome "G:\Projects\MyApp"                                    # start the dedicated Chrome (one-time login)
 keyless doctor "G:\Projects\MyApp"                                    # live selector check, never sends anything
 keyless run "G:\Projects\MyApp" "..." --dry-run                       # print what would happen, execute nothing
-keyless run "G:\Projects\MyApp" "..." -v                              # write .agent/logs/diagnostics.log
+keyless run "G:\Projects\MyApp" "..." --verbose                     # (-v) write .agent/logs/diagnostics.log
+keyless run "G:\Projects\MyApp" "..." --timing                        # print the per-phase timing table after the turn
 ```
 
-The interactive session understands `/workspace <path>` (switch workspaces) and `/help`.
+The interactive session understands `/workspace <path>` (switch workspaces), `/newchat` (fresh chat, same workspace) and `/help`.
+
+**Ctrl+C** is safe everywhere: during a turn it cancels only that turn (a second press within 2 seconds exits the session); at the idle `keyless>` prompt it exits gracefully with code 0 — logs are flushed and the browser connector is disposed.
 
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
 

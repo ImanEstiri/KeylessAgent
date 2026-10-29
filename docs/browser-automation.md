@@ -22,9 +22,21 @@ Connection order (every step reported through the UI — never silent):
 Tab rules: an existing `chat.deepseek.com` tab is reused (`Browser.ReuseExistingTab`, default
 true) — **your other tabs are never navigated**; otherwise a new TAB opens in the existing
 window (`Target.createTarget … newWindow:false`). The chosen tab is focused
-(`BringToFrontAsync` + `Target.activateTarget`). When a login is required the tab is brought
-to front again and the agent waits (up to `LoginWaitSeconds` = 5 minutes), continuing
-automatically once the login indicator disappears.
+(`BringToFrontAsync` + `Target.activateTarget`) only when the user must act.
+
+**Login detection is positive-first** (never a per-fallback wait on an absent element): one
+parallel wait races the chat **InputBox** against the **LoginIndicator** selectors
+(`Browser.LoginProbeSeconds`, default 15 — a single combined Or-locator with ONE timeout). The
+input appearing first means the user is logged in; no login wait ever runs. Only a winning
+login indicator focuses the tab (`IChatPage.FocusTabAsync`) and waits for the manual login
+(`LoginWaitSeconds` = 5 minutes), polling the indicator with instant checks and minimizing the
+window again afterwards (`Browser.MinimizeAfterLogin`).
+
+**Selector waits are parallel by design**: waiting for "any of these fallbacks" uses one
+combined Or-locator with one timeout (an absent element costs the timeout once, not once per
+fallback — the old sequential probe cost 3 × 5 s at every login check), and "is it there right
+now" questions (stop indicator, chat-limit notice, chips, toggles, send button) are answered
+with instant single-round-trip checks. Reply polling runs at a ~100 ms cadence.
 
 ## Window behavior
 
@@ -66,12 +78,17 @@ All selectors live in the workspace `selectors.json` (created from the embedded 
 | `StopIndicator` | `[role="button"][aria-label="Stop"]` | not in the sample; several fallbacks |
 | `DeepThinkToggle` / `SearchToggle` | `.ds-toggle-button:has-text("DeepThink")` / `…("Search")` | state read from `aria-pressed` |
 | `LoginIndicator` | `input[type="password"]` | |
+| `ChatLimitNotice` | `[class*='chat-limit']` | matched → the chat is exhausted; `keyless doctor` reports it as NOT APPLICABLE NOW while absent |
 
 **Still unverified against a live chat**: the generating/Stop state, the New Chat button, and the attachment chips. Those selectors ship with several fallbacks and log a clear error naming the missing selector — fix them in `selectors.json` when DeepSeek changes, or just run `keyless doctor` which reports every key with the matching fallback index.
 
 ## Cancellation
 
 Every page operation takes a CancellationToken. Playwright's own waits do not accept one, so each call races the token — Ctrl+C interrupts any in-flight wait promptly instead of waiting out its timeout.
+
+In the interactive session Ctrl+C is safe: at the idle `keyless>` prompt it exits gracefully
+(exit code 0 — logs are flushed and the connector is disposed per turn); during a turn it
+cancels only that turn, and a second press within 2 seconds exits the session.
 
 ## How to verify selectors: keyless doctor
 
