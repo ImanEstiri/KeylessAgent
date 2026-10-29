@@ -340,6 +340,23 @@ public class WorkspaceCommandExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task RunCommand_Cancelled_ReportsCancelledNotTimeout()
+    {
+        using var cts = new CancellationTokenSource();
+        var context = Context(mode: ApprovalMode.Auto);
+        context = context with { CancellationToken = cts.Token };
+        cts.CancelAfter(300);
+
+        var result = await _executor.ExecuteAsync(
+            new RunCommandCommand("cmd /c echo partial & ping -n 30 127.0.0.1 > nul") { Number = 1 }, context);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be(ErrorCodes.Cancelled, "a cancelled command is not a timeout");
+        result.FailureReason.Should().Be("cancelled");
+        result.Output.Should().Contain("partial", "output printed before the kill is kept");
+    }
+
+    [Fact]
     public async Task RunCommand_ProgramMissing_ReturnsCommandNotFound()
     {
         var result = await Run(new RunCommandCommand("ka-test-no-such-program-xyz") { Number = 1 }, mode: ApprovalMode.Auto);

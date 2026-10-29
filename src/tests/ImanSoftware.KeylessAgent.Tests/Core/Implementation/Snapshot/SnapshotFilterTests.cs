@@ -39,6 +39,73 @@ public class SnapshotFilterTests
     }
 
     [Fact]
+    public void FilterTreeLines_NestedSameNameFolders_AreAllExcluded()
+    {
+        // bin inside src inside bin inside obj: every nesting level of an excluded name goes.
+        var lines = new[]
+        {
+            "G:.",
+            "+---src",
+            "|   +---bin",
+            "|   |   \\---obj",
+            "|   |       +---bin",
+            "|   |       |       nested.dll",
+            "|   |       \\---obj2",
+            "|   \\---Model",
+            "|           Model.cs",
+        };
+
+        var filtered = SnapshotFilter.FilterTreeLines(lines, TreePatterns);
+
+        filtered.Should().NotContain(l => l.Contains("bin"));
+        filtered.Should().NotContain(l => l.Contains("obj"));
+        filtered.Should().NotContain("nested.dll");
+        filtered.Should().Contain(l => l.EndsWith("---Model", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FilterTreeLines_CaseDifferences_AreExcluded()
+    {
+        var lines = new[]
+        {
+            "G:.",
+            "+---BIN",
+            "|   a.dll",
+            "+---Obj",
+            "|   b.json",
+            "\\---readme.md",
+        };
+
+        var filtered = SnapshotFilter.FilterTreeLines(lines, TreePatterns);
+
+        filtered.Should().NotContain(l => l.Contains("a.dll") || l.Contains("b.json"),
+            "folder-name matching is case-insensitive");
+        filtered.Should().Contain(l => l.Contains("readme.md"),
+            "readme.md is not an excluded name");
+    }
+
+    [Fact]
+    public void FilterTreeLines_NearNames_AreKept()
+    {
+        // Exact-name matching only: bins/objects/objects.dll are NOT the excluded folders.
+        var lines = new[]
+        {
+            "G:.",
+            "+---bins",
+            "|   stuff.dll",
+            "+---objects",
+            "|   data.json",
+            "\\---bins.txt",
+        };
+
+        var filtered = SnapshotFilter.FilterTreeLines(lines, TreePatterns);
+
+        filtered.Should().HaveCount(6, "near names are never treated as the excluded folders — everything is kept");
+        filtered.Should().Contain(l => l.Contains("stuff.dll"));
+        filtered.Should().Contain(l => l.Contains("data.json"));
+    }
+
+    [Fact]
     public void FilterDumpSections_DropsExcludedHeadings()
     {
         var dump = """

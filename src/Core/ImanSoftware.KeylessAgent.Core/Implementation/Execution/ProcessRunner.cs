@@ -17,6 +17,12 @@ internal sealed record ProcessResult(int ExitCode, string Output, string Error, 
     /// Whether the process never started (executable not found or not accessible).
     /// </summary>
     public bool NotStarted { get; init; }
+
+    /// <summary>
+    /// Why the process did not run to completion: "timeout" or "cancelled"; null when it
+    /// exited normally. Cancelled and timed-out are reported differently by the executor.
+    /// </summary>
+    public string? Reason { get; init; }
 }
 
 /// <summary>
@@ -73,21 +79,49 @@ internal sealed class ProcessRunner
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
+        string? reason;
         try
         {
             await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            reason = null;
         }
         catch (OperationCanceledException)
         {
             KillProcessTree(process);
-            var duration = (DateTimeOffset.UtcNow - startedAt).TotalSeconds;
-            return new ProcessResult(-1, string.Empty, string.Empty, duration, TimedOut: !cancellationToken.IsCancellationRequested);
+            // Distinguish a user cancellation from the timeout: both surface as OCE here.
+            reason = cancellationToken.IsCancellationRequested ? "cancelled" : "timeout";
         }
 
-        var output = await outputTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false);
-        var error = await errorTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false);
-        var totalDuration = (DateTimeOffset.UtcNow - startedAt).TotalSeconds;
+        var duration = (DateTimeOffset.UtcNow - startedAt).TotalSeconds;
 
+        // Partial output printed before the kill is kept: give the readers up to 2 s to
+        // drain, then take whatever arrived.
+        string? output;
+        string? error;
+        try
+        {
+            output = await outputTask.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            output = string.Empty;
+        }
+
+        try
+        {
+            error = await errorTask.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            error = string.Empty;
+        }
+
+        if (reason is not null)
+        {
+            return new ProcessResult(-1, output, error, duration, TimedOut: reason == "timeout") { Reason = reason };
+        }
+
+        var totalDuration = (DateTimeOffset.UtcNow - startedAt).TotalSeconds;
         return new ProcessResult(process.ExitCode, output, error, totalDuration, TimedOut: false);
     }
 

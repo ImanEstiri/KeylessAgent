@@ -212,6 +212,24 @@ public class PlaywrightChatSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task UploadWithoutSign_IsNotPastedOnTop()
+    {
+        // SetInputFiles succeeds (fake default) but NO upload sign ever appears: the content
+        // must be treated as attached, never pasted on top of a possibly-invisible upload.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => page.SimulateUserMessageAccepted();
+        var session = CreateSession(page, configureBrowser: b => b with { UploadWaitSeconds = 1 });
+
+        var outcome = await session.SendMessageAsync("request",
+            [new Abstractions.Models.Snapshot.SnapshotAttachment("code-dump-result.md", Abstractions.Models.Snapshot.SnapshotAttachmentKind.CodeDump, "attachment content")]);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.LastInsertedText.Should().NotContain("--- attached:",
+            "pasting on top of a successful SetInputFiles would double the content");
+    }
+
+    [Fact]
     public async Task StopIndicatorPolling_UsesInstantChecks_AtMost100MsApart()
     {
         // No reply ever completes: the session polls the stop indicator until the timeout.

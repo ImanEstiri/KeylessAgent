@@ -188,6 +188,7 @@ Every failure the agent reports carries a stable code.
 | `KA_COMMAND_DECLINED` | the user declined a confirmation |
 | `KA_COMMAND_FAILED` | command ran but exited non-zero |
 | `KA_COMMAND_NOT_FOUND` | the program of a command does not exist on this machine |
+| `KA_CANCELLED` | the command was cancelled by the user (Ctrl+C); partial output is kept |
 | `KA_PARSE_BAD_OPTION` | unknown command option or option value |
 | `KA_PARSE_CONFLICTING_CONTROL` | both @@next and @@done in one reply |
 | `KA_PARSE_SAY_ONLY` | reply contains only @@say and no control directive |

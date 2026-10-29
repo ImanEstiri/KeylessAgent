@@ -180,6 +180,28 @@ public class ChatDiagnosticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MessageCopyButton_NotMatched_IsNotApplicableNow()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "MessageCopyButton");
+        check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow,
+            "the Copy button only exists on a reply — an absent report is not a selector defect");
+        check.Detail.Should().Contain("No assistant message is visible");
+    }
+
+    [Fact]
     public async Task ChatLimitNotice_NotMatched_IsNotApplicableNow()
     {
         var inspector = FullyWorking();

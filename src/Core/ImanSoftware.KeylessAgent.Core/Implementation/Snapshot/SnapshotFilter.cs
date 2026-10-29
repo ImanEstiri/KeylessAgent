@@ -49,16 +49,30 @@ internal static partial class SnapshotFilter
             var name = line[nameStart..].Trim();
             var depth = nameStart;
 
-            // A deeper line under an already-excluded folder is dropped too.
-            excludedDepths.RemoveAll(d => depth <= d.Depth);
-            if (excludedDepths.Any(d => depth > d.Depth))
-                continue;
-
-            if (name.Length > 0 && IsExcluded(name, patterns))
+            // Tree /F /A depth model: a FOLDER line starts a new sibling entry (pop every
+            // exclusion at or deeper than it, then check the folder's own name), while a FILE
+            // line is a child of the deepest folder at its marker column (drop it while
+            // covered by an exclusion; pop exclusions strictly shallower than it, i.e. the
+            // tree returned above the excluded folder). The original single depth <= d.Depth
+            // rule consumed the exclusion on the first child, so the contents of ROOT-LEVEL
+            // bin/obj folders (children at the same marker column) leaked into the tree.
+            if (isFolder)
             {
-                if (isFolder)
+                excludedDepths.RemoveAll(d => depth <= d.Depth);
+                if (excludedDepths.Any(d => depth > d.Depth))
+                    continue;
+
+                if (name.Length > 0 && IsExcluded(name, patterns))
+                {
                     excludedDepths.Add((depth, name));
-                continue;
+                    continue;
+                }
+            }
+            else
+            {
+                excludedDepths.RemoveAll(d => depth < d.Depth);
+                if (excludedDepths.Any(d => depth >= d.Depth))
+                    continue;
             }
 
             result.Add(line);

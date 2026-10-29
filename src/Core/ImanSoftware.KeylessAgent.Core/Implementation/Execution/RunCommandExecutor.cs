@@ -126,6 +126,23 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             };
         }
 
+        if (result.Reason == "cancelled")
+        {
+            return new CommandExecutionResult
+            {
+                Number = command.Number,
+                Kind = command.Kind,
+                Target = command.Target,
+                Status = CommandStatus.Error,
+                ErrorCode = ErrorCodes.Cancelled,
+                FailureReason = "cancelled",
+                Tier = assessment.Data.Tier,
+                ErrorMessage = "Command cancelled by the user.",
+                Output = JoinOutput(result),
+                DurationSeconds = result.DurationSeconds,
+            };
+        }
+
         if (result.TimedOut)
         {
             return new CommandExecutionResult

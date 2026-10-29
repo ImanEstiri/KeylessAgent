@@ -206,6 +206,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         yield return ("FinalAnswer", catalog.FinalAnswer);
         yield return ("Reasoning", catalog.Reasoning);
         yield return ("StopIndicator", catalog.StopIndicator);
+        yield return ("MessageCopyButton", catalog.MessageCopyButton);
         yield return ("DeepThinkToggle", catalog.DeepThinkToggle);
         yield return ("SearchToggle", catalog.SearchToggle);
         yield return ("AttachmentChips", catalog.AttachmentChips);
@@ -235,6 +236,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                 "Reasoning" => "A reasoning block exists (a thinking message is present).",
                 "StopIndicator" => "Generating is in progress.",
                 "AttachmentChips" => "Attachment chips are visible (files attached).",
+                "MessageCopyButton" => "Message-level Copy control exists (hover the reply shows it).",
                 "ChatLimitNotice" => "The chat has reached its length limit (exhausted).",
                 _ => "Selector matched.",
             };
@@ -246,6 +248,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         {
             "StopIndicator" => "Nothing is generating right now.",
             "AttachmentChips" => "Nothing is attached right now.",
+            "MessageCopyButton" => "No assistant message is visible — the Copy button appears only on a reply.",
             "Reasoning" => "No message with a reasoning block is visible right now.",
             "FinalAnswer" => "No assistant message is visible right now (new chat).",
             "LoginIndicator" => "Not on the login page.",

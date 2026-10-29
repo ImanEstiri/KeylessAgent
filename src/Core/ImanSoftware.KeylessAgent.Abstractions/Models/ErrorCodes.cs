@@ -126,6 +126,7 @@ public static class ErrorCodes
 
     /// <summary>The chat hit its length limit and could not be continued.</summary>
     public const string ChatExhausted = "KA_CHAT_EXHAUSTED";
+    public const string Cancelled = "KA_CANCELLED";
 
     // --- Configuration ----------------------------------------------------
 

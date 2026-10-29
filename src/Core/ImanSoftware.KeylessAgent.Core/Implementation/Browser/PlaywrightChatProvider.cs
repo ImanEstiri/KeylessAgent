@@ -80,7 +80,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
-                () => DisposeAsync(page, options.Browser),
+                () => DisposeAsync(page, options.Browser, attachment.Kind),
                 options,
                 _replyExtractor,
                 new RateLimiter(
@@ -189,16 +189,18 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     /// turns and across runs (the next run reuses the tab and the saved chat URL). Only
     /// Browser.CloseChromeOnExit closes the window/context when the session ends.
     /// </summary>
-    private static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions)
+    internal static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions, BrowserConnectionKind kind)
     {
-        if (!browserOptions.CloseChromeOnExit)
+        // Never close a Chrome we only ATTACHED to — it is the user's own browser. A Chrome
+        // we launched ourselves is ours to close when CloseChromeOnExit is set; the old
+        // pages.Count == 0 guard could almost never be true (the agent's own chat tab is
+        // always a page), so the context was silently never closed.
+        if (!browserOptions.CloseChromeOnExit || kind is BrowserConnectionKind.AttachedToRunningChrome)
             return;
 
         try
         {
-            var pages = page.Context.Pages;
-            if (pages.Count == 0)
-                await page.Context.CloseAsync();
+            await page.Context.CloseAsync();
         }
         catch
         {

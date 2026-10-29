@@ -499,8 +499,13 @@ internal sealed class PlaywrightChatSession : IChatSession
         if (uploadSign && !sendSeen)
             return Outcome.Successful(AttachmentDelivery.Uploaded);
 
-        _log.LogWarning("No sign of the uploaded files within {Seconds}s; pasting the content instead.", _options.Browser.UploadWaitSeconds);
-        return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
+        // SetInputFiles SUCCEEDED but no upload sign: the content may be attached invisibly
+        // (virtualized composer, slow chips). Pasting on top would DOUBLE the content —
+        // treat the upload as done. Paste only when the upload itself failed (above).
+        _log.LogWarning(
+            "No sign of the uploaded files within {Seconds}s; treating the upload as done (SetInputFiles succeeded) and NOT pasting on top of it.",
+            _options.Browser.UploadWaitSeconds);
+        return Outcome.Successful(AttachmentDelivery.Uploaded);
     }
 
     /// <summary>

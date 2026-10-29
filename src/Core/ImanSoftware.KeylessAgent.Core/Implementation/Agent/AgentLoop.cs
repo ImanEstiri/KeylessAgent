@@ -5,6 +5,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
@@ -405,8 +406,20 @@ internal sealed class AgentLoop : IAgentLoop
             timings.Stop("attachments");
             var attachments = attachmentsOutcome.IsSuccess ? attachmentsOutcome.Data : [];
             if (attachmentsOutcome.IsFailure)
+            {
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
                     $"Snapshot unavailable: {attachmentsOutcome.Error.Message}"));
+            }
+            else
+            {
+                // Before sending: what exactly is going to the chat (files, size, filtering).
+                var totalKb = attachments.Sum(a => (long)a.Content.Length) / 1024;
+                var marker = attachments.FirstOrDefault(a => a.Kind == SnapshotAttachmentKind.TreeView)
+                    ?.Content.Split('\n').FirstOrDefault();
+                var suffix = marker is ['[', ..] ? $" - {marker}" : string.Empty;
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
+                    $"Attachments: {attachments.Count} files, {totalKb} KB{suffix}"));
+            }
 
             // Message 1 of a new chat: the AgentScript rules ALONE, with the instruction that
             // they apply to the whole conversation. Mixing them into the request made the model

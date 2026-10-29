@@ -1,6 +1,9 @@
 using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
+using Microsoft.Playwright;
+using NSubstitute;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Browser;
@@ -67,6 +70,51 @@ public class PlaywrightChatProviderTests
 
         page.FocusedTabs.Should().BeEmpty();
         page.IsAnyVisibleCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Dispose_ClosesTheContext_WhenWeLaunchedChromeAndCloseIsRequested()
+    {
+        var page = Substitute.For<IPage>();
+        var context = Substitute.For<IBrowserContext>();
+        page.Context.Returns(context);
+        context.Pages.Returns(new List<IPage> { page });
+
+        await PlaywrightChatProvider.DisposeAsync(
+            page, new Abstractions.Models.Configuration.BrowserOptions { CloseChromeOnExit = true },
+            BrowserConnectionKind.AutoLaunchedChrome);
+
+        context.Received(1).CloseAsync();
+    }
+
+    [Fact]
+    public async Task Dispose_NeverClosesAnAttachedChrome_EvenWithCloseChromeOnExit()
+    {
+        var page = Substitute.For<IPage>();
+        var context = Substitute.For<IBrowserContext>();
+        page.Context.Returns(context);
+        context.Pages.Returns(new List<IPage> { page });
+
+        await PlaywrightChatProvider.DisposeAsync(
+            page, new Abstractions.Models.Configuration.BrowserOptions { CloseChromeOnExit = true },
+            BrowserConnectionKind.AttachedToRunningChrome);
+
+        context.DidNotReceive().CloseAsync();
+    }
+
+    [Fact]
+    public async Task Dispose_KeepsTheContext_ByDefault()
+    {
+        var page = Substitute.For<IPage>();
+        var context = Substitute.For<IBrowserContext>();
+        page.Context.Returns(context);
+        context.Pages.Returns(new List<IPage> { page });
+
+        await PlaywrightChatProvider.DisposeAsync(
+            page, new Abstractions.Models.Configuration.BrowserOptions { CloseChromeOnExit = false },
+            BrowserConnectionKind.AutoLaunchedChrome);
+
+        context.DidNotReceive().CloseAsync();
     }
 
     [Fact]
