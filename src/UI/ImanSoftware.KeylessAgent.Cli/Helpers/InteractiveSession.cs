@@ -13,6 +13,13 @@ internal sealed class InteractiveSession
     private readonly Func<string, string, CancellationToken, Task<int>> _runTurn;
     private readonly Func<string, string, CancellationToken, Task<string?>> _switchWorkspace;
 
+    /// <summary>Set when a graceful exit was requested (idle Ctrl+C or the second press).</summary>
+    private readonly TaskCompletionSource<bool> _exitRequested =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private CancellationTokenSource? _turnCts;
+    private DateTime _lastCancelPress = DateTime.MinValue;
+
     /// <summary>
     /// Creates the loop.
     /// </summary>
@@ -35,61 +42,114 @@ internal sealed class InteractiveSession
     }
 
     /// <summary>
-    /// Runs the loop until the user submits an empty request.
+    /// The single Ctrl+C entry point, wired to <see cref="Console.CancelKeyPress"/> while the
+    /// session runs (and callable directly in tests): during a turn the first press cancels only
+    /// the turn; a second press within 2 seconds — or a press at the idle prompt — exits the
+    /// session gracefully (logs are flushed per turn, the connector is disposed per turn).
+    /// </summary>
+    internal void RequestCancel()
+    {
+        var now = DateTime.UtcNow;
+        var isSecondPress = (now - _lastCancelPress).TotalSeconds <= 2;
+        _lastCancelPress = now;
+
+        if (_turnCts is { IsCancellationRequested: false } turn)
+        {
+            turn.Cancel();
+            if (isSecondPress)
+                _exitRequested.TrySetResult(true);
+            return;
+        }
+
+        _exitRequested.TrySetResult(true);
+    }
+
+    /// <summary>
+    /// Runs the loop until the user submits an empty request or Ctrl+C exits gracefully.
     /// </summary>
     /// <param name="workspace">The current workspace path.</param>
     /// <param name="cancellationToken">Cancels the loop (process shutdown).</param>
     /// <returns>Process exit code and the workspace the session ended on.</returns>
     public async Task<(int ExitCode, string Workspace)> RunAsync(string workspace, CancellationToken cancellationToken)
     {
-        while (true)
+        Console.CancelKeyPress += OnCancelKeyPress;
+        try
         {
-            string request;
-            try
+            while (true)
             {
-                request = await _console.PromptAsync(
-                    new TextPrompt<string>("[cyan]keyless>[/]").AllowEmpty(),
-                    cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                return (0, workspace);
-            }
+                string request;
+                try
+                {
+                    var promptTask = _console.PromptAsync(
+                        new TextPrompt<string>("[cyan]keyless>[/]").AllowEmpty(),
+                        cancellationToken);
+                    var completed = await Task.WhenAny(promptTask, _exitRequested.Task);
+                    if (completed != promptTask)
+                        return (0, workspace); // Ctrl+C at the idle prompt: graceful exit.
 
-            if (string.IsNullOrWhiteSpace(request))
-                return (0, workspace);
+                    request = await promptTask; // propagates prompt errors (incl. outer cancel).
+                }
+                catch (OperationCanceledException)
+                {
+                    return (0, workspace);
+                }
 
-            var input = request.Trim();
+                if (string.IsNullOrWhiteSpace(request))
+                    return (0, workspace);
 
-            if (input.StartsWith('/'))
-            {
-                var switched = await HandleSlashCommandAsync(input, workspace, cancellationToken);
-                if (switched is not null)
-                    workspace = switched;
-                continue;
-            }
+                var input = request.Trim();
 
-            // Ctrl+C cancels only the current turn: a fresh linked token per turn,
-            // the outer token (real shutdown) still flows through.
-            using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            try
-            {
-                var exitCode = await _runTurn(workspace, input, turnCts.Token);
-                if (exitCode != 0)
-                    _console.MarkupLine("[grey](turn ended with a problem; the session continues)[/]");
-            }
-            catch (OperationCanceledException)
-            {
-                _console.MarkupLine("[yellow][[!]][/] Turn cancelled.");
-            }
-            catch (Exception ex)
-            {
-                _console.MarkupLine($"[red][[x]][/] Turn failed: {ex.GetType().Name}: {ex.Message.EscapeMarkup()}");
-                _console.MarkupLine("[grey]Details are in .agent/logs (turn transcript; diagnostics.log with -v).[/]");
-            }
+                if (input.StartsWith('/'))
+                {
+                    var switched = await HandleSlashCommandAsync(input, workspace, cancellationToken);
+                    if (switched is not null)
+                        workspace = switched;
+                    if (_exitRequested.Task.IsCompleted)
+                        return (0, workspace);
+                    continue;
+                }
 
-            _console.WriteLine();
+                // Ctrl+C cancels only the current turn: a fresh linked token per turn,
+                // the outer token (real shutdown) still flows through.
+                using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                _turnCts = turnCts;
+                try
+                {
+                    var exitCode = await _runTurn(workspace, input, turnCts.Token);
+                    if (exitCode != 0)
+                        _console.MarkupLine("[grey](turn ended with a problem; the session continues)[/]");
+                }
+                catch (OperationCanceledException)
+                {
+                    _console.MarkupLine("[yellow][[!]][/] Turn cancelled.");
+                }
+                catch (Exception ex)
+                {
+                    _console.MarkupLine($"[red][[x]][/] Turn failed: {ex.GetType().Name}: {ex.Message.EscapeMarkup()}");
+                    _console.MarkupLine("[grey]Details are in .agent/logs (turn transcript; diagnostics.log with -v).[/]");
+                }
+                finally
+                {
+                    _turnCts = null;
+                }
+
+                if (_exitRequested.Task.IsCompleted)
+                    return (0, workspace); // second Ctrl+C during the turn: graceful exit.
+
+                _console.WriteLine();
+            }
         }
+        finally
+        {
+            Console.CancelKeyPress -= OnCancelKeyPress;
+        }
+    }
+
+    private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        // Take over the signal: the session decides between turn-cancel and graceful exit.
+        e.Cancel = true;
+        RequestCancel();
     }
 
     /// <summary>

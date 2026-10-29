@@ -79,4 +79,61 @@ public class InteractiveSessionTests
         turns.Should().Be(0);
         exitCode.Should().Be(0);
     }
+
+    [Fact]
+    public async Task CancelAtIdlePrompt_ExitsGracefullyWithZero()
+    {
+        var console = new TestConsole();
+        console.Input.PushTextWithEnter(""); // deterministic: the prompt would quit anyway
+        var session = new InteractiveSession(console,
+            (_, _, _) => Task.FromResult(0),
+            (_, _, _) => null);
+
+        var runTask = session.RunAsync(@"C:\ws", CancellationToken.None);
+        session.RequestCancel(); // Ctrl+C at the idle prompt (the seam the Console.CancelKeyPress handler calls).
+
+        var (exitCode, _) = await runTask;
+
+        exitCode.Should().Be(0, "idle Ctrl+C exits gracefully, not with a crash");
+    }
+
+    [Fact]
+    public async Task FirstCancelDuringTurn_CancelsOnlyTheTurn_SecondCancelWithinTwoSeconds_Exits()
+    {
+        var console = new TestConsole();
+        console.Input.PushTextWithEnter("a long turn");
+        var turnStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var turnsCancelled = 0;
+
+        var session = new InteractiveSession(console,
+            (_, _, ct) =>
+            {
+                turnStarted.TrySetResult(true);
+                return Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(Timeout.Infinite, ct);
+                        return 0;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Interlocked.Increment(ref turnsCancelled);
+                        throw;
+                    }
+                });
+            },
+            (_, _, _) => null);
+
+        var runTask = session.RunAsync(@"C:\ws", CancellationToken.None);
+        await turnStarted.Task;
+
+        session.RequestCancel(); // first press: cancel the turn only
+        session.RequestCancel(); // second press within 2s: exit gracefully
+
+        var (exitCode, _) = await runTask;
+
+        turnsCancelled.Should().Be(1, "the first press cancelled the running turn");
+        exitCode.Should().Be(0, "the second press exited gracefully");
+    }
 }
