@@ -2,9 +2,11 @@ using FluentAssertions;
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 using ImanSoftware.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -25,7 +27,7 @@ public class PlaywrightChatSessionTests : IDisposable
         Directory.CreateDirectory(_root);
     }
 
-    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null)
+    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null, ITimingRecorder? timings = null)
     {
         var browserOptions = new BrowserOptions
         {
@@ -46,6 +48,7 @@ public class PlaywrightChatSessionTests : IDisposable
                 WorkspaceRoot = _root,
                 Browser = browserOptions,
                 ResumeChatUrl = resumeChatUrl,
+                Timings = timings,
             },
             new ReplyExtractor(),
             new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
@@ -177,6 +180,35 @@ public class PlaywrightChatSessionTests : IDisposable
         reply.IsFailure.Should().BeTrue();
         reply.Error.Code.Should().Be(ErrorCodes.ChatExhausted);
         reply.Error.Message.Should().Contain("length limit");
+    }
+
+    [Fact]
+    public async Task SessionTiming_PhasesAreRecordedThroughTheFakePage()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = true;
+        page.CapturedReply = "captured reply";
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "captured reply", 2));
+        };
+        var recorder = new TimingRecorder();
+        var session = CreateSession(page, configureBrowser: b => b with { EnableSearch = false }, timings: recorder);
+
+        (await session.SendMessageAsync("request one", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).IsSuccess.Should().BeTrue();
+
+        var phases = recorder.Entries.Select(e => e.Phase).ToList();
+        phases.Should().Contain("toggles", "the new chat applies the DeepThink/Search toggles");
+        phases.Should().Contain("upload", "attachment delivery is timed");
+        phases.Should().Contain("send", "the send attempt is timed");
+        phases.Should().Contain("send-confirm", "the send confirmation is timed");
+        phases.Should().Contain("first-token", "the wait until generation starts is timed");
+        phases.Should().Contain("completion", "the wait until the reply is stable is timed");
+        phases.Should().Contain("copy", "the reply capture is timed");
     }
 
     [Fact]
