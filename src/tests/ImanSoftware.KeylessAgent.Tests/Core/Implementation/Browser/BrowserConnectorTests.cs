@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using Microsoft.Playwright;
 using ImanSoftware.Outcomes;
 
@@ -132,6 +133,40 @@ public class BrowserConnectorTests
         environment.LastArguments.Should().Contain("chrome");
         outcome.Data.Attachment.Kind.Should().Be(BrowserConnectionKind.AutoLaunchedChrome);
         outcome.Data.Attachment.LaunchedProcess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TabOpenPhase_IsRecorded_WhenATimingRecorderIsPassed()
+    {
+        var environment = new FakeEnvironment { PortOpen = false };
+        var connector = new BrowserConnector(environment, null)
+        {
+            OpenTabOverride = (_, _) => Task.FromResult(
+                Outcome.Successful<object>("page-stub")),
+        };
+        var timings = new TimingRecorder();
+
+        var outcome = await connector.ConnectAsync(Options(), Ui(), timings: timings);
+
+        outcome.IsSuccess.Should().BeTrue();
+        timings.Entries.Select(e => e.Phase).Should().Contain("tab-open",
+            "choosing or opening the chat tab is one timed phase of the --timing table");
+    }
+
+    [Fact]
+    public async Task TabOpenPhase_NotRecorded_WithoutATimingRecorder()
+    {
+        // No recorder → the phase is simply absent; nothing may throw on the null recorder.
+        var environment = new FakeEnvironment { PortOpen = false };
+        var connector = new BrowserConnector(environment, null)
+        {
+            OpenTabOverride = (_, _) => Task.FromResult(
+                Outcome.Successful<object>("page-stub")),
+        };
+
+        var outcome = await connector.ConnectAsync(Options(), Ui());
+
+        outcome.IsSuccess.Should().BeTrue();
     }
 
     [Fact]

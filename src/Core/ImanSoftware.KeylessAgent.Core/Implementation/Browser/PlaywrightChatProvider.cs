@@ -45,7 +45,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     {
         try
         {
-            var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken);
+            var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken, options.Timings);
             if (connected.IsFailure)
                 return Outcome.Failure<IChatSession>(connected.Error);
 

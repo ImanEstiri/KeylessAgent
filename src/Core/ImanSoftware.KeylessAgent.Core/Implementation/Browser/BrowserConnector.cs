@@ -44,7 +44,8 @@ internal sealed class BrowserConnector : IBrowserConnector
     public async Task<Outcome<(BrowserAttachment Attachment, object Page)>> ConnectAsync(
         BrowserOptions options,
         IAgentUserInterface ui,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ITimingRecorder? timings = null)
     {
         try
         {
@@ -63,7 +64,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                     ui.ShowProgress(new AgentProgressEvent(
                         AgentEventType.ConnectingToBrowser,
                         $"Attached to Chrome on port {options.ChromeDebugPort}."));
-                    return await OpenChatTabAsync(attach.Data, userDataDir, options, ui, cancellationToken);
+                    return await OpenChatTabAsync(attach.Data, userDataDir, options, ui, timings, cancellationToken);
                 }
 
                 // The port answers but CDP cannot attach: report the reason, do not fall through.
@@ -80,7 +81,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                 var launch = await LaunchRealChromeAsync(playwright, options, userDataDir, ui, cancellationToken);
                 if (launch.IsSuccess)
                 {
-                    return await OpenChatTabAsync(launch.Data, userDataDir, options, ui, cancellationToken);
+                    return await OpenChatTabAsync(launch.Data, userDataDir, options, ui, timings, cancellationToken);
                 }
 
                 // Chrome not found / not started: actionable failure with the exact command line.
@@ -225,8 +226,12 @@ internal sealed class BrowserConnector : IBrowserConnector
         string userDataDir,
         BrowserOptions options,
         IAgentUserInterface ui,
+        ITimingRecorder? timings,
         CancellationToken cancellationToken)
     {
+        timings?.Start("tab-open");
+        try
+        {
         if (OpenTabOverride is not null)
         {
             var pageOutcome = await OpenTabOverride(attachment, cancellationToken);
@@ -267,6 +272,11 @@ internal sealed class BrowserConnector : IBrowserConnector
         // Normal operation: no focus, no restore — the window stays minimized.
 
         return Outcome.Successful((attachment, (object)page));
+        }
+        finally
+        {
+            timings?.Stop("tab-open");
+        }
     }
 
     private static async Task<IPage> WaitForPageAsync(IBrowserContext context, string urlPrefix, CancellationToken cancellationToken)

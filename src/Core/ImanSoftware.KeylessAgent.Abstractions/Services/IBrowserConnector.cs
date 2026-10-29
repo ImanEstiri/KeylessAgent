@@ -56,11 +56,13 @@ public interface IBrowserConnector : IService
     /// <param name="options">The browser section of keyless.json.</param>
     /// <param name="ui">Status messages are reported here (never silent).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="timings">Optional per-phase timing recorder (--timing); the tab-open phase is timed here.</param>
     /// <returns>The attachment and the chat page, or a <c>KA_BROWSER_CONNECTION_FAILED</c> failure
     /// whose message is actionable (including the manual-start command line when Chrome could
     /// not be found or started).</returns>
     Task<Outcome<(BrowserAttachment Attachment, object Page)>> ConnectAsync(
         BrowserOptions options,
         IAgentUserInterface ui,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        ITimingRecorder? timings = null);
 }
