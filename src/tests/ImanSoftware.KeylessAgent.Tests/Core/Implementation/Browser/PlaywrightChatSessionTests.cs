@@ -180,6 +180,39 @@ public class PlaywrightChatSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task StopIndicatorPolling_UsesInstantChecks_AtMost100MsApart()
+    {
+        // No reply ever completes: the session polls the stop indicator until the timeout.
+        // With instant checks the poll interval is the 100 ms default — never 3 x 400 ms.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => page.SimulateUserMessageAccepted();
+        var session = CreateSession(page, configureBrowser: b => b with { ReplyTimeoutSeconds = 1 });
+
+        (await session.SendMessageAsync("request", [])).IsSuccess.Should().BeTrue();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await session.WaitForReplyAsync();
+        sw.Stop();
+
+        page.StopPolls.Should().BeGreaterThanOrEqualTo((int)(sw.ElapsedMilliseconds / 100) + 1,
+            "the stop-indicator interval must be at most 100 ms (instant checks, no serialized timeouts)");
+        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3), "instant checks must not serialize timeouts");
+    }
+
+    [Fact]
+    public async Task ChatLimitProbe_CostsOneRoundTripPerWait()
+    {
+        var page = new FakeChatPage { ChatLimitVisible = true };
+        ArrangeFirstReplyDelivered(page);
+        var session = CreateSession(page);
+
+        (await session.WaitForReplyAsync()).IsFailure.Should().BeTrue();
+        (await session.WaitForReplyAsync()).IsFailure.Should().BeTrue();
+
+        page.ChatLimitCalls.Should().Be(2, "one instant probe per reply wait (2 waits), not one per selector");
+    }
+
+    [Fact]
     public async Task IdenticalReplyTextTwiceInARow_IsAccepted_WhenTheMessageKeyChanged()
     {
         var page = new FakeChatPage();

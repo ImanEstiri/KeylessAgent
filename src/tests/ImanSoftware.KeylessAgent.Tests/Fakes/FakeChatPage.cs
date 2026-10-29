@@ -91,13 +91,20 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
         }
     }
 
+    /// <summary>How often the stop indicator was polled (round-trip counter).</summary>
+    public int StopPolls { get; private set; }
+
     public Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)
         {
+            StopPolls++;
             return Task.FromResult(StopVisible);
         }
     }
+
+    /// <summary>How often the chat-limit notice was probed (round-trip counter).</summary>
+    public int ChatLimitCalls { get; private set; }
 
     public Task<bool> IsInputClearedAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(!InputHasText);
@@ -252,7 +259,10 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     public bool ChatLimitVisible { get; set; }
 
     public Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult(ChatLimitVisible);
+    {
+        ChatLimitCalls++;
+        return Task.FromResult(ChatLimitVisible);
+    }
 
     /// <summary>Round-trip counter for the instant any-visible check.</summary>
     public int IsAnyVisibleCalls { get; private set; }
