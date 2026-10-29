@@ -10,17 +10,22 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Agent;
 /// <summary>
 /// Writes the per-turn transcript as JSON lines to <c>.agent/logs/turn-&lt;n&gt;.jsonl</c>:
 /// every message sent, every reply received, every parsed command and every result.
-/// Never logs cookies, tokens or page HTML.
+/// Never logs cookies, tokens or page HTML. Logging is best-effort: once a write fails
+/// (unwritable path, I/O error), logging is disabled for the rest of the turn with a
+/// single warning — a failing log never fails the turn.
 /// </summary>
 internal sealed class TurnLogger
 {
     private readonly IFileStorage _storage;
     private readonly IDateTimeProvider _time;
+    private readonly Action<string>? _warn;
+    private bool _disabled;
 
-    public TurnLogger(IFileStorage storage, IDateTimeProvider time)
+    public TurnLogger(IFileStorage storage, IDateTimeProvider time, Action<string>? warn = null)
     {
         _storage = storage;
         _time = time;
+        _warn = warn;
     }
 
     internal string LogPath { get; private set; } = string.Empty;
@@ -35,7 +40,21 @@ internal sealed class TurnLogger
     {
         var directory = Path.Combine(workspaceRoot, ".agent", "logs");
         LogPath = Path.Combine(directory, $"turn-{turn}.jsonl");
-        await _storage.CreateDirectoryAsync(directory, cancellationToken);
+
+        try
+        {
+            var mkdir = await _storage.CreateDirectoryAsync(directory, cancellationToken);
+            if (mkdir.IsFailure)
+                Disable($"Turn log disabled for this turn: {mkdir.Error.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Disable($"Turn log disabled for this turn: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -46,7 +65,7 @@ internal sealed class TurnLogger
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task AppendAsync(string type, object payload, CancellationToken cancellationToken = default)
     {
-        if (LogPath.Length == 0)
+        if (LogPath.Length == 0 || _disabled)
             return;
 
         var entry = new
@@ -56,8 +75,21 @@ internal sealed class TurnLogger
             Payload = payload,
         };
 
-        var json = ConfigurationService.CreateSerializer().Serialize(entry);
-        await _storage.AppendAllTextAsync(LogPath, json + Environment.NewLine, cancellationToken);
+        try
+        {
+            var json = ConfigurationService.CreateSerializer().Serialize(entry);
+            var append = await _storage.AppendAllTextAsync(LogPath, json + Environment.NewLine, cancellationToken);
+            if (append.IsFailure)
+                Disable($"Turn log disabled for this turn: {append.Error.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Disable($"Turn log disabled for this turn: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -67,4 +99,14 @@ internal sealed class TurnLogger
     /// <param name="cancellationToken">Cancellation token.</param>
     public Task AppendResultAsync(CommandExecutionResult result, CancellationToken cancellationToken = default)
         => AppendAsync("result", result, cancellationToken);
+
+    /// <summary>Stops logging for the rest of the turn and warns exactly once.</summary>
+    private void Disable(string reason)
+    {
+        if (_disabled)
+            return;
+
+        _disabled = true;
+        _warn?.Invoke(reason);
+    }
 }

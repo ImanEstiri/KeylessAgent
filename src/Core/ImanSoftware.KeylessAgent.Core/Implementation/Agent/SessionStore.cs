@@ -43,10 +43,45 @@ internal sealed class SessionStore : ISessionStore
         if (string.IsNullOrWhiteSpace(read.Data))
             return NoSession();
 
-        var session = ConfigurationService.CreateSerializer().Deserialize<AgentSession>(read.Data);
-        return session is null
-            ? NoSession()
-            : Outcome.Successful(session);
+        // A corrupt session file must never crash the turn: treat it as "no session" and
+        // preserve the broken file under session.json.corrupt for inspection (best effort).
+        AgentSession? session;
+        var corrupt = false;
+        try
+        {
+            session = ConfigurationService.CreateSerializer().Deserialize<AgentSession>(read.Data);
+            corrupt = session is null;
+        }
+        catch (Exception)
+        {
+            session = null;
+            corrupt = true;
+        }
+
+        if (corrupt)
+        {
+            await PreserveCorruptFileAsync(path, read.Data);
+            return NoSession();
+        }
+
+        return Outcome.Successful(session!);
+    }
+
+    /// <summary>Renames a broken session.json to session.json.corrupt (best effort, never throws).</summary>
+    private async Task PreserveCorruptFileAsync(string path, string content)
+    {
+        try
+        {
+            if (!_storage.FileExists(path))
+                return;
+
+            await _storage.WriteAllTextAsync(path + ".corrupt", content);
+            await _storage.DeleteAsync(path);
+        }
+        catch
+        {
+            // Preserving the broken file is best-effort; the session is treated as absent.
+        }
     }
 
     private static Outcome<AgentSession> NoSession()
