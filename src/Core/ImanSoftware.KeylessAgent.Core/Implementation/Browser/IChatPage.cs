@@ -129,6 +129,16 @@ internal interface IChatPage
     Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fingerprint (item key + text hash) of the newest MESSAGE ITEM — user or assistant —
+    /// used by the send confirmation to detect that the sent message landed. Null when the
+    /// list is empty.
+    /// </summary>
+    Task<AssistantStamp?> GetNewestItemStampAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The visible text of the newest message item (user or assistant), or null.</summary>
+    Task<string?> GetNewestItemTextAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Instant presence+visibility check across the fallback list in ONE round trip (no
     /// waiting) — for "is it there right now" questions: polling loops, login probes, notices.
     /// </summary>

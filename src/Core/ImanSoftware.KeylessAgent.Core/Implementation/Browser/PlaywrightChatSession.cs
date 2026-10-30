@@ -125,74 +125,116 @@ internal sealed class PlaywrightChatSession : IChatSession
                     Math.Max(_options.Browser.MinDelayMs + 1, _options.Browser.MaxDelayMs)), cancellationToken);
             }
 
-            // One send attempt = the send button when clickable, otherwise Enter — never both.
-            _options.Timings?.Start("send");
-            try
-            {
-                if (!await _page.TryClickSendAsync(cancellationToken))
-                    await _page.PressEnterAsync(cancellationToken);
-            }
-            finally
-            {
-                _options.Timings?.Stop("send");
-            }
+            var itemStampBefore = await _page.GetNewestItemStampAsync(cancellationToken);
+            var sentPrefix = SentPrefixOf(text);
 
-            // --- Step 4: confirm the send actually happened ---
-            _options.Timings?.Start("send-confirm");
-            Outcome<bool> confirmed;
-            try
+            // Two attempts max: attempt 1 clicks the send control (Enter when the click is
+            // impossible), attempt 2 is the single Enter retry. Each attempt gets its own
+            // confirm window; between them the signals are re-checked so a slow message is
+            // never followed by a duplicate.
+            for (var attempt = 1; ; attempt++)
             {
-                confirmed = Outcome.Successful(await ConfirmSendAsync(itemCountBefore, cancellationToken));
-            }
-            finally
-            {
-                _options.Timings?.Stop("send-confirm");
-            }
-
-            if (!confirmed.Data)
-            {
-                // The list is virtualized: a constant item count proves nothing. An emptied input
-                // means the text left the composer — the message was sent.
-                if (await _page.IsInputClearedAsync(cancellationToken))
-                {
-                    _log.LogInformation("Send not confirmed by the message list, but the input was cleared; treating the message as sent.");
-                    return Outcome.Successful();
-                }
-
-                // The text is still in the composer: exactly one retry, with ENTER. The button
-                // click was already proven ineffective (or it would have been confirmed), and
-                // re-clicking a mis-identified control (e.g. the paperclip) only opens dialogs.
-                _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once with Enter.", _options.Browser.SendConfirmSeconds);
-                await _page.PressEnterAsync(cancellationToken);
-
-                _options.Timings?.Start("send-confirm");
-                Outcome<bool> confirmedAfterRetry;
+                _options.Timings?.Start("send");
                 try
                 {
-                    confirmedAfterRetry = Outcome.Successful(await ConfirmSendAsync(itemCountBefore, cancellationToken));
+                    if (attempt == 1)
+                    {
+                        // Require an enabled send control when it can be detected (as for
+                        // uploads): clicking a detectably-disabled control is a wasted attempt.
+                        var enableDeadline = DateTime.UtcNow.AddSeconds(2);
+                        while (DateTime.UtcNow < enableDeadline)
+                        {
+                            var state = await _page.IsSendEnabledAsync(cancellationToken);
+                            if (state is null or true)
+                                break;
+                            await Task.Delay(100, cancellationToken);
+                        }
+                    }
+
+                    if (attempt == 1)
+                    {
+                        if (!await _page.TryClickSendAsync(cancellationToken))
+                            await _page.PressEnterAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        await _page.PressEnterAsync(cancellationToken);
+                    }
                 }
                 finally
                 {
-                    _options.Timings?.Stop("send-confirm");
+                    _options.Timings?.Stop("send");
                 }
 
-                if (!confirmedAfterRetry.Data)
+                // --- Confirm the send actually happened ---
+                var attemptName = $"send-confirm#{attempt}";
+                _options.Timings?.Start(attemptName);
+                bool confirmed;
+                SendSignals signals;
+                var confirmWatch = System.Diagnostics.Stopwatch.StartNew();
+                try
                 {
-                    if (await _page.IsInputClearedAsync(cancellationToken))
-                    {
-                        _log.LogInformation("Send confirmed after retry by the cleared input.");
-                        return Outcome.Successful();
-                    }
+                    (confirmed, signals) = await ConfirmSendAsync(itemStampBefore, sentPrefix, cancellationToken);
+                }
+                finally
+                {
+                    _options.Timings?.Stop(attemptName);
+                }
 
+                var itemCountAfter = await _page.GetMessageItemCountAsync(cancellationToken);
+                _log.LogWarning(
+                    "Send attempt #{Attempt} {Outcome}: items {Before}->{After}, fingerprintChanged {Fingerprint}, userTextMatched {UserText}, inputCleared {Cleared}, chips {Chips}, stopVisible {Stop}, elapsed {Elapsed:N1}s.",
+                    attempt, confirmed ? "confirmed" : "unconfirmed", itemCountBefore, itemCountAfter,
+                    signals.FingerprintChanged, signals.UserTextMatched, signals.InputCleared,
+                    signals.Chips, signals.StopVisible, confirmWatch.Elapsed.TotalSeconds);
+                if (_options.LogEvent is not null)
+                    await _options.LogEvent("send-attempt", new
+                    {
+                        Attempt = attempt,
+                        Confirmed = confirmed,
+                        ItemCountBefore = itemCountBefore,
+                        ItemCountAfter = itemCountAfter,
+                        signals.FingerprintChanged,
+                        signals.UserTextMatched,
+                        signals.InputCleared,
+                        signals.Chips,
+                        signals.StopVisible,
+                    });
+
+                if (confirmed)
+                    return Outcome.Successful();
+
+                // Re-check BEFORE any retry: a slow message may have landed after the window
+                // closed — resending it would create a duplicate.
+                var late = await ObserveSendSignalsAsync(itemStampBefore, sentPrefix, cancellationToken);
+                if (Confirmed(late))
+                {
+                    _log.LogInformation("Send confirmed after the confirm window closed (signals arrived late); no retry.");
+                    return Outcome.Successful();
+                }
+
+                // The text left the composer: the message was sent even though the confirm
+                // signals stayed silent (same rule as the confirm window, applied late).
+                if (await _page.IsInputClearedAsync(cancellationToken))
+                {
+                    _log.LogInformation("Send treated as delivered: the input no longer holds the text (attachment still attached if any).");
+                    return Outcome.Successful();
+                }
+
+                if (attempt == 2)
+                {
                     var screenshot = await CaptureDiagnosticsAsync("send-not-confirmed", cancellationToken);
                     return Outcome.Failure(new OutcomeError(
                         $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator)."
                         + DiagnosticsHint(screenshot),
                         ErrorCodes.SendNotConfirmed, OutcomeErrorType.Failure));
                 }
-            }
 
-            return Outcome.Successful();
+                // The text is still in the composer: exactly one retry, with ENTER. The button
+                // click was already proven ineffective (or it would have been confirmed), and
+                // re-clicking a mis-identified control (e.g. the paperclip) only opens dialogs.
+                _log.LogWarning("Send not confirmed within {Seconds}s and the input still holds the text; retrying once with Enter.", _options.Browser.SendConfirmSeconds);
+            }
         }
         catch (Exception ex)
         {
@@ -390,30 +432,70 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// <inheritdoc />
     public async ValueTask DisposeAsync() => await _disposeAsync();
 
+    /// <summary>The signals observed while a send confirmation window is open.</summary>
+    private sealed record SendSignals(
+        bool FingerprintChanged,
+        bool UserTextMatched,
+        bool InputCleared,
+        bool Chips,
+        bool StopVisible);
+
+    private static bool Confirmed(SendSignals s)
+        => s.FingerprintChanged || s.UserTextMatched || (s.InputCleared && !s.Chips) || s.StopVisible;
+
+    /// <summary>The first 40 characters of the sent text, whitespace-collapsed.</summary>
+    private static string SentPrefixOf(string text)
+    {
+        var normalized = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length <= 40 ? normalized : normalized[..40];
+    }
+
+    private static string NormalizeWhitespace(string text)
+        => string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>One snapshot of all confirm signals.</summary>
+    private async Task<SendSignals> ObserveSendSignalsAsync(
+        AssistantStamp? itemStampBefore, string sentPrefix, CancellationToken cancellationToken)
+    {
+        var stamp = await _page.GetNewestItemStampAsync(cancellationToken);
+        var fingerprintChanged = stamp is not null && stamp.IsDifferentFrom(itemStampBefore);
+
+        var itemText = await _page.GetNewestItemTextAsync(cancellationToken);
+        var userTextMatched = false;
+        if (itemText is not null && sentPrefix.Length > 0 &&
+            NormalizeWhitespace(itemText).StartsWith(sentPrefix, StringComparison.Ordinal))
+            userTextMatched = true;
+
+        var inputCleared = await _page.IsInputClearedAsync(cancellationToken);
+        var chips = await _page.AreAttachmentChipsVisibleAsync(cancellationToken);
+        var stopVisible = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
+
+        return new SendSignals(fingerprintChanged, userTextMatched, inputCleared, chips, stopVisible);
+    }
+
     /// <summary>
-    /// A send is confirmed when a new message item appeared in the DOM, or the input was
-    /// consumed and the stop/generating indicator is on.
+    /// A send is confirmed when ANY of these hold: the newest message item's fingerprint
+    /// changed, a new user message starts with the sent text, the input is cleared with no
+    /// attachment chips remaining, or the stop/generating indicator is visible. Polled at
+    /// ~100 ms; the final observation after the deadline catches late flips.
     /// </summary>
-    private async Task<bool> ConfirmSendAsync(int itemCountBefore, CancellationToken cancellationToken)
+    private async Task<(bool Confirmed, SendSignals Signals)> ConfirmSendAsync(
+        AssistantStamp? itemStampBefore, string sentPrefix, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.SendConfirmSeconds);
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (await _page.GetMessageItemCountAsync(cancellationToken) > itemCountBefore)
-                return true;
+            var signals = await ObserveSendSignalsAsync(itemStampBefore, sentPrefix, cancellationToken);
+            if (Confirmed(signals))
+                return (true, signals);
 
-            if (await _page.IsInputClearedAsync(cancellationToken) &&
-                await _page.IsStopIndicatorVisibleAsync(cancellationToken))
-            {
-                return true;
-            }
-
-            await Task.Delay(Math.Min(_pollDelayMs, 250), cancellationToken);
+            await Task.Delay(_pollDelayMs, cancellationToken);
         }
 
-        return false;
+        var final = await ObserveSendSignalsAsync(itemStampBefore, sentPrefix, cancellationToken);
+        return (Confirmed(final), final);
     }
 
     private async Task<Outcome<AttachmentDelivery>> DeliverAttachmentsAsync(IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken)

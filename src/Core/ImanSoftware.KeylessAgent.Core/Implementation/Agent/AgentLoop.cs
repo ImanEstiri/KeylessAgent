@@ -371,6 +371,7 @@ internal sealed class AgentLoop : IAgentLoop
                     WorkspaceRoot = workspaceRoot,
                     ResumeChatUrl = session?.ChatUrl,
                     Timings = timings,
+                    LogEvent = (type, payload) => logger.AppendAsync(type, payload, CancellationToken.None),
                 }, cancellationToken);
             if (chatOutcome.IsFailure)
                 return Failed(chatOutcome.Error.Message, dryRun);

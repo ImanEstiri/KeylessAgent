@@ -79,6 +79,59 @@ internal sealed class PlaywrightChatPage : IChatPage
         return 0;
     }
 
+    private async Task<ILocator?> GetNewItemLocatorAsync(CancellationToken cancellationToken)
+    {
+        foreach (var selector in _selectors.MessageItems)
+        {
+            try
+            {
+                var count = (int)await WithCancellationAsync(_page.Locator(selector).CountAsync(), cancellationToken);
+                if (count > 0)
+                    return _page.Locator(selector).Nth(count - 1);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // The virtualized list re-renders constantly; try the next fallback selector.
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<AssistantStamp?> GetNewestItemStampAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var item = await GetNewItemLocatorAsync(cancellationToken);
+        if (item is null)
+            return null;
+
+        var key = await EvaluateAsync(item,
+            "element => element.closest('[data-virtual-list-item-key]')?.getAttribute('data-virtual-list-item-key') ?? element.getAttribute('data-virtual-list-item-key')", cancellationToken);
+        var text = await EvaluateAsync(item, "element => element.innerText", cancellationToken);
+        var count = await GetMessageItemCountAsync(cancellationToken);
+
+        return new AssistantStamp(
+            Key: string.IsNullOrWhiteSpace(key) ? null : key.Trim(),
+            TextHash: text is null ? 0 : StableHash(text),
+            VisibleCount: count);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetNewestItemTextAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var item = await GetNewItemLocatorAsync(cancellationToken);
+        if (item is null)
+            return null;
+
+        return await EvaluateAsync(item, "element => element.innerText", cancellationToken);
+    }
+
     /// <inheritdoc />
     public async Task<bool> IsStopIndicatorVisibleAsync(CancellationToken cancellationToken = default)
     {
@@ -322,13 +375,17 @@ internal sealed class PlaywrightChatPage : IChatPage
         try
         {
             var state = await EvaluateAsync(locator,
-                "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
+                "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary'), label: element.getAttribute('aria-label') || element.textContent || '', tag: element.tagName })",
                 cancellationToken);
+            var clickedLabel = "unknown";
+            var clickedTag = "unknown";
             if (!string.IsNullOrEmpty(state))
             {
                 var parsed = System.Text.Json.JsonDocument.Parse(state);
                 var dis = parsed.RootElement.TryGetProperty("dis", out var disValue) && disValue.ValueKind == System.Text.Json.JsonValueKind.True;
                 var paperclip = parsed.RootElement.TryGetProperty("paperclip", out var paperclipValue) && paperclipValue.ValueKind == System.Text.Json.JsonValueKind.True;
+                clickedLabel = parsed.RootElement.TryGetProperty("label", out var labelValue) ? labelValue.GetString() ?? string.Empty : string.Empty;
+                clickedTag = parsed.RootElement.TryGetProperty("tag", out var tagValue) ? tagValue.GetString() ?? string.Empty : string.Empty;
 
                 // Disabled buttons can never send...
                 if (dis)
@@ -346,7 +403,8 @@ internal sealed class PlaywrightChatPage : IChatPage
                 }
             }
 
-            _log.LogDebug("SendButton matched selector #{Index}: {Selector}", index, _selectors.SendButton[index]);
+            _log.LogDebug("SendButton matched selector #{Index}: {Selector} (control <{Tag}>, label '{Label}')",
+                index, _selectors.SendButton[index], clickedTag, clickedLabel);
             await locator.ClickAsync();
             return true;
         }

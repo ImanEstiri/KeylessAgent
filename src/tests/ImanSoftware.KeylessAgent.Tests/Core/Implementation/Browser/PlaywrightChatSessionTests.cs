@@ -205,7 +205,7 @@ public class PlaywrightChatSessionTests : IDisposable
         phases.Should().Contain("toggles", "the new chat applies the DeepThink/Search toggles");
         phases.Should().Contain("upload", "attachment delivery is timed");
         phases.Should().Contain("send", "the send attempt is timed");
-        phases.Should().Contain("send-confirm", "the send confirmation is timed");
+        phases.Should().Contain("send-confirm#1", "the send confirmation is timed once per attempt");
         phases.Should().Contain("first-token", "the wait until generation starts is timed");
         phases.Should().Contain("completion", "the wait until the reply is stable is timed");
         phases.Should().Contain("copy", "the reply capture is timed");

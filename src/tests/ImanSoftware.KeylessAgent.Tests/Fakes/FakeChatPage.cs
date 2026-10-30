@@ -145,6 +145,7 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     {
         InputHasText = true;
         LastInsertedText = text;
+        _lastSentText = text;
         return Task.CompletedTask;
     }
 
@@ -344,8 +345,40 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
             InputHasText = false;
             ItemCount++;
             StopVisible = true;
+            NewestItemKey = $"user-{ItemCount}";
+            NewestItemIsUser = true;
         }
     }
+
+    /// <summary>The item key of the newest message item (user or assistant).</summary>
+    public string? NewestItemKey { get; set; }
+
+    /// <summary>Whether the newest message item is the USER's (vs the assistant's reply).</summary>
+    public bool NewestItemIsUser { get; set; }
+
+    public Task<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?> GetNewestItemStampAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            if (NewestItemKey is null)
+                return Task.FromResult<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?>(null);
+
+            return Task.FromResult<ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp?>(new ImanSoftware.KeylessAgent.Core.Implementation.Browser.AssistantStamp(
+                NewestItemKey,
+                TextHash: 0,
+                VisibleCount: ItemCount));
+        }
+    }
+
+    public Task<string?> GetNewestItemTextAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            return Task.FromResult(NewestItemIsUser ? _lastSentText : NewestAssistantText);
+        }
+    }
+
+    private string? _lastSentText;
 
     /// <summary>Simulates the finished reply: stop indicator gone, new assistant message present.</summary>
     public void SimulateAssistantReply(string key, string text, int visibleCount)
@@ -355,6 +388,8 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
             StopVisible = false;
             NewestAssistantKey = key;
             NewestAssistantText = text;
+            NewestItemKey = key;
+            NewestItemIsUser = false;
             AssistantVisibleCount = visibleCount;
             ItemCount++;
         }

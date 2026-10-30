@@ -73,8 +73,11 @@ internal sealed class ProcessRunner
         // Close stdin immediately so batch files that end with `pause` can never hang waiting for a key.
         process.StandardInput.Close();
 
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        // The readers deliberately take NO cancellation token: on timeout/cancel the process
+        // is killed, which closes the pipes and ends the readers — cancelling the readers
+        // themselves would throw away the partial output printed before the kill.
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
