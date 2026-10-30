@@ -29,7 +29,30 @@ internal sealed record ProcessResult(int ExitCode, string Output, string Error, 
 /// Runs external processes (git, dotnet, the snapshot bat files) with output capture,
 /// a hard timeout and full process-tree kill. Process execution deliberately does not go through IFileStorage.
 /// </summary>
-internal sealed class ProcessRunner
+internal interface IProcessRunner
+{
+    /// <summary>
+    /// Runs a process to completion without a console window.
+    /// </summary>
+    /// <param name="fileName">The executable to run.</param>
+    /// <param name="arguments">The argument string.</param>
+    /// <param name="workingDirectory">The working directory for the process.</param>
+    /// <param name="timeoutSeconds">Wall-clock timeout; the process tree is killed when exceeded.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The captured result (exit code, output, error, duration, timeout/cancel reason).</returns>
+    Task<ProcessResult> RunAsync(
+        string fileName,
+        string arguments,
+        string workingDirectory,
+        int timeoutSeconds,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Real implementation: System.Diagnostics.Process with output capture, a hard timeout and a
+/// full process-tree kill on timeout or cancellation.
+/// </summary>
+internal sealed class ProcessRunner : IProcessRunner
 {
     /// <summary>
     /// Runs a process to completion without a console window.

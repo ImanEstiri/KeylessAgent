@@ -16,14 +16,14 @@ internal sealed class RunCommandExecutor : ICommandExecutor
 {
     private readonly ICommandPolicy _policy;
     private readonly ICommandRiskClassifier _riskClassifier;
-    private readonly ProcessRunner _runner;
+    private readonly IProcessRunner _runner;
 
     public RunCommandExecutor()
         : this(new CommandPolicy(), new CommandRiskClassifier(), new ProcessRunner())
     {
     }
 
-    internal RunCommandExecutor(ICommandPolicy policy, ICommandRiskClassifier riskClassifier, ProcessRunner runner)
+    internal RunCommandExecutor(ICommandPolicy policy, ICommandRiskClassifier riskClassifier, IProcessRunner runner)
     {
         _policy = policy;
         _riskClassifier = riskClassifier;
@@ -55,7 +55,10 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         if (context.DryRun)
             return NewFileExecutor.DryRunResult(command);
 
-        var (program, arguments) = SplitCommandLine(run.CommandLine);
+        // The program token is kept for error messages only — the line itself runs through
+        // the shell so built-ins, &&/|| chains and redirects work as the model wrote them.
+        var (program, _) = SplitCommandLine(run.CommandLine);
+        var (shellFile, shellArguments) = ShellInvocationFor(run.CommandLine, OperatingSystem.IsWindows());
 
         // Approval policy per mode and tier.
         var autoApproved = false;
@@ -108,7 +111,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         }
 
         var result = await _runner.RunAsync(
-            program, arguments, context.WorkspaceRoot,
+            shellFile, shellArguments, context.WorkspaceRoot,
             context.Options.Commands.TimeoutSeconds, context.CancellationToken);
 
         if (result.NotStarted)
@@ -122,7 +125,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
                 ErrorCode = ErrorCodes.CommandNotFound,
                 FailureReason = "command_not_found",
                 Tier = assessment.Data.Tier,
-                ErrorMessage = $"'{program}' was not found: it is not installed or not on PATH.",
+                ErrorMessage = NotAvailableMessage(program),
             };
         }
 
@@ -166,7 +169,7 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             var notFoundReason = IsCommandNotFound(result);
             var failureReason = notFoundReason ? "command_not_found" : "non_zero_exit";
             var message = notFoundReason
-                ? $"'{program}' was not found: it is not installed or not on PATH."
+                ? NotAvailableMessage(program)
                 : $"Command exited with code {result.ExitCode}.";
 
             return new CommandExecutionResult
@@ -198,6 +201,22 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         };
 
     }
+    /// <summary>
+    /// The failure message for a program the shell could not run: first token of the command
+    /// line plus the actionable hint (shell built-ins keep working under the shell wrapper).
+    /// </summary>
+    internal static string NotAvailableMessage(string program)
+        => $"'{program}' is not available: it is not installed, not on PATH or not an executable (shell built-ins work). Check the Environment line.";
+
+    /// <summary>
+    /// Wraps one command line for the platform shell: cmd.exe /d /s /c on Windows (the whole
+    /// line auto-quoted; /s strips the outer quotes, /d skips AutoRun), /bin/sh -c elsewhere.
+    /// </summary>
+    internal static (string FileName, string Arguments) ShellInvocationFor(string commandLine, bool isWindows)
+        => isWindows
+            ? ("cmd.exe", $"/d /s /c \"{commandLine}\"")
+            : ("/bin/sh", $"-c \"{commandLine.Replace("\"", "\\\"")}\"");
+
     /// <summary>
     /// Whether a non-zero exit means the program itself does not exist: cmd's 9009, shell 127,
     /// or the classic "not recognized" messages.

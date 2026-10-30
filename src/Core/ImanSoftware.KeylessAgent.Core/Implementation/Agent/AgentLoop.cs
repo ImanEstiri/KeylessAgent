@@ -107,6 +107,7 @@ internal sealed class AgentLoop : IAgentLoop
             "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
             $"Environment: {envSummary}",
+            "Commands run in cmd.exe on Windows (built-ins like mkdir/dir/type and && chains work); for files and folders prefer @@newfile/@@editfile/@@movefile — a new file's parent folders are created automatically.",
             gitNote,
             "Investigate first (read-only commands, readfile) instead of guessing; use @@next to get results before continuing; use @@done to end the turn.",
             "[/REMINDER]");
