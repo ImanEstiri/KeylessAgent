@@ -1,6 +1,8 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.Extensions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
@@ -227,7 +229,23 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         }
 
         public void ShowProgress(AgentProgressEvent progressEvent)
-            => Console.WriteLine($"[{progressEvent.Type}] {progressEvent.Detail}");
+            => Console.WriteLine($"› {StepLabel(progressEvent.Type)}: {progressEvent.Detail}");
+
+        private static string StepLabel(AgentEventType type) => type switch
+        {
+            AgentEventType.SessionStarting => "setup",
+            AgentEventType.ConnectingToBrowser => "connect",
+            AgentEventType.OpeningChat => "chat",
+            AgentEventType.UploadingAttachments => "attachments",
+            AgentEventType.SendingMessage => "send",
+            AgentEventType.WaitingForReply => "reply",
+            AgentEventType.ValidatingReply => "reply",
+            AgentEventType.ExecutingCommand => "execute",
+            AgentEventType.SendingResults => "results",
+            AgentEventType.RefreshingSnapshot => "snapshot",
+            AgentEventType.TurnFinished => "done",
+            _ => type.ToString().ToLowerInvariant(),
+        };
 
         public Task<bool> ConfirmAsync(ConfirmRequest request) => Task.FromResult(true);
 

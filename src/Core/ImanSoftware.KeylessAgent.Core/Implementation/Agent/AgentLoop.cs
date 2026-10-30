@@ -118,7 +118,8 @@ internal sealed class AgentLoop : IAgentLoop
         string request,
         IAgentUserInterface ui,
         bool dryRun = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool refreshEnv = false)
     {
         var logger = new TurnLogger(ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage(), _time);
         KeylessOptions options = new();
@@ -137,6 +138,9 @@ internal sealed class AgentLoop : IAgentLoop
         var timings = new TimingRecorder();
         var runCommandCount = 0;
         var baseBranch = string.Empty;
+        // User interactions (approvals, menus, @@ask) are timed as "user-wait" so the
+        // summary can report the turn with and without time spent waiting for the user.
+        ui = new UserWaitTimingUi(ui, timings);
         var countingUi = new CommandCountingUserInterface(ui);
 
         try
@@ -208,13 +212,11 @@ internal sealed class AgentLoop : IAgentLoop
                 await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
             timings.Stop("git-checks");
 
-            // --- Step 2c: Environment probe (parallel, 3s timeout each) ---
-            timings.Start("env-probe");
+            // --- Step 2c: environment probe STARTS here and runs CONCURRENTLY with the
+            // browser connection below; cached in .agent/env.json for 24h (keyed by the
+            // workspace itself). Its awaited result is read just before the first send.
             var environmentProbe = new EnvironmentProbe();
-            var env = await environmentProbe.ProbeAsync(workspaceRoot, cancellationToken);
-            var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
-            var envSummary = env.IsSuccess ? env.Data.Summary : "";
-            timings.Stop("env-probe");
+            var envTask = environmentProbe.ProbeCachedAsync(workspaceRoot, refreshEnv, cancellationToken);
 
             // --- Step 3+4: Git preconditions (menus) ---
             branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
@@ -272,6 +274,25 @@ internal sealed class AgentLoop : IAgentLoop
                     "The working tree has uncommitted changes. What should I do?",
                     dirtyOptions,
                     DefaultId: isAgentBranch ? "here" : "carry");
+
+                // On an agent branch the menu usually means the USER changed something the
+                // agent does not know about: name up to 5 paths that are not agent-made.
+                if (isAgentBranch)
+                {
+                    var notAgentMade = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline!, !noGitModeUsed, cancellationToken))
+                        .Data?
+                        .Where(c => agentChangedPaths is null || !agentChangedPaths.Contains(c.Path, StringComparer.OrdinalIgnoreCase))
+                        .Select(c => c.Path)
+                        .Take(5)
+                        .ToList();
+
+                    if (notAgentMade is { Count: > 0 })
+                    {
+                        ui.Say("[?] Changes I did not make: " + string.Join(", ", notAgentMade));
+                        _log.LogWarning("Dirty menu shown on an agent branch; paths not in AgentChangedPaths: {Paths}",
+                            string.Join(", ", notAgentMade));
+                    }
+                }
 
                 var dirtyChoice = await ui.ChooseAsync(dirtyMenu, cancellationToken);
                 lastDirtyChoice = dirtyChoice.SelectedId;
@@ -379,6 +400,11 @@ internal sealed class AgentLoop : IAgentLoop
 
             await using var chatSession = chatOutcome.Data;
             timings.Stop("connect");
+
+            // The environment probe ran concurrently with the connection; collect its result.
+            var env = await envTask;
+            var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
+            var envSummary = env.IsSuccess ? env.Data.Summary : "";
             savedSession = new AgentSession
             {
                 ChatUrl = chatSession.ChatUrl,
@@ -533,17 +559,16 @@ internal sealed class AgentLoop : IAgentLoop
                 var verdict = verdictOutcome.Data;
                 var script = verdict.Script!;
 
-                // Compact per-reply summary (the raw panel stays reserved for invalid replies
-                // and -v debugging): one line instead of the raw event dump. Script is null
-                // for invalid replies, where the raw panel below tells the user what broke.
-                if (verdict.Script is not null)
+                // ONE compact per-reply summary line for VALID replies (the raw panel stays
+                // reserved for invalid replies and -v debugging): it names the command mix
+                // and where the reply text came from.
+                if (verdict.IsValid)
                 {
-                    var kinds = script.Commands
+                    var kinds = string.Join(", ", script.Commands
                         .GroupBy(c => c.Kind)
-                        .Select(g => $"{g.Key} x{g.Count()}");
-                    ui.ShowProgress(new AgentProgressEvent(
-                        AgentEventType.ValidatingReply,
-                        $"Reply: {script.Commands.Count} commands ({string.Join(", ", kinds)})"));
+                        .Select(g => $"{g.Key} x{g.Count()}"));
+                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply,
+                        $"Reply: {script.Commands.Count} commands ({kinds}) via {replySource}"));
                 }
 
                 // Show the raw reply panel ONLY when invalid (the user needs to see what went
@@ -556,12 +581,6 @@ internal sealed class AgentLoop : IAgentLoop
                         ? reply
                         : reply[..MaxConsoleReplyChars] + $"… ({reply.Length - MaxConsoleReplyChars} more; full text in .agent/logs)";
                     ui.Say($"[raw reply]{Environment.NewLine}{visibleReply}");
-                }
-                else
-                {
-                    var commandKinds = string.Join(", ", script.Commands.Select(c => c.Kind.ToString().ToLowerInvariant()));
-                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply,
-                        $"Reply: {script.Commands.Count} commands ({commandKinds}) via {replySource}"));
                 }
                 if (!verdict.IsValid)
                 {

@@ -55,9 +55,12 @@ internal sealed class ResultFormatter : IResultFormatter
             }
         }
 
-        var skipped = results.Count(r => r.Status == CommandStatus.Skipped);
-        if (skipped > 0)
-            builder.AppendLine(CultureInfo.InvariantCulture, $"--- skipped {skipped} commands: batch limit is {batchLimit} per response, resend them next ---");
+        // The "resend them next" hint only applies to batch-limit skips: a command skipped
+        // after a failure or after @@done must NOT be resent by the model.
+        var batchLimitSkips = results.Count(r => r.Status == CommandStatus.Skipped &&
+            r.ErrorMessage is not null && r.ErrorMessage.StartsWith("batch limit", StringComparison.Ordinal));
+        if (batchLimitSkips > 0)
+            builder.AppendLine(CultureInfo.InvariantCulture, $"--- skipped {batchLimitSkips} commands: batch limit is {batchLimit} per response, resend them next ---");
 
         builder.AppendLine("[END RESULTS]");
         builder.Append("Continue with the next commands, or finish with @@done. Reply in AgentScript v1 only.");

@@ -65,11 +65,14 @@ internal sealed class PlaywrightChatSession : IChatSession
     public string LastReplyOrigin => LastReplyOriginValue switch
     {
         ReplyOrigin.Copy => "Copy",
-        ReplyOrigin.DomAfterRejectedCopy => "Dom (copy rejected)",
-        _ => "Dom",
+        ReplyOrigin.DomAfterRejectedCopy => "Dom: copy rejected by validation",
+        _ => LastReplyReason is null ? "Dom" : $"Dom: {LastReplyReason}",
     };
 
     private ReplyOrigin LastReplyOriginValue { get; set; } = ReplyOrigin.Dom;
+
+    /// <summary>Why the reply came from the DOM instead of the Copy button, when it did.</summary>
+    private string? LastReplyReason { get; set; }
 
     /// <inheritdoc />
     public async Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
@@ -258,6 +261,7 @@ internal sealed class PlaywrightChatSession : IChatSession
         if (mode == ReplySourceMode.Dom)
         {
             LastReplyOriginValue = ReplyOrigin.Dom;
+            LastReplyReason = "Browser.ReplySource=Dom";
             return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
         }
 
@@ -281,6 +285,7 @@ internal sealed class PlaywrightChatSession : IChatSession
             }
 
             LastReplyOriginValue = ReplyOrigin.Dom;
+            LastReplyReason = "copy button not found";
             return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
         }
 
@@ -304,6 +309,7 @@ internal sealed class PlaywrightChatSession : IChatSession
             return read;
 
         LastReplyOriginValue = read.Data.Origin;
+        LastReplyReason = read.Data.Origin is ReplyOrigin.Copy ? null : "copy capture failed";
         return read;
     }
 

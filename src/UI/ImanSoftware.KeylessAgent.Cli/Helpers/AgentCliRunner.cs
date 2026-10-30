@@ -31,7 +31,8 @@ internal static class AgentCliRunner
         bool verbose,
         CancellationToken cancellationToken = default,
         bool timing = false,
-        IChatProvider? chatProvider = null)
+        IChatProvider? chatProvider = null,
+        bool refreshEnv = false)
     {
         ILoggerFactory? loggerFactory = null;
         if (verbose)
@@ -51,7 +52,7 @@ internal static class AgentCliRunner
 
         try
         {
-            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken);
+            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken, refreshEnv);
 
             AnsiConsole.WriteLine();
             if (result.ErrorMessage is not null)

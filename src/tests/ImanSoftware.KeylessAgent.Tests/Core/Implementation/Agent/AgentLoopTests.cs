@@ -836,6 +836,8 @@ public class AgentLoopTests : IDisposable
         result.CompletedByDone.Should().BeTrue();
         ui.Progress.Should().Contain(p => p.Type == AgentEventType.ValidatingReply && p.Detail.StartsWith("Reply: 2 commands"),
             "valid replies get one compact summary line");
+        ui.Progress.Count(p => p.Type == AgentEventType.ValidatingReply && p.Detail.StartsWith("Reply:"))
+            .Should().Be(1, "the Reply line is printed exactly ONCE per reply");
     }
 
     [Fact]

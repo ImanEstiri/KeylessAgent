@@ -1,3 +1,4 @@
+using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 using ImanSoftware.Outcomes;
 
@@ -19,6 +20,64 @@ internal sealed class EnvironmentProbe
     internal EnvironmentProbe(ProcessRunner runner)
     {
         _runner = runner;
+    }
+
+    private sealed record EnvCache(string CreatedAtUtc, string Block, string Summary);
+
+    /// <summary>
+    /// Probes the environment unless a fresh (<24h) cache exists in .agent/env.json;
+    /// forceRefresh (--refresh-env) bypasses the cache. Fresh results rewrite the cache.
+    /// </summary>
+    public async Task<Outcome<(string Block, string Summary)>> ProbeCachedAsync(
+        string workspaceRoot, bool forceRefresh, CancellationToken cancellationToken = default)
+    {
+        var storage = ImanFileStorageFactory.CreateStorage();
+        var cachePath = Path.Combine(workspaceRoot, ".agent", "env.json");
+
+        if (!forceRefresh && storage.FileExists(cachePath))
+        {
+            var read = await storage.ReadAllTextAsync(cachePath);
+            if (read.IsSuccess)
+            {
+                try
+                {
+                    var cached = System.Text.Json.JsonSerializer.Deserialize<EnvCache>(read.Data);
+                    if (cached is not null &&
+                        !string.IsNullOrWhiteSpace(cached.Block) &&
+                        DateTimeOffset.TryParse(cached.CreatedAtUtc, System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.AssumeUniversal, out var at) &&
+                        DateTimeOffset.UtcNow - at < TimeSpan.FromHours(24))
+                    {
+                        return Outcome.Successful((cached.Block, cached.Summary ?? string.Empty));
+                    }
+                }
+                catch
+                {
+                    // A corrupt cache is as good as no cache.
+                }
+            }
+        }
+
+        var probe = await ProbeAsync(workspaceRoot, cancellationToken);
+        if (probe.IsFailure)
+            return probe;
+
+        try
+        {
+            var payload = System.Text.Json.JsonSerializer.Serialize(new EnvCache(
+                DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                probe.Data.Block,
+                probe.Data.Summary));
+            var mkdir = await storage.CreateDirectoryAsync(Path.GetDirectoryName(cachePath)!);
+            if (mkdir.IsSuccess)
+                await storage.WriteAllTextAsync(cachePath, payload);
+        }
+        catch
+        {
+            // Cache writes are best-effort; a missed cache only costs a re-probe.
+        }
+
+        return probe;
     }
 
     /// <summary>

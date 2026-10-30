@@ -186,7 +186,7 @@ public class ReplyReaderTests
 
         reply.IsSuccess.Should().BeTrue("Auto falls back to the DOM reader");
         reply.Data.Should().Be("dom fallback reply");
-        session.LastReplyOrigin.Should().Be("Dom");
+        session.LastReplyOrigin.Should().Be("Dom: copy button not found");
     }
 
     [Fact]
@@ -229,6 +229,6 @@ public class ReplyReaderTests
 
         reply.Data.Should().Be("dom only");
         page.InterceptionPrepared.Should().BeFalse("Dom mode must not install interception");
-        session.LastReplyOrigin.Should().Be("Dom");
+        session.LastReplyOrigin.Should().Be("Dom: Browser.ReplySource=Dom");
     }
 }

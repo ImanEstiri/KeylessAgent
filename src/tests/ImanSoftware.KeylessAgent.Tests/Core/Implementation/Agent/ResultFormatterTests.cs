@@ -84,6 +84,38 @@ public class ResultFormatterTests
     }
 
     [Fact]
+    public void Format_SkipsAfterFailureOrDone_GetTheirOwnReason_NoResendHint()
+    {
+        var results = new List<CommandExecutionResult>
+        {
+            CommandExecutionResult.Ok(new SayCommand("working") { Number = 1 }),
+            new CommandExecutionResult
+            {
+                Number = 2,
+                Kind = CommandKind.NewFile,
+                Target = "x.txt",
+                Status = CommandStatus.Skipped,
+                ErrorMessage = "after @@done",
+            },
+            new CommandExecutionResult
+            {
+                Number = 3,
+                Kind = CommandKind.RunCommand,
+                Target = "dotnet build",
+                Status = CommandStatus.Skipped,
+                ErrorMessage = "an earlier command failed",
+            },
+        };
+
+        var message = _formatter.Format(1, 1, results, 5, Limits());
+
+        message.Should().NotContain("resend them next",
+            "commands skipped after a failure or @@done must NOT be resent");
+        message.Should().Contain("after @@done");
+        message.Should().NotContain("batch limit is 5");
+    }
+
+    [Fact]
     public void Format_LongOutput_IsCappedHeadAndTail()
     {
         var output = string.Join("\n", Enumerable.Range(1, 2000).Select(i => $"line {i}"));
