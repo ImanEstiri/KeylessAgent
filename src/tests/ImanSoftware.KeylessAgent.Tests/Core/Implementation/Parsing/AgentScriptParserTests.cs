@@ -463,6 +463,36 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_Mkdir_ParsesThePath()
+    {
+        const string script = """
+            @@mkdir src/Generated/Reports
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var mkdir = result.Commands.OfType<MkdirCommand>().Single();
+        mkdir.Path.Should().Be("src/Generated/Reports");
+    }
+
+    [Fact]
+    public void Parse_MkdirWithPayload_IsRejected()
+    {
+        const string script = """
+            @@mkdir src/Reports
+            <<<CONTENT
+            no content for folders
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseBad(script);
+        result.Problems.Select(p => p.Code).Should().Contain(ErrorCodes.ParseUnexpectedPayload);
+    }
+
+    [Fact]
     public void Parse_NextWithMsgPayload_IsAccepted()
     {
         const string script = """

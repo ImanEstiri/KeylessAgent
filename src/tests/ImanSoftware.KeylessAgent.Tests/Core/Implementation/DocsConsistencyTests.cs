@@ -19,6 +19,8 @@ public class DocsConsistencyTests
     {
         var prompt = ReadResource("system-prompt.md");
 
+        prompt.Should().Contain("@@mkdir",
+            "the parser accepts @@mkdir; omitting it makes the model avoid a valid command");
         prompt.Should().Contain("@@movefile",
             "the parser accepts @@movefile; omitting it from the keyword list makes the model avoid (or invent around) a valid command");
         prompt.Should().Contain("@@next",

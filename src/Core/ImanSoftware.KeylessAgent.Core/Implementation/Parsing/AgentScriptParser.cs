@@ -281,7 +281,8 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         }
 
         var needsArgument = block.Kind is CommandKind.NewFile or CommandKind.UpdateFile
-            or CommandKind.EditFile or CommandKind.DeleteFile or CommandKind.ReadFile or CommandKind.MoveFile;
+            or CommandKind.EditFile or CommandKind.DeleteFile or CommandKind.ReadFile
+            or CommandKind.MoveFile or CommandKind.Mkdir;
 
         if (needsArgument && string.IsNullOrWhiteSpace(block.Argument))
         {
@@ -329,6 +330,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             CommandKind.Done => new DoneCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.Next => new NextCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.MoveFile => new MoveFileCommand(block.Argument, Payload(payload, SectionNames.To)),
+            CommandKind.Mkdir => new MkdirCommand(block.Argument),
             _ => throw new NotSupportedException($"Unhandled command kind {block.Kind}."),
         };
 

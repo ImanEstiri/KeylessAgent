@@ -125,6 +125,21 @@ public class ResponseFormatGuardTests
     }
 
     [Fact]
+    public void Check_MkdirEscapingPath_IsRejected()
+    {
+        const string script = """
+            @@mkdir ../escape-dir
+            @@end
+            @@eof
+            """;
+
+        var result = _guard.Check(script, Limits()).Data;
+
+        result.IsValid.Should().BeFalse();
+        result.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseBadPath);
+    }
+
+    [Fact]
     public void Check_MoveFileEscapingToPath_IsRejected()
     {
         const string script = """

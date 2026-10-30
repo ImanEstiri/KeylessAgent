@@ -13,7 +13,7 @@ section    := "<<<" NAME [ ":" nonce ] newline
               content-line*
               NAME [ ":" nonce ] ">>>" newline ;
 command    := "say" | "newfile" | "updatefile" | "editfile" | "deletefile"
-            | "readfile" | "runcommand" | "ask" | "commit" | "done" ;
+            | "readfile" | "mkdir" | "runcommand" | "ask" | "commit" | "done" ;
 NAME       := "MSG" | "CONTENT" | "FIND" | "REPLACE" | "CMD" ;
 ```
 
@@ -38,6 +38,7 @@ Rules:
 | `editfile` | path | `FIND`, `REPLACE` | Replaces the single occurrence of FIND. Fails unless FIND matches exactly once. BOM is preserved. Matching and counting run on LF-normalized text, and the written file keeps its original (dominant) line ending — a CRLF file stays 100% CRLF. |
 | `deletefile` | path | — | Backs up, then deletes (confirmed in Ask mode). |
 | `readfile` | path | — | Returns the file content as that command's result. |
+| `mkdir` | path | — | Creates the folder (and parents); idempotent, never confirmed |
 | `runcommand` | — | `CMD` | Runs one command line. Every segment split on `&&`, `||`, `;`, `|` is checked against the policy. Optional argument `on_error=continue` or `on_error=stop` overrides the batch failure mode for that command. |
 | `ask` | — | `MSG` | Asks the user; the answer becomes that command's result. |
 | `commit` | — | `MSG` | `git add -A`, commit, `git push -u origin <branch>`. Push failures are reported to the model. |

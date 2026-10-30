@@ -159,6 +159,17 @@ public sealed record NextCommand(string Message) : AgentScriptCommand
 /// <summary>Moves/renames a file (sandboxed, backed up, refuses to overwrite).</summary>
 /// <param name="Path">Source path, workspace-relative.</param>
 /// <param name="ToPath">Destination path, workspace-relative.</param>
+/// <summary>Creates a folder (and missing parents). Idempotent: an existing folder is fine.</summary>
+/// <param name="Path">Workspace-relative path using forward slashes.</param>
+public sealed record MkdirCommand(string Path) : AgentScriptCommand
+{
+    /// <inheritdoc />
+    public override CommandKind Kind => CommandKind.Mkdir;
+
+    /// <inheritdoc />
+    public override string Target => Path;
+}
+
 public sealed record MoveFileCommand(string Path, string ToPath) : AgentScriptCommand
 {
     /// <inheritdoc />

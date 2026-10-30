@@ -103,7 +103,7 @@ internal sealed class AgentLoop : IAgentLoop
 
         return string.Join("\n",
             "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
-            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
+            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@mkdir <path> / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
             "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
             $"Environment: {envSummary}",

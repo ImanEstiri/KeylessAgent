@@ -77,6 +77,10 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                         CheckPath(moveFile.Path, command, problems);
                         CheckPath(moveFile.ToPath, command, problems);
                         break;
+
+                    case MkdirCommand mkdirCommand:
+                        CheckPath(mkdirCommand.Path, command, problems);
+                        break;
                 }
             }
 
