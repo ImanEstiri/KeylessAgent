@@ -7,3 +7,5 @@
 - Phase 2 theme dictionaries created (Themes/Colors.xaml, Brushes.xaml, Typography.xaml, Glass.xaml, Controls.xaml, Controls.Inputs.xaml, Animations.xaml) — document the tokens and merge order in docs/wpf-ui.md in Phase 12.
 - Phase 2 style gallery window created (Views/StyleGalleryWindow.xaml, debug-only from About in Phase 9) — mention it in Phase 12 docs.
 - Theme token test (ThemeTokenTests) pins guide 5.1 tokens — keep it in sync when tokens change.
+- Phase 3 shell chrome/backdrop created (custom title bar, sidebar, status bar, WindowChrome, WindowBackdrop + BackdropPlanner with fallback) — document the backdrop decision matrix and window rules in docs/wpf-ui.md in Phase 12.
+- BackdropPlannerTests pin the backdrop decision matrix (Windows 10 / 22000 / 22621, preferences, reduce effects).
