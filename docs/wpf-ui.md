@@ -189,6 +189,15 @@ does exactly what `keyless chrome` does). The application icon is intentionally 
   animation Storyboard must be declared before the Style that starts it
   (Themes/Animations.xaml). `ThemeOrderTests` walks all `Themes/*.xaml` dictionaries in merge
   order and fails on any forward reference.
+- **Never use DynamicResource inside the theme dictionaries themselves.** A DynamicResource
+  setter creates a `ResourceReferenceExpression`; sealing a freshly created deferred resource
+  invalidates the expressions it contains, which re-fetches (and re-creates) other deferred
+  resources — the re-entrant cascade overflows the stack in `FindResourceInternal` at first
+  window show (observed as `StackOverflowException` with the
+  `SealValue → AddInheritanceContext → InvalidateExpressionValue → GetValue → CreateObject`
+  cycle repeating ~1200 times). Theme dictionaries must be fully resolvable with
+  StaticResource — enforced by `ThemeOrderTests.ThemeDictionaries_ContainNoDynamicResourceReferences`.
+  Views keep DynamicResource (they resolve against cached entries and stay re-themeable).
 
 ## Verification status
 

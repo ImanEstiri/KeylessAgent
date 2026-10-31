@@ -29,8 +29,7 @@ public class ThemeTokenTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (var i = 0; i < 10 && directory is not null; i++, directory = directory.Parent)
         {
-            var path = Path.Combine(
-                directory!.FullName, "src", "UI", "ImanSoftware.KeylessAgent.Wpf", "Themes", fileName);
+            var path = Path.Combine(directory.FullName, "src", "UI", "ImanSoftware.KeylessAgent.Wpf", "Themes", fileName);
             if (File.Exists(path))
                 return path;
         }
@@ -43,7 +42,7 @@ public class ThemeTokenTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (var i = 0; i < 10 && directory is not null; i++, directory = directory.Parent)
         {
-            var path = Path.Combine([directory!.FullName, .. relativeParts]);
+            var path = Path.Combine([directory.FullName, .. relativeParts]);
             if (File.Exists(path))
                 return path;
         }

@@ -5,9 +5,9 @@
          Every interactive control has normal/hover/pressed/focused (gold 2 px ring)/disabled. -->
 
     <Style x:Key="GhostButton" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource GlassFill}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}" />
+        <Setter Property="Background" Value="{StaticResource GlassFill}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="16,8" />
         <Setter Property="FontSize" Value="14" />
@@ -25,13 +25,13 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GlassFillHover}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassFillHover}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GlassFillStrong}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassFillStrong}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Gold}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Gold}" />
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -44,9 +44,9 @@
     </Style>
 
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-        <Setter Property="Background" Value="{DynamicResource Gold}" />
+        <Setter Property="Background" Value="{StaticResource Gold}" />
         <Setter Property="Foreground" Value="#14172B" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Gold}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Gold}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Template">
             <Setter.Value>
@@ -61,10 +61,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GoldHover}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GoldHover}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GoldPressed}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GoldPressed}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
@@ -79,13 +79,13 @@
     </Style>
 
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-        <Setter Property="Foreground" Value="{DynamicResource Danger}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Danger}" />
+        <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Chrome"
-                            Background="{DynamicResource GlassFill}"
+                            Background="{StaticResource GlassFill}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="10"
@@ -94,7 +94,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource DiffRemove}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource DiffRemove}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter Property="Opacity" Value="0.7" />
@@ -112,9 +112,9 @@
     </Style>
 
     <Style TargetType="ToolTip">
-        <Setter Property="Background" Value="{DynamicResource GlassFillStrong}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource GlassBorder}" />
+        <Setter Property="Background" Value="{StaticResource GlassFillStrong}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToolTip">
@@ -144,10 +144,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GlassFillHover}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassFillHover}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Gold}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Gold}" />
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="1" />
                         </Trigger>
                     </ControlTemplate.Triggers>

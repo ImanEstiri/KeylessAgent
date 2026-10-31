@@ -20,7 +20,7 @@ public class ThemeOrderTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (var i = 0; i < 10 && directory is not null; i++, directory = directory.Parent)
         {
-            var path = Path.Combine(directory!.FullName, "src", "UI", "ImanSoftware.KeylessAgent.Wpf", "Themes");
+            var path = Path.Combine(directory.FullName, "src", "UI", "ImanSoftware.KeylessAgent.Wpf", "Themes");
             if (Directory.Exists(path))
                 return path;
         }
@@ -87,5 +87,24 @@ public class ThemeOrderTests
         }
 
         violations.Should().BeEmpty("StaticResource forward references throw XamlParseException at startup");
+    }
+
+    [Fact]
+    public void ThemeDictionaries_ContainNoDynamicResourceReferences()
+    {
+        // DynamicResource inside a theme dictionary creates a ResourceReferenceExpression per
+        // setter. Sealing a freshly created deferred value then invalidates those expressions,
+        // which re-fetches (and re-creates) other deferred values — the re-entrant cascade that
+        // overflowed the stack in FindResourceInternal at first window show. Views keep
+        // DynamicResource (they resolve against cached entries); the dictionaries themselves
+        // must be fully resolvable with StaticResource (order enforced by the test above).
+        var themesDirectory = ThemesDirectory();
+        var offenders = Directory.GetFiles(themesDirectory, "*.xaml")
+            .Select(file => (File: Path.GetFileName(file), Count: Regex.Matches(File.ReadAllText(file), "DynamicResource [A-Za-z]+").Count))
+            .Where(entry => entry.Count > 0)
+            .Select(entry => $"{entry.File}: {entry.Count} DynamicResource reference(s)")
+            .ToList();
+
+        offenders.Should().BeEmpty();
     }
 }

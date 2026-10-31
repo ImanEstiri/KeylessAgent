@@ -15,40 +15,40 @@
     <Style x:Key="CaptionText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource TextFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource CaptionSize}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
     </Style>
 
     <Style x:Key="BodyText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource TextFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
 
     <Style x:Key="SubtitleText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource TextFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource SubtitleSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
 
     <Style x:Key="TitleText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource TextFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource TitleSize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
 
     <Style x:Key="DisplayText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource TextFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource DisplaySize}" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
 
     <Style x:Key="MonoText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
     </Style>
 
 </ResourceDictionary>
