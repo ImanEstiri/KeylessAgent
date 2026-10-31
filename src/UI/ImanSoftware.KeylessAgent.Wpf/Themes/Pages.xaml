@@ -9,4 +9,8 @@
         <views:AgentView />
     </DataTemplate>
 
+    <DataTemplate DataType="{x:Type vm:WorkspaceViewModel}">
+        <views:WorkspaceView />
+    </DataTemplate>
+
 </ResourceDictionary>

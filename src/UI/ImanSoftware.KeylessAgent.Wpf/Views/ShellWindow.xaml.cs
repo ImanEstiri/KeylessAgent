@@ -2,10 +2,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using ImanSoftware.KeylessAgent.Core.Factory;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels.Dialogs;
+using Microsoft.Win32;
 
 namespace ImanSoftware.KeylessAgent.Wpf.Views;
 
@@ -36,12 +38,27 @@ public partial class ShellWindow : Window
             AgentLoopFactory.Create);
         var agentViewModel = new AgentViewModel(runner, _dispatcher, _feed);
 
+        var settings = new SettingsService();
+        var workspaceViewModel = new WorkspaceViewModel(
+            agentViewModel,
+            KeylessAgentServiceFactory.CreateWorkspaceInspector(),
+            settings,
+            _dispatcher,
+            BrowseForFolder);
+
         DataContext = new ShellViewModel(pageFactory: key => key switch
         {
             PageKey.Agent => agentViewModel,
+            PageKey.Workspace => workspaceViewModel,
             _ => null,
         });
         DialogOverlay.DataContext = _dialogHost;
+    }
+
+    private string? BrowseForFolder()
+    {
+        var dialog = new OpenFolderDialog { Title = "Choose a workspace folder" };
+        return dialog.ShowDialog(this) is true ? dialog.FolderName : null;
     }
 
     /// <summary>Reacts to maximize/restore so the content is not cut off by the resize border.</summary>

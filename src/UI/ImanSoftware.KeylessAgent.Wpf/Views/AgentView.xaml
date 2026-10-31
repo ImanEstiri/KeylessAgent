@@ -18,11 +18,33 @@
         <!-- Feed and composer -->
         <Grid Grid.Column="0">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Border Style="{DynamicResource GlassCard}">
+            <!-- Header: workspace path (trimmed in the middle, full path in the tooltip) + branch pill. -->
+            <StackPanel Orientation="Horizontal" Margin="4,0,4,10"
+                        Visibility="{Binding HasWorkspace, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="▣" Foreground="{DynamicResource Gold}" Style="{DynamicResource BodyText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock Text="{Binding WorkspaceRootDisplay}"
+                           Style="{DynamicResource BodyText}"
+                           Foreground="{DynamicResource TextSecondary}"
+                           ToolTip="{Binding WorkspaceRoot}"
+                           VerticalAlignment="Center" />
+                <Border Background="{DynamicResource GlassFillStrong}"
+                        BorderBrush="{DynamicResource Gold}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="10,2"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding BranchName, Converter={StaticResource NullToCollapsed}}">
+                    <TextBlock Text="{Binding BranchName}" Style="{DynamicResource CaptionText}" Foreground="{DynamicResource Gold}" />
+                </Border>
+            </StackPanel>
+
+            <Border Grid.Row="1" Style="{DynamicResource GlassCard}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding Feed.Items}"
                                   Margin="8"
@@ -30,7 +52,7 @@
                 </ScrollViewer>
             </Border>
 
-            <Border Grid.Row="1"
+            <Border Grid.Row="2"
                     Style="{DynamicResource GlassCard}"
                     Margin="0,12,0,0"
                     Padding="12">

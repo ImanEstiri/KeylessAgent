@@ -4,7 +4,6 @@ using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Mvvm;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed;
-
 namespace ImanSoftware.KeylessAgent.Wpf.ViewModels;
 
 /// <summary>
@@ -20,6 +19,7 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _turnCancellation;
     private string _requestText = string.Empty;
     private string _workspaceRoot = string.Empty;
+    private string? _branchName;
     private bool _dryRun;
     private bool _verbose;
     private bool _isRunning;
@@ -74,8 +74,25 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
         set
         {
             if (SetProperty(ref _workspaceRoot, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(WorkspaceRootDisplay));
+                OnPropertyChanged(nameof(HasWorkspace));
                 SendCommand.NotifyCanExecuteChanged();
+            }
         }
+    }
+
+    /// <summary>The workspace path trimmed in the middle for the header display (full path in the tooltip).</summary>
+    public string WorkspaceRootDisplay => PathText.MiddleTrim(WorkspaceRoot);
+
+    /// <summary>Whether a workspace is selected (drives the agent header visibility).</summary>
+    public bool HasWorkspace => _workspaceRoot.Length > 0;
+
+    /// <summary>The current branch of the selected workspace; null until inspected (branch pill on the header).</summary>
+    public string? BranchName
+    {
+        get => _branchName;
+        set => SetProperty(ref _branchName, value);
     }
 
     /// <summary>Pre-ticks the dry-run toggle (nothing is executed).</summary>
