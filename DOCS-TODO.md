@@ -4,3 +4,6 @@
 - Created the WPF desktop project `src/UI/ImanSoftware.KeylessAgent.Wpf` (net10.0-windows, WinExe, UseWPF, project reference to Core, InternalsVisibleTo for its tests) — document it in the repository layout and docs in Phase 12.
 - Created the test project `src/tests/ImanSoftware.KeylessAgent.Wpf.Tests` (net10.0-windows, xunit + FluentAssertions, package references without versions via CPM) — document the testing strategy in Phase 12.
 - Added both projects to `KeylessAgent.slnx` — mention the desktop app in the README in Phase 12.
+- Phase 2 theme dictionaries created (Themes/Colors.xaml, Brushes.xaml, Typography.xaml, Glass.xaml, Controls.xaml, Controls.Inputs.xaml, Animations.xaml) — document the tokens and merge order in docs/wpf-ui.md in Phase 12.
+- Phase 2 style gallery window created (Views/StyleGalleryWindow.xaml, debug-only from About in Phase 9) — mention it in Phase 12 docs.
+- Theme token test (ThemeTokenTests) pins guide 5.1 tokens — keep it in sync when tokens change.
