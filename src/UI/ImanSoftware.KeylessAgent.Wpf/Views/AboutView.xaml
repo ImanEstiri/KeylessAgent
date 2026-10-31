@@ -55,6 +55,13 @@
                         Command="{Binding OpenRepositoryFolderCommand}"
                         MinWidth="170"
                         ToolTip="{Binding RepositoryFolder}" />
+                <Button x:Name="GalleryButton"
+                        Content="Open style gallery (debug)"
+                        Style="{DynamicResource GhostButton}"
+                        MinWidth="190"
+                        Margin="12,0,0,0"
+                        Visibility="Collapsed"
+                        Click="OnOpenGalleryClick" />
             </StackPanel>
             <TextBlock Text="{Binding Note}"
                        Style="{DynamicResource CaptionText}"

@@ -114,6 +114,34 @@ The interactive session understands `/workspace <path>` (switch workspaces), `/n
 
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
 
+## Desktop app (WPF)
+
+KeylessAgent ships a WPF desktop UI ([docs/wpf-ui.md](docs/wpf-ui.md)) built on the same Core
+loop — no API key, no second brain: everything the CLI does, in windows instead of a console.
+
+- **Agent page** — activity feed (progress steps, model messages, commands), a multiline composer with dry-run toggle, Send/Stop (Ctrl+Enter / Esc), a changes panel with a collapsible unified diff viewer (CRLF-safe, large-file fast path), the turn summary card and one-click undo of the newest backup batch (with a confirmation dialog).
+- **Workspace page** — folder picker, recent workspaces (max 10, persisted), and git capability inspection (git installed? repository? branch? agent branch?).
+- **Doctor page** — the live selector check from `keyless doctor` with status chips and a Start-Chrome button; the connection kind shows up in the status bar.
+- **Settings page** — the workspace's `keyless.json` read-only (grouped), open/reload buttons, plus UI preferences: Reduce effects, backdrop (Auto/Mica/Acrylic/None), dry run by default.
+- **About page** — version, description and the terms-of-service notice.
+- **Shell** — Windows 11 Mica/Acrylic backdrop with an app-drawn fallback, custom title bar, queued modal dialogs (one at a time, cancelled when you stop a turn), Persian/Arabic composer direction detection, window size/position persistence with off-screen protection, and a crash log at `%LOCALAPPDATA%\KeylessAgent\wpf-crash.log`.
+
+```bash
+dotnet run --project src/UI/ImanSoftware.KeylessAgent.Wpf
+```
+
+Requirements: Windows plus the .NET 10 SDK (to run from source); the published app needs the .NET 10 **Desktop Runtime**. On Windows 11 22H2+ the window uses the system Mica/Acrylic backdrop (Auto/Mica/Acrylic/None selectable in Settings); older systems get an app-drawn gradient.
+
+Publish:
+
+```powershell
+powershell -File src\UI\ImanSoftware.KeylessAgent.Wpf\publish-wpf.ps1
+```
+
+This publishes into `artifacts\wpf` (framework-dependent, win-x64), verifies the Playwright driver files are present, and reports a summary. Screenshot placeholders: *(to be added)*.
+
+> Verification status: the WPF app is covered by 193 automated tests and a warning-free build, and the publish flow was executed successfully — but **nobody has visually reviewed the running app yet**. Expect rough edges; visual feedback is very welcome.
+
 ## How it works
 
 ```mermaid
@@ -218,12 +246,13 @@ KeylessAgent/
 │   │   ├── ImanSoftware.KeylessAgent.Abstractions/   # models, enums, service contracts, IAgentUserInterface
 │   │   └── ImanSoftware.KeylessAgent.Core/           # parser, executors, git, snapshot, browser, agent loop, factory
 │   ├── UI/
-│   │   └── ImanSoftware.KeylessAgent.Cli/            # the `keyless` dotnet tool (Spectre.Console.Cli)
+│   │   ├── ImanSoftware.KeylessAgent.Cli/            # the `keyless` dotnet tool (Spectre.Console.Cli)
+│   │   └── ImanSoftware.KeylessAgent.Wpf/            # WPF desktop UI (MVVM) + publish-wpf.ps1
 │   ├── Playground/                                   # manual-testing console app (fake chat provider)
-│   └── tests/                                        # xunit + FluentAssertions (247 tests)
-├── docs/                                             # architecture, AgentScript spec, configuration, security, …
+│   └── tests/                                        # xunit + FluentAssertions (733 tests: Core/CLI + WPF)
+├── docs/                                             # architecture, AgentScript spec, configuration, wpf-ui, …
 ├── Directory.Build.props / Directory.Packages.props  # shared properties + Central Package Management
-└── publish.ps1                                       # packs the tool into artifacts/
+└── publish.ps1                                       # packs the CLI tool into artifacts/
 ```
 
 ## Building from source
