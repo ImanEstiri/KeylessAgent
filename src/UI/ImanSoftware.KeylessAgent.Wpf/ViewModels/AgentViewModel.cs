@@ -127,12 +127,21 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
 
         _turnCancellation?.Dispose();
         _turnCancellation = new CancellationTokenSource();
-        var summary = await _runner.RunTurnAsync(WorkspaceRoot, request, DryRun, Verbose, _turnCancellation.Token);
-        if (summary is not null)
+        try
         {
-            LastSummary = summary;
-            foreach (var changed in summary.ChangedPaths)
-                ChangedFiles.Add(changed);
+            var summary = await _runner.RunTurnAsync(WorkspaceRoot, request, DryRun, Verbose, _turnCancellation.Token);
+            if (summary is not null)
+            {
+                LastSummary = summary;
+                foreach (var changed in summary.ChangedPaths)
+                    ChangedFiles.Add(changed);
+            }
+        }
+        finally
+        {
+            // The turn ended (completed, failed, cancelled or stopped): every diff card collapses.
+            foreach (var diff in _feed.Items.OfType<Feed.DiffItem>())
+                diff.Collapse();
         }
     }
 

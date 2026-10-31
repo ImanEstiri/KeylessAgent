@@ -1,0 +1,167 @@
+<UserControl x:Class="ImanSoftware.KeylessAgent.Wpf.Views.DiffView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:feed="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed"
+             xmlns:diff="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Services">
+    <!-- Diff card (Phase 7): kind pill + path + counts header, collapsible unified diff body. -->
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <!-- One unchanged diff line: dimmed old/new numbers + text. -->
+        <DataTemplate DataType="{x:Type diff:DiffLine}">
+            <Border Style="{DynamicResource DiffRowBorder}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding OldNumber, Mode=OneWay, TargetNullValue=''}"
+                               Style="{DynamicResource MonoText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               TextAlignment="Right"
+                               Margin="4,0,4,0" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding NewNumber, Mode=OneWay, TargetNullValue=''}"
+                               Style="{DynamicResource MonoText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               TextAlignment="Right"
+                               Margin="4,0,4,0" />
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding Text, Mode=OneWay}"
+                               Style="{DynamicResource MonoText}"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- A collapsed run of unchanged lines. -->
+        <DataTemplate DataType="{x:Type feed:CollapsedRun}">
+            <TextBlock HorizontalAlignment="Center"
+                       Margin="0,2">
+                <TextBlock.Style>
+                    <Style BasedOn="{StaticResource CaptionText}" TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+                    </Style>
+                </TextBlock.Style>
+                <Run Text="… " /><Run Text="{Binding Count, Mode=OneWay}" /><Run Text=" unchanged lines" />
+            </TextBlock>
+        </DataTemplate>
+
+        <!-- Kind pill colors -->
+        <Style x:Key="KindPill" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource GlassFillStrong}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="Create">
+                    <Setter Property="Background" Value="{DynamicResource DiffAdd}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Delete">
+                    <Setter Property="Background" Value="{DynamicResource DiffRemove}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Update">
+                    <Setter Property="Background" Value="{DynamicResource GlassFillStrong}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Edit">
+                    <Setter Property="Background" Value="{DynamicResource Info}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Diff row background by kind -->
+        <Style x:Key="DiffRowBorder" TargetType="Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="Added">
+                    <Setter Property="Background" Value="{DynamicResource DiffAdd}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                    <Setter Property="Background" Value="{DynamicResource DiffRemove}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Chevron flips with the expansion state -->
+        <Style x:Key="Chevron" TargetType="TextBlock">
+            <Setter Property="Text" Value="▸" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                    <Setter Property="Text" Value="▾" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource GlassFill}"
+            BorderBrush="{DynamicResource GlassBorder}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Margin="0,4">
+        <StackPanel>
+            <Button Command="{Binding ToggleCommand}" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Header" Background="Transparent" Padding="12,8">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Header" Property="Background" Value="{DynamicResource GlassFillHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{DynamicResource KindPill}">
+                            <TextBlock Text="{Binding Kind}" Style="{DynamicResource CaptionText}" />
+                        </Border>
+                        <TextBlock Text="{Binding Path}"
+                                   Style="{DynamicResource MonoText}"
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="360" />
+                        <TextBlock HorizontalAlignment="Left" Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style BasedOn="{StaticResource CaptionText}" TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource DiffAdd}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding TooLarge}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="+" /><Run Text="{Binding Result.Added, Mode=OneWay}" Foreground="{DynamicResource Success}" />
+                            <Run Text=" / -" /><Run Text="{Binding Result.Removed, Mode=OneWay}" Foreground="{DynamicResource Danger}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Style="{DynamicResource Chevron}" Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0" />
+                </Grid>
+            </Button>
+
+            <!-- Too-large note -->
+            <TextBlock Text="{Binding TooLargeMessage}"
+                       Style="{DynamicResource CaptionText}"
+                       Foreground="{DynamicResource Warning}"
+                       Margin="12,0,12,8"
+                       Visibility="{Binding TooLarge, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- Unified diff body -->
+            <ScrollViewer MaxHeight="420"
+                          VerticalScrollBarVisibility="Auto"
+                          Margin="8,0,8,8"
+                          Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}">
+                <ItemsControl ItemsSource="{Binding Rows}" />
+            </ScrollViewer>
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                     xmlns:feed="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:feed="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed"
+                    xmlns:views="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Views">
 
     <!-- Feed item views (guide Phase 6): one DataTemplate per feed item type. -->
 
@@ -50,13 +51,7 @@
     </DataTemplate>
 
     <DataTemplate DataType="{x:Type feed:DiffItem}">
-        <StackPanel Orientation="Horizontal" Margin="4,3">
-            <Border Background="{DynamicResource GlassFillStrong}" CornerRadius="4" Padding="6,1" Margin="0,0,8,0">
-                <TextBlock Text="{Binding Change.Kind}" Style="{DynamicResource CaptionText}" Foreground="{DynamicResource Gold}" />
-            </Border>
-            <TextBlock Text="{Binding Change.Path}" Style="{DynamicResource MonoText}" Foreground="{DynamicResource TextSecondary}"
-                       TextTrimming="CharacterEllipsis" />
-        </StackPanel>
+        <views:DiffView />
     </DataTemplate>
 
     <DataTemplate DataType="{x:Type feed:ErrorItem}">
