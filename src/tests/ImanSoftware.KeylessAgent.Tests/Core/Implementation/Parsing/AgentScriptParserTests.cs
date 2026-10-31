@@ -130,6 +130,46 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_InlinePayloadCloseFollowedByCommand_IsRejected()
+    {
+        const string script = """
+            @@newfile src/app.css
+            <<<CONTENT
+            body { color: black; } CONTENT>>> @@end @@newfile login.css <<<CONTENT
+            .login { color: red; }
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseBad(script);
+
+        var problem = result.Problems.Should().ContainSingle(p => p.Code == ErrorCodes.ParseBadMarker).Subject;
+        problem.Line.Should().Be(3);
+        result.Commands.Should().BeEmpty("a reply with a rejected format is never executed");
+    }
+
+    [Fact]
+    public void Parse_MarkersAloneOnTheirOwnLines_StillAccepted()
+    {
+        const string script = """
+            @@newfile src/notes.txt
+            <<<CONTENT
+            The docs say the marker CONTENT>>> must be alone on its own line.
+            The prose also mentions @@end, but never right after a marker.
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+
+        var newFile = result.Commands.OfType<NewFileCommand>().Single();
+        newFile.Content.Should().Contain("CONTENT>>> must be alone on its own line.");
+        newFile.Content.Should().Contain("mentions @@end");
+    }
+
+    [Fact]
     public void Parse_MultilineContent_PreservesEveryLine()
     {
         var script = """

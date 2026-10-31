@@ -105,6 +105,7 @@ internal sealed class AgentLoop : IAgentLoop
             "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
             "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@mkdir <path> / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
             "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
+            "Every payload marker (<<<NAME and NAME>>>) MUST be ALONE on its own line — never chain \"CONTENT>>> @@end @@newfile x\" on one line.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
             $"Environment: {envSummary}",
             "Commands run in cmd.exe on Windows (built-ins like mkdir/dir/type and && chains work); for files and folders prefer @@newfile/@@editfile/@@movefile — a new file's parent folders are created automatically.",

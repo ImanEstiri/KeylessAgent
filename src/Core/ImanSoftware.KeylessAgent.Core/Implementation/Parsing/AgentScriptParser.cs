@@ -17,6 +17,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
 {
     private const string EofKeyword = "@@eof";
     private const string EndKeyword = "@@end";
+    private const string CommandPrefix = "@@";
 
     private static readonly Dictionary<string, CommandKind> CommandsByKeyword =
         Enum.GetValues<CommandKind>().ToDictionary(k => k.GetDescription(), k => k, StringComparer.OrdinalIgnoreCase);
@@ -196,6 +197,28 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
                             break;
                         }
 
+                        // A payload marker chained with a raw @@ command on one line
+                        // ("...CONTENT>>> @@end @@newfile x <<<CONTENT ...") is the known
+                        // malformed-reply pattern: treating that line as content would silently
+                        // swallow the rest of the reply. Content may legitimately contain a
+                        // marker mid-line, but never a @@ command after it — reject the reply.
+                        var commandIndex = trimmed.IndexOf(CommandPrefix, StringComparison.Ordinal);
+                        if (commandIndex >= 0)
+                        {
+                            var closeMarkerIndex = trimmed.IndexOf(expectedClose, StringComparison.Ordinal);
+                            var openMarkerIndex = trimmed.IndexOf("<<<", StringComparison.Ordinal);
+                            if ((closeMarkerIndex >= 0 && commandIndex > closeMarkerIndex)
+                                || (openMarkerIndex >= 0 && commandIndex > openMarkerIndex))
+                            {
+                                problems.Add(closeMarkerIndex >= 0
+                                    ? new FormatProblem(lineNumber, ErrorCodes.ParseBadMarker,
+                                        $"Payload close marker \"{expectedClose}\" and a command both appear on one line — each marker must be ALONE on its own line.")
+                                    : new FormatProblem(lineNumber, ErrorCodes.ParseBadMarker,
+                                        "A payload marker (\"<<< …\") and a command both appear on one line — each marker must be ALONE on its own line."));
+                                index = lines.Count; // stop processing the rest of this reply
+                                break;
+                            }
+                        }
 
                         // Lenient one-line payload: <<<NAME text NAME>>> for non-CONTENT
                         // sections (MSG/FIND/REPLACE/CMD/TO). Normalized to multi-line.
