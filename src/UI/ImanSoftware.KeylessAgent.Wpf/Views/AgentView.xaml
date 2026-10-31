@@ -1,12 +1,44 @@
 <UserControl x:Class="ImanSoftware.KeylessAgent.Wpf.Views.AgentView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:inf="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Infrastructure">
-    <!-- Agent page: activity feed + composer (left), changes + summary panel (right). -->
+             xmlns:inf="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Infrastructure"
+             xmlns:vm="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels">
+    <!-- Agent page: activity feed + composer (left), changes + summary + undo panel (right). -->
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <inf:NarrowPanelVisibilityConverter x:Key="NarrowPanel" />
+        <!-- Undo section of the Changes panel. -->
+        <DataTemplate DataType="{x:Type vm:UndoViewModel}">
+            <StackPanel>
+                <Button Content="Undo latest backups"
+                        Style="{DynamicResource DangerButton}"
+                        Command="{Binding UndoCommand}"
+                        MinWidth="170"
+                        ToolTip="Restores the newest backup batch (.agent/backups) after confirmation" />
+                <TextBlock Text="Restores the latest backups. Changes made by commands cannot be undone."
+                           Style="{DynamicResource CaptionText}"
+                           Foreground="{DynamicResource TextMuted}"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,0" />
+                <TextBlock Text="{Binding Note}"
+                           Style="{DynamicResource CaptionText}"
+                           Foreground="{DynamicResource Warning}"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,0"
+                           Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
+                <ItemsControl ItemsSource="{Binding RestoredFiles}" Margin="0,6,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Style="{DynamicResource CaptionText}" Foreground="{DynamicResource TextSecondary}"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding}">
+                                <Run Text="✓ " /><Run Text="{Binding Mode=OneWay}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid Margin="16,12">
@@ -118,6 +150,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <ContentControl Content="{Binding LastSummary}" Margin="0,16,0,0" />
+                    <ContentControl Content="{Binding Undo}" Margin="0,16,0,0" />
                 </StackPanel>
             </ScrollViewer>
         </Border>

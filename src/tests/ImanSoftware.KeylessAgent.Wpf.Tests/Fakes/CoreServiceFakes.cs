@@ -1,0 +1,81 @@
+using FluentAssertions;
+using ImanSoftware.KeylessAgent.Abstractions.Models;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
+using ImanSoftware.KeylessAgent.Wpf.Services;
+using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
+using ImanSoftware.KeylessAgent.Wpf.ViewModels;
+using ImanSoftware.Outcomes;
+using Xunit;
+
+namespace ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
+
+/// <summary>Fake IBackupService counting undo calls; never touches the file system.</summary>
+public sealed class FakeBackupService : IBackupService
+{
+    public bool Fail;
+    public int CallCount;
+    public string? LastWorkspace;
+    public IReadOnlyList<string> Restored = ["src/a.cs", "src/b.cs"];
+
+    public Task<Outcome> BackupAsync(string workspaceRoot, string fullPath)
+        => Task.FromResult(Outcome.Successful());
+
+    public Task<Outcome<IReadOnlyList<string>>> UndoLatestAsync(string workspaceRoot)
+    {
+        CallCount++;
+        LastWorkspace = workspaceRoot;
+        return Task.FromResult(Fail
+            ? Outcome.Failure<IReadOnlyList<string>>(new OutcomeError(
+                ErrorCodes.FileNotFound, ErrorCodes.FileNotFound, OutcomeErrorType.Failure))
+            : Outcome.Successful(Restored));
+    }
+}
+
+/// <summary>Fake IConfigurationService returning a fixed result; never reads keyless.json.</summary>
+public sealed class FakeConfigurationService : IConfigurationService
+{
+    private readonly bool _fail;
+
+    public FakeConfigurationService(KeylessOptions? options = null, bool fail = false)
+    {
+        Options = options ?? new KeylessOptions();
+        _fail = fail;
+    }
+
+    public KeylessOptions Options { get; }
+
+    public Task<Outcome<KeylessOptions>> LoadAsync(string workspaceRoot)
+        => Task.FromResult(_fail
+            ? Outcome.Failure<KeylessOptions>(new OutcomeError(
+                ErrorCodes.ConfigurationInvalid, ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Failure))
+            : Outcome.Successful(Options));
+}
+
+/// <summary>Fake IBrowserConnector; never launches a real Chrome.</summary>
+public sealed class FakeBrowserConnector : IBrowserConnector
+{
+    public BrowserConnectionKind Kind = BrowserConnectionKind.AutoLaunchedChrome;
+    public bool Fail;
+    public Exception? Thrown;
+    public int CallCount;
+    public BrowserOptions? LastOptions;
+
+    public Task<Outcome<(BrowserAttachment Attachment, object Page)>> ConnectAsync(
+        BrowserOptions options, IAgentUserInterface ui, CancellationToken cancellationToken = default, ITimingRecorder? timings = null)
+    {
+        CallCount++;
+        LastOptions = options;
+
+        if (Thrown is not null)
+            return Task.FromException<Outcome<(BrowserAttachment Attachment, object Page)>>(Thrown);
+
+        if (Fail)
+            return Task.FromResult(Outcome.Failure<(BrowserAttachment Attachment, object Page)>(new OutcomeError(
+                ErrorCodes.BrowserConnectionFailed, ErrorCodes.BrowserConnectionFailed, OutcomeErrorType.Failure)));
+
+        var attachment = new BrowserAttachment { Kind = Kind, UserDataDir = @"C:\profile", LaunchedProcess = true };
+        return Task.FromResult(Outcome.Successful((attachment, new object())));
+    }
+}

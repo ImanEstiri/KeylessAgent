@@ -51,6 +51,9 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     /// <summary>The feed shown in the activity list.</summary>
     public ActivityFeed Feed => _feed;
 
+    /// <summary>The undo section of the Changes panel; assigned at composition time.</summary>
+    public UndoViewModel? Undo { get; set; }
+
     /// <summary>The files changed by the last completed turn (right-hand panel).</summary>
     public ObservableCollection<ChangedPath> ChangedFiles { get; }
 

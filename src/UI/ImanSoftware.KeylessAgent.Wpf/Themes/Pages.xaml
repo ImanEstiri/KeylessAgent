@@ -13,4 +13,16 @@
         <views:WorkspaceView />
     </DataTemplate>
 
+    <DataTemplate DataType="{x:Type vm:DoctorViewModel}">
+        <views:DoctorView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+        <views:SettingsView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:AboutViewModel}">
+        <views:AboutView />
+    </DataTemplate>
+
 </ResourceDictionary>

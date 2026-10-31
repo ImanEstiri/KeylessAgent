@@ -139,13 +139,13 @@
                 <ContentControl x:Name="ContentHost" Content="{Binding CurrentPage}" />
             </Border>
 
-            <!-- Status bar -->
+            <!-- Status bar; bound to the Chrome section (connection kind). -->
             <Border Grid.Row="2" Grid.ColumnSpan="2"
                     Background="{DynamicResource GlassFill}"
                     BorderBrush="{DynamicResource GlassBorder}"
                     BorderThickness="0,1,0,0"
                     Padding="16,4">
-                <TextBlock Text="Ready" Style="{DynamicResource CaptionText}" />
+                <TextBlock x:Name="StatusBarText" Text="{Binding StatusText}" Style="{DynamicResource CaptionText}" Foreground="{DynamicResource TextMuted}" />
             </Border>
         </Grid>
 

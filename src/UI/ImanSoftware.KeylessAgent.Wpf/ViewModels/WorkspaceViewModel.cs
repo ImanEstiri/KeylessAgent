@@ -60,7 +60,6 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly IUiDispatcher _ui;
     private readonly Func<string?> _browseFolder;
     private readonly GitOptions _gitOptions = new();
-    private WpfSettings _current;
     private string _selectedPath = string.Empty;
     private string _note = string.Empty;
     private bool _isInspecting;
@@ -81,10 +80,10 @@ public sealed class WorkspaceViewModel : ObservableObject
         _browseFolder = browseFolder ?? throw new ArgumentNullException(nameof(browseFolder));
 
         BrowseCommand = new RelayCommand(Browse);
-        _current = _settings.Load();
-        RefreshRecents(_current);
-        if (_current.LastWorkspace.Length > 0)
-            Select(_current.LastWorkspace, remember: false);
+        var saved = _settings.Load();
+        RefreshRecents(saved);
+        if (saved.LastWorkspace.Length > 0)
+            Select(saved.LastWorkspace, remember: false);
     }
 
     /// <summary>Opens the folder picker.</summary>
@@ -153,12 +152,13 @@ public sealed class WorkspaceViewModel : ObservableObject
     public void RemoveRecent(RecentWorkspaceViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        var remaining = _current.RecentWorkspaces
+        var latest = _settings.Load();
+        var remaining = latest.RecentWorkspaces
             .Where(p => !string.Equals(p, item.Path, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        _current = _current with { RecentWorkspaces = remaining, LastWorkspace = remaining.FirstOrDefault() ?? string.Empty };
-        _settings.Save(_current);
-        RefreshRecents(_current);
+        var updated = latest with { RecentWorkspaces = remaining, LastWorkspace = remaining.FirstOrDefault() ?? string.Empty };
+        _settings.Save(updated);
+        RefreshRecents(updated);
     }
 
     private void Browse()
@@ -189,9 +189,9 @@ public sealed class WorkspaceViewModel : ObservableObject
 
         if (remember)
         {
-            _current = SettingsService.WithRecentWorkspace(_current, trimmed);
-            _settings.Save(_current);
-            RefreshRecents(_current);
+            var latest = SettingsService.WithRecentWorkspace(_settings.Load(), trimmed);
+            _settings.Save(latest);
+            RefreshRecents(latest);
         }
 
         _ = InspectAsync(trimmed);
