@@ -186,7 +186,7 @@ public class ReplyReaderTests
 
         reply.IsSuccess.Should().BeTrue("Auto falls back to the DOM reader");
         reply.Data.Should().Be("dom fallback reply");
-        session.LastReplyOrigin.Should().Be("Dom: copy button not found");
+        session.LastReplyOrigin.Should().Be("Dom: copy button not matched");
     }
 
     [Fact]

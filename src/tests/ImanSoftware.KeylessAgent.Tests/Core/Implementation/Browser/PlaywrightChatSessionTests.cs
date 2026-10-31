@@ -253,6 +253,30 @@ public class PlaywrightChatSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task CopyAttempt_TimedAndReasonLogged_WhenButtonNotMatched()
+    {
+        // Auto mode, NO copy button fallback matches: the reply falls back to the DOM, the
+        // "copy" phase is still timed, and the reason travels in the turn-log event.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = false; // WaitForMessageCopyButton finds nothing
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "dom reply", 2));
+        };
+        var recorder = new TimingRecorder();
+        var session = CreateSession(page, timings: recorder);
+
+        (await session.SendMessageAsync("request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).IsSuccess.Should().BeTrue();
+
+        recorder.Entries.Select(e => e.Phase).Should().Contain("copy",
+            "the copy attempt is timed even when it ends in a Dom fallback");
+    }
+
+    [Fact]
     public async Task ChatLimitProbe_CostsOneRoundTripPerWait()
     {
         var page = new FakeChatPage { ChatLimitVisible = true };

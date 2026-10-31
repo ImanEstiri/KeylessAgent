@@ -254,6 +254,8 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// Decides the reply source: Dom = rendered text; Copy = capture (hover + click newest
     /// message's Copy control, interception then OS clipboard with restore) validated against
     /// the DOM text; Auto = copy first, fall back to Dom on capture/validation failure.
+    /// The whole copy ATTEMPT is one timed "copy" phase and every skip/fallback decision is
+    /// logged (Warning + turn log) so a "via Dom" reply always carries its reason.
     /// </summary>
     private async Task<Outcome<ReplyReadResult>> ReadReplyTextAsync(string domText, CancellationToken cancellationToken)
     {
@@ -262,6 +264,8 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             LastReplyOriginValue = ReplyOrigin.Dom;
             LastReplyReason = "Browser.ReplySource=Dom";
+            if (_options.LogEvent is not null)
+                await _options.LogEvent("reply-source", new { Source = "Dom", Reason = LastReplyReason });
             return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
         }
 
@@ -272,11 +276,24 @@ internal sealed class PlaywrightChatSession : IChatSession
             _capturePrepared = true;
         }
 
-        // The message-level Copy control may appear on hover only; wait within the reply timeout.
-        var buttonWait = await _page.WaitForMessageCopyButtonAsync(
-            TimeSpan.FromSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 10)), cancellationToken);
-        if (!buttonWait)
+        _options.Timings?.Start("copy");
+        string? validationSummary = null;
+        Outcome<ReplyReadResult> read;
+        try
         {
+            // The message-level Copy control may appear on hover only; wait within the reply timeout.
+            var buttonWait = await _page.WaitForMessageCopyButtonAsync(
+                TimeSpan.FromSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 10)), cancellationToken);
+            if (!buttonWait)
+            {
+                LastReplyOriginValue = ReplyOrigin.Dom;
+                LastReplyReason = "copy button not matched";
+                _log.LogWarning("Copy attempt skipped: no MessageCopyButton fallback matched (reply text from the DOM).");
+                if (_options.LogEvent is not null)
+                    await _options.LogEvent("reply-source", new { Source = "Dom", Reason = LastReplyReason });
+                return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
+            }
+
             if (mode == ReplySourceMode.Copy)
             {
                 return Outcome.Failure<ReplyReadResult>(new OutcomeError(
@@ -284,20 +301,15 @@ internal sealed class PlaywrightChatSession : IChatSession
                     ErrorCodes.ReplyTimeout, OutcomeErrorType.Failure));
             }
 
-            LastReplyOriginValue = ReplyOrigin.Dom;
-            LastReplyReason = "copy button not found";
-            return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
-        }
-
-        var reasoning = await _page.GetNewestReasoningTextAsync(cancellationToken);
-        _options.Timings?.Start("copy");
-        Outcome<ReplyReadResult> read;
-        try
-        {
+            var reasoning = await _page.GetNewestReasoningTextAsync(cancellationToken);
             read = await ReplyReader.ReadAsync(
                 mode,
                 new ReplyReadContext(domText, reasoning, ct => _page.TryCaptureCopiedReplyAsync(TimeSpan.FromSeconds(5), ct)),
-                summary => _log.LogInformation("Reply copy validation: {Summary}", summary),
+                summary =>
+                {
+                    validationSummary = summary;
+                    _log.LogInformation("Reply copy validation: {Summary}", summary);
+                },
                 cancellationToken);
         }
         finally
@@ -306,10 +318,30 @@ internal sealed class PlaywrightChatSession : IChatSession
         }
 
         if (read.IsFailure)
+        {
+            _log.LogWarning("Copy attempt failed: {Message}", read.Error.Message);
+            if (_options.LogEvent is not null)
+                await _options.LogEvent("reply-source", new { Source = "Copy (failed)", Reason = read.Error.Message });
             return read;
+        }
 
         LastReplyOriginValue = read.Data.Origin;
-        LastReplyReason = read.Data.Origin is ReplyOrigin.Copy ? null : "copy capture failed";
+        if (read.Data.Origin == ReplyOrigin.Copy)
+        {
+            LastReplyReason = null;
+            if (_options.LogEvent is not null)
+                await _options.LogEvent("reply-source", new { Source = "Copy", Validation = validationSummary });
+        }
+        else
+        {
+            // Auto fell back: the capture produced nothing usable or validation rejected it —
+            // the validation numbers (copied/dom/similarity/contained) explain which.
+            LastReplyReason = "copy rejected by validation";
+            _log.LogWarning("Copy rejected by validation ({Summary}); reply text from the DOM.", validationSummary);
+            if (_options.LogEvent is not null)
+                await _options.LogEvent("reply-source", new { Source = "Dom (copy rejected)", Reason = LastReplyReason, Validation = validationSummary });
+        }
+
         return read;
     }
 

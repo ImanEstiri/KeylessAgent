@@ -180,6 +180,51 @@ public class ChatDiagnosticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MessageCopyButton_NotMatched_KeepsClosestCandidateHtml()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "MessageCopyButton");
+        check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+        check.Detail.Should().Contain("<div class='composer'>",
+            "the trimmed closest-candidate HTML gives the selector author facts to fix from");
+    }
+
+    [Fact]
+    public async Task StopIndicator_Matched_ReportsFallbackIndex()
+    {
+        var inspector = FullyWorking();
+        inspector.Matched.Add("StopIndicator");
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "StopIndicator");
+        check.Status.Should().Be(SelectorCheckStatus.Matched);
+        check.FallbackIndex.Should().BeGreaterThanOrEqualTo(0, "the matched fallback index is reported");
+        check.Detail.Should().Contain("fallback #");
+    }
+
+    [Fact]
     public async Task MessageCopyButton_NotMatched_IsNotApplicableNow()
     {
         var inspector = FullyWorking();

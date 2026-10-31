@@ -1,6 +1,7 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.Extensions;
 using ImanSoftware.Logging;
 using ImanSoftware.Outcomes;
 
@@ -163,7 +164,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         var checks = new List<SelectorCheck>();
         foreach (var (key, selectors) in SelectorEntries(catalog))
         {
-            checks.Add(await ClassifyAsync(key, selectors, inspector, login, cancellationToken));
+            checks.Add(await ClassifyAsync(key, selectors, inspector, catalog, login, cancellationToken));
         }
 
         var deepThink = await inspector.GetToggleStateAsync(catalog.DeepThinkToggle, cancellationToken);
@@ -215,7 +216,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     }
 
     internal static async Task<SelectorCheck> ClassifyAsync(
-        string key, string[] selectors, IChatPageInspector inspector,
+        string key, string[] selectors, IChatPageInspector inspector, SelectorsCatalog catalog,
         (int Index, int Count)? login, CancellationToken cancellationToken)
     {
         if (key == "LoginIndicator")
@@ -234,21 +235,36 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             {
                 "FinalAnswer" => "Final-answer element exists (a reply is present or in progress).",
                 "Reasoning" => "A reasoning block exists (a thinking message is present).",
-                "StopIndicator" => "Generating is in progress.",
+                "StopIndicator" => $"Generating is in progress (fallback #{probe.Value.Index}).",
+                "MessageCopyButton" => $"Message-level Copy control exists (fallback #{probe.Value.Index}; hover the reply shows it).",
                 "AttachmentChips" => "Attachment chips are visible (files attached).",
-                "MessageCopyButton" => "Message-level Copy control exists (hover the reply shows it).",
                 "ChatLimitNotice" => "The chat has reached its length limit (exhausted).",
-                _ => "Selector matched.",
+                _ => $"Selector matched (fallback #{probe.Value.Index}).",
             };
             return new SelectorCheck(key, SelectorCheckStatus.Matched, probe.Value.Index, probe.Value.Count, detail);
+        }
+
+        // For the two hover/generating-state controls, a NOT-MATCHED result is only useful
+        // with evidence: include the trimmed HTML of the closest candidate (the newest
+        // assistant message) so a changed web UI can be diagnosed from the doctor output.
+        if (key is "MessageCopyButton" or "StopIndicator")
+        {
+            var candidate = await inspector.CaptureTrimmedAsync(catalog.AssistantMessage, cancellationToken);
+            var candidateNote = string.IsNullOrWhiteSpace(candidate)
+                ? string.Empty
+                : $" Closest candidate (newest message, trimmed): {candidate.Truncate(300)}";
+
+            var notApplicableNow = key == "MessageCopyButton"
+                ? "No assistant message is visible — the Copy button appears only on a reply."
+                : "Nothing is generating right now.";
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicableNow + candidateNote);
         }
 
         // Nothing matched: is that legitimate for the current state?
         var notApplicable = key switch
         {
-            "StopIndicator" => "Nothing is generating right now.",
             "AttachmentChips" => "Nothing is attached right now.",
-            "MessageCopyButton" => "No assistant message is visible — the Copy button appears only on a reply.",
             "Reasoning" => "No message with a reasoning block is visible right now.",
             "FinalAnswer" => "No assistant message is visible right now (new chat).",
             "LoginIndicator" => "Not on the login page.",
