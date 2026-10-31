@@ -182,6 +182,14 @@ needs the dedicated Chrome profile (see the CLI docs — the desktop app's "Star
 does exactly what `keyless chrome` does). The application icon is intentionally not set yet:
 `icon.png` exists but no PNG→ICO conversion tool was available.
 
+## Common mistakes
+
+- StaticResource needs the target defined above it — in the same file, or in a dictionary that
+  App.xaml merges earlier. `BeginStoryboard.Storyboard` cannot use DynamicResource, so every
+  animation Storyboard must be declared before the Style that starts it
+  (Themes/Animations.xaml). `ThemeOrderTests` walks all `Themes/*.xaml` dictionaries in merge
+  order and fails on any forward reference.
+
 ## Verification status
 
 - **Automated (verified):** whole-solution build with 0 errors (0 warnings in the WPF projects);
