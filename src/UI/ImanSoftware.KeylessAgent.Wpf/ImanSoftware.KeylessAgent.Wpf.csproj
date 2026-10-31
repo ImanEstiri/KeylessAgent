@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Overrides the solution-wide net10.0: WPF needs the Windows-specific TFM. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>ImanSoftware.KeylessAgent.Wpf</AssemblyName>
+    <RootNamespace>ImanSoftware.KeylessAgent.Wpf</RootNamespace>
+    <!-- Targeted: generated XAML code and WPF types trigger these analyzer rules. Keep this list short. -->
+    <NoWarn>$(NoWarn);CA1812;CA1515</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ImanSoftware.KeylessAgent.Wpf.Tests" />
+  </ItemGroup>
+
+</Project>

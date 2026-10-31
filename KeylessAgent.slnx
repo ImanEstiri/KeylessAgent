@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Core/" />
+  <Folder Name="/src/tests/">
+    <Project Path="src/tests/ImanSoftware.KeylessAgent.Wpf.Tests/ImanSoftware.KeylessAgent.Wpf.Tests.csproj" />
+  </Folder>
+  <Folder Name="/src/UI/">
+    <Project Path="src/UI/ImanSoftware.KeylessAgent.Wpf/ImanSoftware.KeylessAgent.Wpf.csproj" />
+  </Folder>
   <Project Path="src\Core\ImanSoftware.KeylessAgent.Abstractions\ImanSoftware.KeylessAgent.Abstractions.csproj" />
   <Project Path="src\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
   <Project Path="src\UI\ImanSoftware.KeylessAgent.Cli\ImanSoftware.KeylessAgent.Cli.csproj" />
