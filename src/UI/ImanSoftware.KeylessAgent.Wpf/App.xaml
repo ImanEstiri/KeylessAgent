@@ -13,6 +13,7 @@
                 <ResourceDictionary Source="Themes/Glass.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
                 <ResourceDictionary Source="Themes/Controls.Inputs.xaml" />
+                <ResourceDictionary Source="Themes/Dialogs.xaml" />
                 <ResourceDictionary Source="Themes/Animations.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

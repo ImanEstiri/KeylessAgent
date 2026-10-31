@@ -1,21 +1,29 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
+using ImanSoftware.KeylessAgent.Wpf.Services;
+using ImanSoftware.KeylessAgent.Wpf.ViewModels;
+using ImanSoftware.KeylessAgent.Wpf.ViewModels.Dialogs;
 
 namespace ImanSoftware.KeylessAgent.Wpf.Views;
 
 /// <summary>
-/// The main window: custom title bar, sidebar navigation, status bar, and the Windows 11
-/// system backdrop with an app-drawn gradient fallback. View-only; logic comes with Phase 4.
+/// The main window: custom title bar, sidebar navigation, status bar, Windows 11 backdrop,
+/// and the modal dialog overlay with its keyboard routing (Enter/Esc/digits/arrows).
 /// </summary>
 public partial class ShellWindow : Window
 {
-    /// <summary>Creates the shell window and applies the backdrop plan.</summary>
+    private readonly DialogHostViewModel _dialogHost = new();
+
+    /// <summary>Creates the shell window, applies the backdrop plan and registers the dialog host.</summary>
     public ShellWindow()
     {
         InitializeComponent();
         ApplyBackdropPlan();
+        DialogOverlay.DataContext = _dialogHost;
+        DialogHost.Initialize(_dialogHost, new DialogService(_dialogHost, new WpfDispatcher()));
     }
 
     /// <summary>Reacts to maximize/restore so the content is not cut off by the resize border.</summary>
@@ -43,6 +51,76 @@ public partial class ShellWindow : Window
                 FallbackBackground.Visibility = Visibility.Visible;
         }
     }
+
+    private void OnShellPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_dialogHost.HasCurrent)
+            return;
+
+        switch (_dialogHost.Current)
+        {
+            case ConfirmDialogViewModel confirm:
+                if (e.Key == Key.Enter)
+                    confirm.ApproveCommand.Execute(null);
+                else if (e.Key == Key.Escape)
+                    confirm.DeclineCommand.Execute(null);
+                else
+                    return;
+                e.Handled = true;
+                break;
+
+            case ChoiceDialogViewModel choice:
+                RouteChoiceKey(choice, e);
+                break;
+
+            case AskDialogViewModel ask:
+                if (e.Key == Key.Escape)
+                    ask.CancelCommand.Execute(null);
+                else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+                    ask.SubmitCommand.Execute(null);
+                else
+                    return;
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private static void RouteChoiceKey(ChoiceDialogViewModel choice, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Up:
+                choice.MoveUp();
+                e.Handled = true;
+                break;
+            case Key.Down:
+                choice.MoveDown();
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                choice.ConfirmCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                choice.CancelCommand.Execute(null);
+                e.Handled = true;
+                break;
+            default:
+                if (DialogDigitOf(e.Key) is { } digit)
+                {
+                    choice.PickDigit(digit);
+                    e.Handled = true;
+                }
+                break;
+        }
+    }
+
+    private static int? DialogDigitOf(Key key) => key switch
+    {
+        >= Key.D1 and <= Key.D9 => key - Key.D1 + 1,
+        >= Key.NumPad1 and <= Key.NumPad9 => key - Key.NumPad1 + 1,
+        _ => null,
+    };
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 

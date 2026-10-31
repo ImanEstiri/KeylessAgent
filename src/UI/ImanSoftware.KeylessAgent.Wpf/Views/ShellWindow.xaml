@@ -5,7 +5,12 @@
         Width="1280" Height="800"
         WindowStyle="None"
         Background="Transparent"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        PreviewKeyDown="OnShellPreviewKeyDown">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    </Window.Resources>
 
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="48"
@@ -105,6 +110,24 @@
                     BorderThickness="0,1,0,0"
                     Padding="16,4">
                 <TextBlock Text="Ready" Style="{DynamicResource CaptionText}" />
+            </Border>
+        </Grid>
+
+        <!-- Layer 5: modal dialog overlay (Phase 5); visible while the dialog host shows a view model. -->
+        <Grid x:Name="DialogOverlay"
+              Background="#B3000000"
+              Visibility="{Binding HasCurrent, Converter={StaticResource BoolToVisibility}}">
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MinWidth="420"
+                    MaxWidth="680"
+                    MaxHeight="620"
+                    Background="{DynamicResource GlassFillStrong}"
+                    BorderBrush="{DynamicResource GlassBorder}"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    Style="{DynamicResource FadeIn}">
+                <ContentControl Content="{Binding Current}" Focusable="False" />
             </Border>
         </Grid>
     </Grid>

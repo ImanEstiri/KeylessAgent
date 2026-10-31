@@ -1,0 +1,33 @@
+<UserControl x:Class="ImanSoftware.KeylessAgent.Wpf.Views.Dialogs.AskDialogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Ask: question, multiline answer box, Submit (gold, Ctrl+Enter) / Cancel (ghost, Esc → empty). -->
+    <StackPanel Margin="24" MinWidth="460">
+        <TextBlock Text="{Binding Question}"
+                   Style="{DynamicResource SubtitleText}"
+                   TextWrapping="Wrap" />
+        <TextBox x:Name="AnswerBox"
+                 Text="{Binding AnswerText, UpdateSourceTrigger=PropertyChanged}"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 MinHeight="110"
+                 MaxHeight="260"
+                 VerticalScrollBarVisibility="Auto"
+                 Margin="0,16" />
+        <TextBlock Text="Ctrl+Enter submit · Esc cancel"
+                   Style="{DynamicResource CaptionText}"
+                   Foreground="{DynamicResource TextMuted}"
+                   Margin="0,0,0,16" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel"
+                    Style="{DynamicResource GhostButton}"
+                    Command="{Binding CancelCommand}"
+                    MinWidth="110" />
+            <Button Content="Submit"
+                    Style="{DynamicResource PrimaryButton}"
+                    Command="{Binding SubmitCommand}"
+                    IsDefault="True"
+                    MinWidth="110" Margin="12,0,0,0" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>
