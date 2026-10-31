@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,21 +16,25 @@ namespace ImanSoftware.KeylessAgent.Wpf.Views;
 
 /// <summary>
 /// The main window: custom title bar, sidebar navigation, status bar, Windows 11 backdrop,
-/// the modal dialog overlay, and the composition root for all pages.
+/// the modal dialog overlay, window-state persistence, keyboard shortcuts and the composition
+/// root for all pages.
 /// </summary>
 public partial class ShellWindow : Window
 {
     private readonly IUiDispatcher _dispatcher = new WpfDispatcher();
     private readonly DialogHostViewModel _dialogHost = new();
     private readonly ActivityFeed _feed = new();
+    private readonly SettingsService _wpfSettings = new();
+    private readonly ShellViewModel _shell;
 
-    /// <summary>Creates the shell window: backdrop, dialog host, all page view models, status bar.</summary>
+    /// <summary>Creates the shell window: restores window bounds, applies the backdrop, wires all pages.</summary>
     public ShellWindow()
     {
         InitializeComponent();
-        var wpfSettings = new SettingsService();
-        var saved = wpfSettings.Load();
+        var saved = _wpfSettings.Load();
+        RestoreWindowPlacement(saved);
         ApplyBackdropPlan(saved.BackdropPreference, saved.ReduceEffects);
+        ApplyReduceEffects(saved.ReduceEffects);
 
         var busy = new BusyIndicator(_dispatcher);
         var dialogs = new DialogService(_dialogHost, _dispatcher);
@@ -54,13 +59,13 @@ public partial class ShellWindow : Window
         var doctorViewModel = new DoctorViewModel(
             KeylessAgentServiceFactory.CreateChatDiagnostics(), configuration, agentViewModel, _dispatcher, chromeViewModel);
         var settingsViewModel = new SettingsViewModel(
-            configuration, wpfSettings, agentViewModel, _dispatcher, OpenFileWithShell,
-            preference => ApplyBackdropPlan(preference, wpfSettings.Load().ReduceEffects));
+            configuration, _wpfSettings, agentViewModel, _dispatcher, OpenFileWithShell,
+            preference => ApplyBackdropPlan(preference, _wpfSettings.Load().ReduceEffects));
         var aboutViewModel = new AboutViewModel(OpenFolderWithShell);
 
         settingsViewModel.ReloadCommand.Execute(null);
 
-        DataContext = new ShellViewModel(pageFactory: key => key switch
+        _shell = new ShellViewModel(pageFactory: key => key switch
         {
             PageKey.Agent => agentViewModel,
             PageKey.Workspace => workspaceViewModel,
@@ -69,6 +74,7 @@ public partial class ShellWindow : Window
             PageKey.About => aboutViewModel,
             _ => null,
         });
+        DataContext = _shell;
         DialogOverlay.DataContext = _dialogHost;
         StatusBarText.DataContext = chromeViewModel;
     }
@@ -80,6 +86,51 @@ public partial class ShellWindow : Window
         RootGrid.Margin = WindowState == WindowState.Maximized
             ? SystemParameters.WindowResizeBorderThickness
             : default;
+    }
+
+    /// <summary>Saves the window size, position and state (guide Phase 10).</summary>
+    /// <param name="e">The closing arguments.</param>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+
+        var bounds = WindowState == WindowState.Normal
+            ? (Left, Top, Width, Height)
+            : (RestoreBounds.Left, RestoreBounds.Top, RestoreBounds.Width, RestoreBounds.Height);
+
+        var latest = _wpfSettings.Load() with
+        {
+            Window = new WindowSettings
+            {
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                Maximized = WindowState == WindowState.Maximized,
+            },
+        };
+        _wpfSettings.Save(latest);
+    }
+
+    private void RestoreWindowPlacement(WpfSettings saved)
+    {
+        var placement = WindowPlacement.Validate(
+            saved.Window.Left, saved.Window.Top, saved.Window.Width, saved.Window.Height,
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight);
+
+        if (placement.Restored)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = placement.Left;
+            Top = placement.Top;
+            Width = placement.Width;
+            Height = placement.Height;
+        }
+
+        WindowState = saved.Window.Maximized ? WindowState.Maximized : WindowState.Normal;
     }
 
     private void ApplyBackdropPlan(string preference, bool reduceEffects)
@@ -97,43 +148,54 @@ public partial class ShellWindow : Window
         }
     }
 
-    private string? BrowseForFolder()
+    private void ApplyReduceEffects(bool reduceEffects)
     {
-        var dialog = new OpenFolderDialog { Title = "Choose a workspace folder" };
-        return dialog.ShowDialog(this) is true ? dialog.FolderName : null;
-    }
+        var dictionaries = Application.Current.Resources.MergedDictionaries;
+        var animations = dictionaries.FirstOrDefault(dictionary =>
+            dictionary.Source?.OriginalString.Contains("Animations.xaml", StringComparison.OrdinalIgnoreCase) == true);
 
-    private static bool OpenFileWithShell(string path)
-    {
-        try
+        if (reduceEffects && animations is not null)
         {
-            using var process = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            return true;
+            dictionaries.Remove(animations);
         }
-        catch (Exception)
+        else if (!reduceEffects && animations is null)
         {
-            return false;
-        }
-    }
-
-    private static bool OpenFolderWithShell(string folder)
-    {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
+            dictionaries.Add(new ResourceDictionary { Source = new Uri("Themes/Animations.xaml", UriKind.Relative) });
         }
     }
 
     private void OnShellPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (!_dialogHost.HasCurrent)
+        if (_dialogHost.HasCurrent)
+        {
+            RouteDialogKey(e);
             return;
+        }
 
+        switch (e.Key)
+        {
+            case Key.Escape when e.KeyboardDevice.Modifiers == ModifierKeys.None && _shell.CurrentPage is AgentViewModel agent && agent.IsRunning:
+                agent.StopCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.L when e.KeyboardDevice.Modifiers == ModifierKeys.Control:
+                _shell.NavigateCommand.Execute(PageKey.Agent);
+                (_shell.CurrentPage as AgentViewModel)?.FocusComposer();
+                e.Handled = true;
+                break;
+            case Key.OemComma when e.KeyboardDevice.Modifiers == ModifierKeys.Control:
+                _shell.NavigateCommand.Execute(PageKey.Settings);
+                e.Handled = true;
+                break;
+            case Key.F1 when e.KeyboardDevice.Modifiers == ModifierKeys.None:
+                _shell.NavigateCommand.Execute(PageKey.About);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void RouteDialogKey(KeyEventArgs e)
+    {
         switch (_dialogHost.Current)
         {
             case ConfirmDialogViewModel confirm:
@@ -144,6 +206,14 @@ public partial class ShellWindow : Window
                 else
                     return;
                 e.Handled = true;
+                break;
+
+            case ErrorDialogViewModel error:
+                if (e.Key is Key.Enter or Key.Escape)
+                {
+                    error.OkCommand.Execute(null);
+                    e.Handled = true;
+                }
                 break;
 
             case ChoiceDialogViewModel choice:
@@ -198,6 +268,38 @@ public partial class ShellWindow : Window
         >= Key.NumPad1 and <= Key.NumPad9 => key - Key.NumPad1 + 1,
         _ => null,
     };
+
+    private string? BrowseForFolder()
+    {
+        var dialog = new OpenFolderDialog { Title = "Choose a workspace folder" };
+        return dialog.ShowDialog(this) is true ? dialog.FolderName : null;
+    }
+
+    private static bool OpenFileWithShell(string path)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool OpenFolderWithShell(string folder)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 

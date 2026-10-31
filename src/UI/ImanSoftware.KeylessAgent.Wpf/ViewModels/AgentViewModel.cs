@@ -48,6 +48,12 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     /// <summary>Disposes the current turn's cancellation source. View models live for the app's lifetime.</summary>
     public void Dispose() => _turnCancellation?.Dispose();
 
+    /// <summary>Raised when the composer should take keyboard focus (Ctrl+L shortcut).</summary>
+    public event EventHandler? FocusComposerRequested;
+
+    /// <summary>Requests composer focus (Ctrl+L shortcut).</summary>
+    public void FocusComposer() => FocusComposerRequested?.Invoke(this, EventArgs.Empty);
+
     /// <summary>The feed shown in the activity list.</summary>
     public ActivityFeed Feed => _feed;
 

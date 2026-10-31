@@ -17,4 +17,19 @@
         <views:AskDialogView />
     </DataTemplate>
 
+    <DataTemplate DataType="{x:Type vm:ErrorDialogViewModel}">
+        <StackPanel MinWidth="420" Margin="24">
+            <TextBlock Text="{Binding Title}" Style="{DynamicResource SubtitleText}" Foreground="{DynamicResource Danger}" />
+            <TextBlock Text="{Binding Message}" Style="{DynamicResource BodyText}" TextWrapping="Wrap" Margin="0,12,0,0" />
+            <Button Content="OK"
+                    Style="{DynamicResource PrimaryButton}"
+                    Command="{Binding OkCommand}"
+                    IsDefault="True"
+                    IsCancel="True"
+                    MinWidth="110"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0" />
+        </StackPanel>
+    </DataTemplate>
+
 </ResourceDictionary>

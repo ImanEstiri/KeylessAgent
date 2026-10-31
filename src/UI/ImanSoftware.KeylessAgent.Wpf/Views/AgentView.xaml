@@ -8,6 +8,8 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <inf:NarrowPanelVisibilityConverter x:Key="NarrowPanel" />
+        <inf:RtlFlowDirectionConverter x:Key="RtlFlowDirection" />
+        <inf:RtlTextAlignmentConverter x:Key="RtlTextAlignment" />
         <!-- Undo section of the Changes panel. -->
         <DataTemplate DataType="{x:Type vm:UndoViewModel}">
             <StackPanel>
@@ -93,17 +95,27 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBox Text="{Binding RequestText, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox x:Name="ComposerBox"
+                             Text="{Binding RequestText, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True"
                              TextWrapping="Wrap"
                              MinHeight="72"
                              MaxHeight="220"
-                             VerticalScrollBarVisibility="Auto">
+                             VerticalScrollBarVisibility="Auto"
+                             FlowDirection="{Binding RequestText, Converter={StaticResource RtlFlowDirection}}"
+                             TextAlignment="{Binding RequestText, Converter={StaticResource RtlTextAlignment}}">
                         <TextBox.InputBindings>
                             <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding SendCommand}" />
                         </TextBox.InputBindings>
                     </TextBox>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+                        <Ellipse Width="10"
+                                 Height="10"
+                                 Fill="{DynamicResource Gold}"
+                                 Style="{DynamicResource PulseDot}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,10,0"
+                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
                         <CheckBox Content="Dry run"
                                   Style="{DynamicResource ToggleSwitch}"
                                   IsChecked="{Binding DryRun}" />

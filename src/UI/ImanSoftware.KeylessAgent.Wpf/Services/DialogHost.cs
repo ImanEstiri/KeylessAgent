@@ -32,4 +32,20 @@ public static class DialogHost
     /// ask → empty). Called when the user stops a running turn.
     /// </summary>
     public static void CancelAll() => _dialogs?.CancelAll();
+
+    /// <summary>Whether an error dialog is currently shown (guards against error floods).</summary>
+    public static bool HasError => _host?.Current is ViewModels.Dialogs.ErrorDialogViewModel;
+
+    /// <summary>
+    /// Shows a short error through the dialog host, replacing whatever was shown. Used by the
+    /// global exception handler; does nothing before initialization.
+    /// </summary>
+    /// <param name="message">The short error message.</param>
+    public static void ShowError(string message)
+    {
+        if (_host is null)
+            return;
+
+        _host.Show(new ViewModels.Dialogs.ErrorDialogViewModel("Unexpected error", message, () => _host.Hide()));
+    }
 }
