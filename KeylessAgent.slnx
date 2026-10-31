@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src\Core\ImanSoftware.KeylessAgent.Abstractions\ImanSoftware.KeylessAgent.Abstractions.csproj" />
+  <Project Path="src\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
+  <Project Path="src\UI\ImanSoftware.KeylessAgent.Cli\ImanSoftware.KeylessAgent.Cli.csproj" />
+  <Project Path="src\Playground\ImanSoftware.KeylessAgent.Playground\ImanSoftware.KeylessAgent.Playground.csproj" />
+  <Project Path="src\tests\ImanSoftware.KeylessAgent.Tests\ImanSoftware.KeylessAgent.Tests.csproj" />
+</Solution>

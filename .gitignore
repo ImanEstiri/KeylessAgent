@@ -1,0 +1,13 @@
+bin/
+obj/
+artifacts/
+.agent/
+tree-view-result.txt
+code-dump-result.md
+*.user
+*.suo
+.vs/
+.idea/
+TestResults/
+*.nupkg
+*.snupkg

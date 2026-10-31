@@ -1,0 +1,46 @@
+[KEYLESSAGENT FORMAT ERROR]
+Your last response was rejected. Nothing was executed.
+Problems:
+{problems}
+{truncationAdvice}
+Reminder — AgentScript v1 in one picture (this is the ONLY accepted format):
+
+@@say
+<<<MSG
+Message to the user
+MSG>>>
+@@end
+@@newfile src/path/file.cs
+<<<CONTENT
+file content (any language, may contain code fences)
+CONTENT>>>
+@@editfile src/path/file.cs
+<<<FIND
+text that occurs exactly once
+FIND>>>
+<<<REPLACE
+replacement text
+REPLACE>>>
+@@end
+@@movefile src/path/old.cs
+<<<TO
+src/path/new.cs
+TO>>>
+@@end
+@@next
+@@end
+@@runcommand
+<<<CMD
+dotnet build
+CMD>>>
+@@end
+@@done
+<<<MSG
+Summary
+MSG>>>
+@@end
+@@eof
+
+Valid keywords ONLY: @@say, @@newfile, @@updatefile, @@editfile, @@movefile, @@deletefile, @@readfile, @@runcommand, @@ask, @@commit, @@next, @@done — plus the final line @@eof. There is no @@command, no JSON, no markdown fences around the reply. Every block starts with @@keyword, may contain <<<NAME ... NAME>>> payload sections, and ends with @@end.
+Also remember: payload markers are ALONE on their own line (never "<<<CONTENT text CONTENT>>>" on one line); paths never start with "./"; use @@next to get this batch's results before continuing and @@done to end the turn (never both); and YOU execute commands yourself via @@runcommand — never give the user commands to run.
+Resend your COMPLETE response using only AgentScript v1. Do not apologize or explain. Do not add text outside blocks.

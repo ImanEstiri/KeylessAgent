@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ImanSoftware.KeylessAgent.Abstractions\ImanSoftware.KeylessAgent.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ImanSoftware.DateTimeProvider" />
+    <PackageReference Include="ImanSoftware.Logging" />
+    <PackageReference Include="ImanSoftware.Serialization" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Playwright" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\format-correction.txt" />
+    <EmbeddedResource Include="Resources\selectors.json" />
+    <EmbeddedResource Include="Resources\system-prompt.md" />
+  </ItemGroup>
+
+</Project>

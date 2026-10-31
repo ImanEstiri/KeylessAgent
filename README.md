@@ -1,2 +1,258 @@
 # KeylessAgent
-A coding agent that runs on your own logged-in DeepSeek web chat, so you need no API key. Drives your Chrome via Playwright, reads replies as a strict command language, and applies them to your workspace on a safe agent branch. .NET 10 CLI.
+
+**A coding agent that runs on your own DeepSeek login. No API key.**
+
+[![NuGet](https://img.shields.io/nuget/v/ImanSoftware.KeylessAgent.Cli.svg)](https://www.nuget.org/packages/ImanSoftware.KeylessAgent.Cli)
+[![Downloads](https://img.shields.io/nuget/dt/ImanSoftware.KeylessAgent.Cli.svg)](https://www.nuget.org/packages/ImanSoftware.KeylessAgent.Cli)
+[![License: MIT](https://img.shields.io/github/license/ImanEstiri/KeylessAgent.svg)](LICENSE.txt)
+[![Build and test](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml)
+
+KeylessAgent is a .NET coding agent that does not use an API key. It rides on the DeepSeek web chat **you are logged into** in a dedicated Chrome profile (one manual login, then it persists): it opens a new chat, sends your request together with your project's tree and code dump, waits for the reply, and applies it to your workspace as a strict command language (AgentScript) — on a protected agent branch, never on `main`.
+
+## ⚠️ Terms-of-service and account-risk notice (read this first)
+
+KeylessAgent automates a web UI. **This may violate DeepSeek's Terms of Use and can get your account limited, throttled or banned.** The selectors that drive the page can break with any site update. This project is **not affiliated with DeepSeek** — the name is used only to describe compatibility. Use it at your own risk, on an account you accept losing.
+
+## What and why
+
+Every LLM coding tool wants an API key. If you already use DeepSeek's web chat, KeylessAgent turns that login into your agent backend:
+
+- **No API key, no billing setup.** The browser session you already have is the credential.
+- **Strict command language.** The model's reply must parse as [AgentScript v1](docs/agentscript-spec.md); anything else is rejected and re-requested automatically. Nothing outside the grammar ever executes.
+- **Workspace-aware.** Every request carries `tree-view-result.txt` and `code-dump-result.md` (generated natively in C# — no scripts to install), filtered for noise and chunked to fit.
+- **Loop with feedback.** After each executed batch the agent sends per-command results (`[KEYLESSAGENT RESULTS]`) back to the same chat, so multi-step tasks iterate until `@@done`.
+- **Reply sources.** Replies are read via the message's own Copy button (raw Markdown, perfectly preserved) with a DOM extraction fallback. Risk-tier command approval (ReadOnly/Build auto-approve, Risky always confirmed). Research loop with @@next/@@done. See [docs/browser-automation.md](docs/browser-automation.md).
+- **Safety in code, not in the prompt.** Protected-branch guard, path sandbox, command policy, backups, approval modes — all enforced in C#, covered by tests.
+
+## Requirements
+
+- Windows (the snapshot analyzer and shell commands assume Windows; see [known limitations](#known-limitations))
+- [.NET 10 SDK / runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+- Git (`git-scm.com`) — auto-detected; if the workspace is not a repository yet, KeylessAgent initializes one automatically (`Git.AutoInit`). Without git, a no-git mode runs file commands with backups only
+- Chrome. KeylessAgent uses a **dedicated Chrome profile** (`%LOCALAPPDATA%\KeylessAgent\chrome-profile`):
+  since Chrome 136 the debug port is ignored for Chrome's default profile, so a daily-profile
+  attach is impossible. Run `keyless chrome <workspace>` once and log in to DeepSeek in that
+  window — the login persists, and KeylessAgent auto-starts this profile afterwards
+  (`Browser.AutoLaunchChrome`).
+- A DeepSeek account logged in to [chat.deepseek.com](https://chat.deepseek.com) in that profile
+
+## Installation
+
+KeylessAgent is a .NET global tool:
+
+```bash
+dotnet tool install --global ImanSoftware.KeylessAgent.Cli
+```
+
+Verify:
+
+```bash
+keyless --help
+```
+
+## Usage
+
+The workspace path is always the **first input** — the agent never silently assumes the current directory. Pass it as the first argument, or the CLI asks for it (validated, current directory only as the shown default) as the very first prompt:
+
+```bash
+keyless run "G:\Projects\MyApp" "Add xUnit tests for the markdown parser"
+```
+
+Or start an interactive session — the first prompt is the workspace path, then one request per turn (each finished turn reuses the same chat):
+
+```bash
+keyless
+keyless "G:\Projects\MyApp"
+```
+
+Sample turn output (numbered menus instead of typed answers):
+
+```text
+────────────────────────────────────────────── KeylessAgent
+Workspace: G:\Projects\MyApp
+? The working tree has uncommitted changes. What should I do?
+> 1) Carry my uncommitted changes to a new agent branch (default)
+  2) Stash my changes first (git stash, restore later yourself)
+  3) Continue on the current branch ('main') with my changes in place
+  4) Cancel
+…spinner while waiting for the reply…
+╭─ DeepSeek says ───────────────────────────────╮
+│ I will add the tests now.                     │
+╰───────────────────────────────────────────────╯
+✓ Turn 1 finished on branch agent/20260101-0930-add-markdown-tests
+Commits:
+  • 3f2a9b1 Add MarkdownParserTests
+```
+
+When the workspace is not a git repository yet, the agent initializes one (main branch, .NET `.gitignore`, initial commit) and tells you in one line — no questions asked (`Git.AutoInit`).
+
+Other commands (all workspace-first):
+
+```bash
+keyless resume "G:\Projects\MyApp" "continue with the failing test"   # next request in the saved chat
+keyless undo "G:\Projects\MyApp"                                      # restore the newest .agent/backups batch
+keyless config "G:\Projects\MyApp"                                    # show / create keyless.json
+keyless chrome "G:\Projects\MyApp"                                    # start the dedicated Chrome (one-time login)
+keyless doctor "G:\Projects\MyApp"                                    # live selector check, never sends anything
+keyless run "G:\Projects\MyApp" "..." --dry-run                       # print what would happen, execute nothing
+keyless run "G:\Projects\MyApp" "..." --verbose                     # (-v) write .agent/logs/diagnostics.log
+keyless run "G:\Projects\MyApp" "..." --timing                        # print the per-phase timing table after the turn
+```
+
+The interactive session understands `/workspace <path>` (switch workspaces), `/newchat` (fresh chat, same workspace) and `/help`.
+
+**Exit codes** for `keyless run` / `keyless resume`:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The turn completed. |
+| 1 | The turn failed (`result.ErrorMessage`). |
+| 2 | The turn stopped early (`result.StoppedReason` is printed, e.g. no reply, chat exhausted). |
+| 130 | Cancelled by the user (Ctrl+C during the turn). |
+
+**Ctrl+C** is safe everywhere: during a turn it cancels only that turn (a second press within 2 seconds exits the session); at the idle `keyless>` prompt it exits gracefully with code 0 — logs are flushed and the browser connector is disposed.
+
+The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["keyless run '<workspace>' '<request>'"] --> B[Load keyless.json]
+    B --> C{Git preconditions}
+    C -->|not a repo| I[Auto init: git init, .gitignore, initial commit]
+    C -->|dirty tree| D{{Numbered menu: carry / stash / here / cancel}}
+    C -->|clean, non-protected| E{{Numbered menu: new agent branch / stay / cancel}}
+    C -->|protected branch| F[Create agent branch automatically]
+    D --> F
+    E --> F
+    I --> G[Generate tree + code dump natively in C# if stale]
+    F --> G
+    G --> H[Attach to the dedicated Chrome; open or reuse the DeepSeek tab]
+    H --> I2[Send system prompt first time + request + filtered attachments]
+    I2 --> J[Wait for the final answer — Copy button first, validated; DOM fallback]
+    J --> K{Valid AgentScript v1?}
+    K -->|no| L[Send FORMAT ERROR correction] --> J
+    K -->|yes| M[Execute say + up to N commands — skipped ones reported]
+    M --> N{@@done received?}
+    N -->|no| O[Send KEYLESSAGENT RESULTS per command number/name/target] --> J
+    N -->|yes| P[Regenerate the snapshots natively]
+    L -.retries exhausted.-> P
+    O -.iteration limit.-> P
+```
+
+The full loop, limits and error codes are documented in [docs/agentscript-spec.md](docs/agentscript-spec.md).
+
+## AgentScript in 30 seconds
+
+The model answers in blocks; anything else is rejected:
+
+```text
+@@say
+<<<MSG
+Adding the file now.
+MSG>>>
+@@end
+@@newfile src/Foo.cs
+<<<CONTENT
+class Foo {}
+CONTENT>>>
+@@end
+@@done
+<<<MSG
+Created src/Foo.cs.
+MSG>>>
+@@end
+@@eof
+```
+
+Commands: `say`, `newfile`, `updatefile`, `editfile` (FIND/REPLACE, must match exactly once), `deletefile`, `readfile`, `runcommand`, `ask`, `commit`, `done`. Everything the model writes is English; file content may be any language. No outer Markdown fence.
+
+## Reply sources
+
+| Source | How it reads | When |
+| --- | --- | --- |
+| **Copy** (first in `ReplySource: Auto`) | Hovers the newest message, clicks its message-level Copy control, captures via clipboard interception (the OS clipboard is never touched); falls back to a real clipboard read with save/restore. The copied raw Markdown is validated against the DOM text before use. | The message Copy control exists. |
+| **Dom** (fallback, or `ReplySource: Dom`) | Extracts the final-answer element text from the DOM. | Auto fallback, or explicit choice. |
+
+The reasoning block is never read, logged, or sent anywhere. See [docs/browser-automation.md](docs/browser-automation.md).
+
+## Safety model
+
+| Layer | Enforcement |
+| --- | --- |
+| Protected branches | `main`, `master`, `release*` blocked in code before any file change, commit or push; on a protected branch the agent branch is created automatically |
+| Numbered menus | Dirty-tree and branch decisions are choice menus (arrow keys / digits / Enter / Esc) — no typed answers |
+| Path sandbox | workspace-relative only; no `..`, no absolute paths, `.git`/`.agent` blocked, symlink escapes rejected |
+| Command policy | deny list (format, shutdown, force-push, `git config --global`, `curl \| sh`, …) plus configurable allow list |
+| Approval modes | `Ask` (confirm every runcommand and deletefile), `AutoSafe` (allow-listed runcommands auto, deletefile still asks), `Auto` (everything; deletefile is the only confirmation skipped) — with a one-time "AutoSafe is not a security boundary" warning |
+| Backups & undo | every changed file is backed up to `.agent/backups`; `keyless undo` restores the newest batch |
+| Dry run | `--dry-run` executes nothing |
+| Transparency | full per-turn transcript in `.agent/logs`, diffs before file changes in Ask mode |
+
+Details: [docs/security.md](docs/security.md) and [docs/git-workflow.md](docs/git-workflow.md).
+
+## Known limitations
+
+- **Windows only** for now (the snapshot analyzer and process launching assume Windows). The engine itself is portable.
+- **Web-UI automation is brittle**: DeepSeek can change its DOM at any time; selectors live in `selectors.json` so they can be fixed without recompiling — run `keyless doctor` after any DeepSeek update. See [docs/browser-automation.md](docs/browser-automation.md).
+- The message Copy button, Stop indicator, New Chat button and attachment chips are **not yet verified against a live chat** — doctor reports their state.
+- No captcha solving: if a captcha appears, the agent waits for you to solve it in the browser.
+- The chat's context limit ends long turns: exhaustion is detected only indirectly (reply timeouts).
+- Line endings are preserved per file (dominant ending wins for mixed files); a file with a truly 50/50 mix keeps LF.
+
+## Roadmap
+
+- [ ] Windows Forms desktop UI (Core is UI-agnostic; implement `IAgentUserInterface`)
+- [ ] Official-API provider behind `IChatProvider` (no browser)
+- [ ] Chat-exhaustion detection and automatic continuation in a new chat
+- [ ] `TreeAndChanged` snapshot diffing
+- [ ] Cross-platform snapshot scripts (PowerShell/shell)
+
+## Repository layout
+
+```text
+KeylessAgent/
+├── src/
+│   ├── Core/
+│   │   ├── ImanSoftware.KeylessAgent.Abstractions/   # models, enums, service contracts, IAgentUserInterface
+│   │   └── ImanSoftware.KeylessAgent.Core/           # parser, executors, git, snapshot, browser, agent loop, factory
+│   ├── UI/
+│   │   └── ImanSoftware.KeylessAgent.Cli/            # the `keyless` dotnet tool (Spectre.Console.Cli)
+│   ├── Playground/                                   # manual-testing console app (fake chat provider)
+│   └── tests/                                        # xunit + FluentAssertions (247 tests)
+├── docs/                                             # architecture, AgentScript spec, configuration, security, …
+├── Directory.Build.props / Directory.Packages.props  # shared properties + Central Package Management
+└── publish.ps1                                       # packs the tool into artifacts/
+```
+
+## Building from source
+
+The application version lives in **one place**: `<Version>` in [Directory.Build.props](Directory.Build.props). `Program.cs` reports it from the built assembly, and `publish.ps1` reads and bumps it there — the CLI csproj carries no `<Version>` of its own.
+
+`publish.ps1` packs and pushes to NuGet.org. `-SkipPush` packs only (and auto-bumps the patch version if the artifact already exists) — it does **not** require `NUGET_API_KEY`, which is only checked right before an actual push.
+
+```bash
+git clone https://github.com/ImanEstiri/KeylessAgent.git
+cd KeylessAgent
+dotnet build
+dotnet test
+```
+
+Run the CLI from source (no browser needed for the fake-provider harness):
+
+```bash
+dotnet run --project src/Playground/ImanSoftware.KeylessAgent.Playground
+dotnet run --project src/UI/ImanSoftware.KeylessAgent.Cli -- run "G:\Projects\MyApp" "Add a README section"
+```
+
+## Contributing
+
+Contributions are welcome — bug reports, selector fixes, ideas, and pull requests alike.
+
+- **Found a bug?** Open an [issue](https://github.com/ImanEstiri/KeylessAgent/issues) with the turn log from `.agent/logs` (cookies and tokens are never logged). For selector problems, attach a `keyless doctor --capture` snapshot — personal text is masked automatically.
+- **Want to code?** The pipeline is small services (`AgentScriptParser`, `ResponseFormatGuard`, `WorkspaceCommandExecutor`, `GitService`, `SnapshotService`, `BrowserConnector`, `AgentLoop`); most changes touch one file. Keep `dotnet build` warning-free and `dotnet test` green.
+
+## License
+
+MIT — see [LICENSE.txt](LICENSE.txt).

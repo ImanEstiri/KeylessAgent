@@ -1,0 +1,12 @@
+* text=auto
+*.cs text
+*.csproj text
+*.slnx text
+*.props text
+*.targets text
+*.json text
+*.md text
+*.bat text CRLF
+*.ps1 text CRLF
+*.png binary
+*.gif binary

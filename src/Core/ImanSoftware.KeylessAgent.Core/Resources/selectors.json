@@ -1,0 +1,73 @@
+{
+  "InputBox": [
+    "textarea[placeholder=\"Message DeepSeek\"]",
+    "textarea#chat-input",
+    "textarea[name=\"search\"]"
+  ],
+  "SendButton": [
+    "div:has(> input[type=\"file\"]) ~ div [role=\"button\"].ds-button--filled",
+    "div:has(> input[type=\"file\"]) ~ * [role=\"button\"].ds-button--primary",
+    "[role=\"button\"].ds-button--primary.ds-button--filled",
+    "[role=\"button\"].ds-button--filled.ds-button--circle",
+    "button[type=\"submit\"]"
+  ],
+  "NewChatButton": [
+    "[role=\"button\"]:has-text(\"New chat\")",
+    ".ds-button:has-text(\"New chat\")",
+    "a[href=\"/\"]"
+  ],
+  "MessageItems": [
+    "[data-virtual-list-item-key]",
+    ".ds-message"
+  ],
+  "AssistantMessage": [
+    ".ds-message:has(.ds-markdown.ds-assistant-message-main-content)",
+    ".ds-message"
+  ],
+  "FinalAnswer": [
+    ".ds-markdown.ds-assistant-message-main-content",
+    ".ds-message .ds-markdown:not(.ds-think-content .ds-markdown)"
+  ],
+  "Reasoning": [
+    ".ds-think-content"
+  ],
+  "MessageCopyButton": [
+    ".ds-message [role=\"button\"][aria-label=\"Copy\"]",
+    ".ds-message .ds-flex [role=\"button\"]:first-child",
+    ".ds-message [role=\"button\"]:has-text(\"Copy\")"
+  ],
+  "StopIndicator": [
+    "[role=\"button\"][aria-label=\"Stop\"]",
+    "[role=\"button\"]:has-text(\"Stop\")",
+    ".ds-button--filled:has-text(\"Stop\")"
+  ],
+  "FileInput": [
+    "input[type=\"file\"][multiple]",
+    "input[type=\"file\"]"
+  ],
+  "AttachmentChips": [
+    "[class*='file-chip']",
+    "[class*='chips']",
+    "[data-testid='file-chip']"
+  ],
+  "ChatLimitNotice": [
+    "[class*='conversation-limit']",
+    "[class*='chat-limit']",
+    "div:has-text('conversation has reached')"
+  ],
+  "DeepThinkToggle": [
+    ".ds-toggle-button:has(span)",
+    "[role=\"button\"][aria-pressed]",
+    ".ds-toggle-button:has-text(\"DeepThink\")"
+  ],
+  "SearchToggle": [
+    ".ds-toggle-button:has(span)",
+    "[role=\"button\"][aria-pressed]",
+    ".ds-toggle-button:has-text(\"Search\")"
+  ],
+  "LoginIndicator": [
+    "input[type=\"password\"]",
+    ".ds-button:has-text(\"Log in\")",
+    "button:has-text(\"Sign in\")"
+  ]
+}
