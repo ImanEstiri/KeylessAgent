@@ -25,6 +25,17 @@ public sealed class NavigationItemViewModel : ObservableObject
     /// <summary>The label shown in the sidebar.</summary>
     public string Title { get; }
 
+    /// <summary>The glyph shown before the title in the sidebar.</summary>
+    public string Symbol => Key switch
+    {
+        PageKey.Agent => "▶",
+        PageKey.Workspace => "▣",
+        PageKey.Doctor => "✚",
+        PageKey.Settings => "⚙",
+        PageKey.About => "ⓘ",
+        _ => "•",
+    };
+
     /// <summary>Whether this entry is the active page (drives the highlight style).</summary>
     public bool IsSelected
     {

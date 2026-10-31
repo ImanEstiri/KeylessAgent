@@ -34,12 +34,14 @@ public sealed class WpfUserInterfaceTests
     }
 
     [Fact]
-    public void ShowProgress_AddsAStepItemToTheFeed()
+    public void ShowProgress_AddsAPresentedStepItemToTheFeed()
     {
         _ui.ShowProgress(new AgentProgressEvent(AgentEventType.ConnectingToBrowser, "port 9222"));
 
         var step = _feed.Items.OfType<StepItem>().Single();
-        step.Type.Should().Be(AgentEventType.ConnectingToBrowser);
+        step.Label.Should().Be("Connecting to Chrome");
+        step.Symbol.Should().Be("●");
+        step.Kind.Should().Be(EventKind.Step);
         step.Detail.Should().Be("port 9222");
     }
 

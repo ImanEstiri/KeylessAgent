@@ -34,6 +34,7 @@ public sealed class ShellViewModel : ObservableObject
         _selectedItem = NavItems[0];
         _selectedItem.IsSelected = true;
         NavigateCommand = new RelayCommand<PageKey>(Navigate);
+        CurrentPage = _pageFactory?.Invoke(NavItems[0].Key);
     }
 
     /// <summary>The sidebar entries in display order; the Agent page is selected initially.</summary>

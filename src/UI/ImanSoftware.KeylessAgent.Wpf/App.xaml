@@ -10,10 +10,13 @@
                 <ResourceDictionary Source="Themes/Colors.xaml" />
                 <ResourceDictionary Source="Themes/Brushes.xaml" />
                 <ResourceDictionary Source="Themes/Typography.xaml" />
+                <ResourceDictionary Source="Themes/Converters.xaml" />
                 <ResourceDictionary Source="Themes/Glass.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
                 <ResourceDictionary Source="Themes/Controls.Inputs.xaml" />
                 <ResourceDictionary Source="Themes/Dialogs.xaml" />
+                <ResourceDictionary Source="Themes/Pages.xaml" />
+                <ResourceDictionary Source="Themes/FeedTemplates.xaml" />
                 <ResourceDictionary Source="Themes/Animations.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

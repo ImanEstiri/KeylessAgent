@@ -11,19 +11,37 @@ namespace ImanSoftware.KeylessAgent.Wpf.Views;
 
 /// <summary>
 /// The main window: custom title bar, sidebar navigation, status bar, Windows 11 backdrop,
-/// and the modal dialog overlay with its keyboard routing (Enter/Esc/digits/arrows).
+/// the modal dialog overlay, and the composition root for the shell and agent page.
 /// </summary>
 public partial class ShellWindow : Window
 {
+    private readonly IUiDispatcher _dispatcher = new WpfDispatcher();
     private readonly DialogHostViewModel _dialogHost = new();
+    private readonly ActivityFeed _feed = new();
 
-    /// <summary>Creates the shell window, applies the backdrop plan and registers the dialog host.</summary>
+    /// <summary>Creates the shell window: backdrop, dialog host, shell navigation, agent page.</summary>
     public ShellWindow()
     {
         InitializeComponent();
         ApplyBackdropPlan();
+
+        var busy = new BusyIndicator(_dispatcher);
+        var dialogs = new DialogService(_dialogHost, _dispatcher);
+        DialogHost.Initialize(_dialogHost, dialogs);
+
+        var runner = new AgentRunner(
+            _dispatcher,
+            _feed,
+            () => new WpfUserInterface(_dispatcher, dialogs, _feed, busy),
+            AgentLoopFactory.Create);
+        var agentViewModel = new AgentViewModel(runner, _dispatcher, _feed);
+
+        DataContext = new ShellViewModel(pageFactory: key => key switch
+        {
+            PageKey.Agent => agentViewModel,
+            _ => null,
+        });
         DialogOverlay.DataContext = _dialogHost;
-        DialogHost.Initialize(_dialogHost, new DialogService(_dialogHost, new WpfDispatcher()));
     }
 
     /// <summary>Reacts to maximize/restore so the content is not cut off by the resize border.</summary>
@@ -37,7 +55,7 @@ public partial class ShellWindow : Window
 
     private void ApplyBackdropPlan()
     {
-        // The user preference arrives with Phase 4 (SettingsService); Auto until then.
+        // The user preference arrives with the settings page (Phase 9); Auto until then.
         var plan = BackdropPlanner.Decide(
             Environment.OSVersion.Version.Build, preference: "Auto", reduceEffects: false);
 

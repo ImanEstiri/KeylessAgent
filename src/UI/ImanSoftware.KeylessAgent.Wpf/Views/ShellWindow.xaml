@@ -9,7 +9,36 @@
         PreviewKeyDown="OnShellPreviewKeyDown">
 
     <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <!-- Sidebar nav item: transparent chrome, hover glow, gold highlight on the active page. -->
+        <Style x:Key="NavItemButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GlassFillHover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource GlassFillStrong}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Gold}" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <WindowChrome.WindowChrome>
@@ -81,26 +110,33 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Sidebar with the five navigation targets (visual only in Phase 3). -->
+            <!-- Sidebar navigation bound to the shell view model (guide Phase 4/6). -->
             <Border Grid.Row="1" Grid.Column="0"
                     Background="{DynamicResource GlassFill}"
                     BorderBrush="{DynamicResource GlassBorder}"
                     BorderThickness="0,1,1,0">
-                <StackPanel Margin="8,12">
-                    <TextBlock Text="▶  Agent" Style="{DynamicResource BodyText}" Padding="12,8" />
-                    <TextBlock Text="▣  Workspace" Style="{DynamicResource BodyText}" Padding="12,8" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="✚  Doctor" Style="{DynamicResource BodyText}" Padding="12,8" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="⚙  Settings" Style="{DynamicResource BodyText}" Padding="12,8" Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="ⓘ  About" Style="{DynamicResource BodyText}" Padding="12,8" Foreground="{DynamicResource TextSecondary}" />
-                </StackPanel>
+                <ItemsControl ItemsSource="{Binding NavItems}" Margin="8,12">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{DynamicResource NavItemButton}"
+                                    Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding Key}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Symbol}" Width="24" />
+                                    <TextBlock Text="{Binding Title}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Border>
 
-            <!-- Content area: navigation target from Phase 4. -->
+            <!-- Content area: the current page from the shell navigation. -->
             <Border Grid.Row="1" Grid.Column="1"
                     Background="{DynamicResource GlassFill}"
                     BorderBrush="{DynamicResource GlassBorder}"
                     BorderThickness="1,1,0,0">
-                <ContentControl x:Name="ContentHost" />
+                <ContentControl x:Name="ContentHost" Content="{Binding CurrentPage}" />
             </Border>
 
             <!-- Status bar -->
