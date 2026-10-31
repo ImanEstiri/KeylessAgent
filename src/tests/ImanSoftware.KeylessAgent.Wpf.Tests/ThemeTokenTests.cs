@@ -56,7 +56,7 @@ public class ThemeTokenTests
         var colors = File.ReadAllText(ThemeFilePath("Colors.xaml"));
 
         foreach (var token in RequiredTokens)
-            colors.Should().Contain($"x:Key=\"{token}\"", "guide 5.1 requires the {0} token", token);
+            colors.Should().Contain($"x:Key=\"{token}Color\"", "guide 5.1 requires the {0} color token (Color suffix avoids brush-key collisions)", token);
     }
 
     [Fact]
@@ -83,6 +83,6 @@ public class ThemeTokenTests
 
         var colors = File.ReadAllText(ThemeFilePath("Colors.xaml"));
         foreach (var token in documented)
-            colors.Should().Contain($"x:Key=\"{token}\"", "docs/wpf-ui.md documents the {0} token", token);
+            colors.Should().Contain($"x:Key=\"{token}Color\"", "docs/wpf-ui.md documents the {0} token", token);
     }
 }

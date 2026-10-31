@@ -33,7 +33,7 @@ public partial class ShellWindow : Window
         InitializeComponent();
         var saved = _wpfSettings.Load();
         RestoreWindowPlacement(saved);
-        ApplyBackdropPlan(saved.BackdropPreference, saved.ReduceEffects);
+        FallbackBackground.Visibility = Visibility.Visible;
         ApplyReduceEffects(saved.ReduceEffects);
 
         var busy = new BusyIndicator(_dispatcher);
@@ -86,6 +86,18 @@ public partial class ShellWindow : Window
         RootGrid.Margin = WindowState == WindowState.Maximized
             ? SystemParameters.WindowResizeBorderThickness
             : default;
+    }
+
+    /// <summary>
+    /// Applies the system backdrop once the window handle exists — WindowBackdrop.TryApply
+    /// needs the HwndSource and always returns false before Show (so Mica/Acrylic would never
+    /// apply if this ran in the constructor).
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var saved = _wpfSettings.Load();
+        ApplyBackdropPlan(saved.BackdropPreference, saved.ReduceEffects);
     }
 
     /// <summary>Saves the window size, position and state (guide Phase 10).</summary>

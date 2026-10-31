@@ -3,36 +3,36 @@
 
     <!-- One brush per color token; views reference these via DynamicResource. -->
 
-    <SolidColorBrush x:Key="BgDeep" Color="{StaticResource BgDeep}" />
-    <SolidColorBrush x:Key="BgMid" Color="{StaticResource BgMid}" />
+    <SolidColorBrush x:Key="BgDeep" Color="{StaticResource BgDeepColor}" />
+    <SolidColorBrush x:Key="BgMid" Color="{StaticResource BgMidColor}" />
 
-    <SolidColorBrush x:Key="GlassFill" Color="{StaticResource GlassFill}" />
-    <SolidColorBrush x:Key="GlassFillHover" Color="{StaticResource GlassFillHover}" />
-    <SolidColorBrush x:Key="GlassFillStrong" Color="{StaticResource GlassFillStrong}" />
-    <SolidColorBrush x:Key="GlassBorder" Color="{StaticResource GlassBorder}" />
+    <SolidColorBrush x:Key="GlassFill" Color="{StaticResource GlassFillColor}" />
+    <SolidColorBrush x:Key="GlassFillHover" Color="{StaticResource GlassFillHoverColor}" />
+    <SolidColorBrush x:Key="GlassFillStrong" Color="{StaticResource GlassFillStrongColor}" />
+    <SolidColorBrush x:Key="GlassBorder" Color="{StaticResource GlassBorderColor}" />
 
-    <SolidColorBrush x:Key="TextPrimary" Color="{StaticResource TextPrimary}" />
-    <SolidColorBrush x:Key="TextSecondary" Color="{StaticResource TextSecondary}" />
-    <SolidColorBrush x:Key="TextMuted" Color="{StaticResource TextMuted}" />
+    <SolidColorBrush x:Key="TextPrimary" Color="{StaticResource TextPrimaryColor}" />
+    <SolidColorBrush x:Key="TextSecondary" Color="{StaticResource TextSecondaryColor}" />
+    <SolidColorBrush x:Key="TextMuted" Color="{StaticResource TextMutedColor}" />
 
-    <SolidColorBrush x:Key="Gold" Color="{StaticResource Gold}" />
-    <SolidColorBrush x:Key="GoldHover" Color="{StaticResource GoldHover}" />
-    <SolidColorBrush x:Key="GoldPressed" Color="{StaticResource GoldPressed}" />
+    <SolidColorBrush x:Key="Gold" Color="{StaticResource GoldColor}" />
+    <SolidColorBrush x:Key="GoldHover" Color="{StaticResource GoldHoverColor}" />
+    <SolidColorBrush x:Key="GoldPressed" Color="{StaticResource GoldPressedColor}" />
 
-    <SolidColorBrush x:Key="Violet" Color="{StaticResource Violet}" />
+    <SolidColorBrush x:Key="Violet" Color="{StaticResource VioletColor}" />
 
-    <SolidColorBrush x:Key="Success" Color="{StaticResource Success}" />
-    <SolidColorBrush x:Key="Warning" Color="{StaticResource Warning}" />
-    <SolidColorBrush x:Key="Danger" Color="{StaticResource Danger}" />
-    <SolidColorBrush x:Key="Info" Color="{StaticResource Info}" />
+    <SolidColorBrush x:Key="Success" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="Warning" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="Danger" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="Info" Color="{StaticResource InfoColor}" />
 
-    <SolidColorBrush x:Key="DiffAdd" Color="{StaticResource DiffAdd}" />
-    <SolidColorBrush x:Key="DiffRemove" Color="{StaticResource DiffRemove}" />
+    <SolidColorBrush x:Key="DiffAdd" Color="{StaticResource DiffAddColor}" />
+    <SolidColorBrush x:Key="DiffRemove" Color="{StaticResource DiffRemoveColor}" />
 
     <!-- Derived convenience gradients -->
     <LinearGradientBrush x:Key="WindowFallbackGradient" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="{StaticResource BgDeep}" Offset="0" />
-        <GradientStop Color="{StaticResource BgMid}" Offset="1" />
+        <GradientStop Color="{StaticResource BgDeepColor}" Offset="0" />
+        <GradientStop Color="{StaticResource BgMidColor}" Offset="1" />
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="GlassCardGradient" StartPoint="0,0" EndPoint="1,1">

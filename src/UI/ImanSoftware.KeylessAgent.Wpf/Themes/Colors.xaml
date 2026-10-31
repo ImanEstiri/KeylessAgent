@@ -3,30 +3,30 @@
 
     <!-- Midnight & Champagne color tokens (guide 5.1). Brushes live in Brushes.xaml. -->
 
-    <Color x:Key="BgDeep">#080B16</Color>
-    <Color x:Key="BgMid">#0E1428</Color>
+    <Color x:Key="BgDeepColor">#080B16</Color>
+    <Color x:Key="BgMidColor">#0E1428</Color>
 
-    <Color x:Key="GlassFill">#0FFFFFFF</Color>
-    <Color x:Key="GlassFillHover">#1AFFFFFF</Color>
-    <Color x:Key="GlassFillStrong">#26FFFFFF</Color>
-    <Color x:Key="GlassBorder">#24FFFFFF</Color>
+    <Color x:Key="GlassFillColor">#0FFFFFFF</Color>
+    <Color x:Key="GlassFillHoverColor">#1AFFFFFF</Color>
+    <Color x:Key="GlassFillStrongColor">#26FFFFFF</Color>
+    <Color x:Key="GlassBorderColor">#24FFFFFF</Color>
 
-    <Color x:Key="TextPrimary">#F2F4FA</Color>
-    <Color x:Key="TextSecondary">#A9B1CC</Color>
-    <Color x:Key="TextMuted">#6F7898</Color>
+    <Color x:Key="TextPrimaryColor">#F2F4FA</Color>
+    <Color x:Key="TextSecondaryColor">#A9B1CC</Color>
+    <Color x:Key="TextMutedColor">#6F7898</Color>
 
-    <Color x:Key="Gold">#E3C07A</Color>
-    <Color x:Key="GoldHover">#F0D29A</Color>
-    <Color x:Key="GoldPressed">#C9A35F</Color>
+    <Color x:Key="GoldColor">#E3C07A</Color>
+    <Color x:Key="GoldHoverColor">#F0D29A</Color>
+    <Color x:Key="GoldPressedColor">#C9A35F</Color>
 
-    <Color x:Key="Violet">#8B7CFF</Color>
+    <Color x:Key="VioletColor">#8B7CFF</Color>
 
-    <Color x:Key="Success">#5CD6A0</Color>
-    <Color x:Key="Warning">#F5B94C</Color>
-    <Color x:Key="Danger">#F26D7D</Color>
-    <Color x:Key="Info">#6CB4FF</Color>
+    <Color x:Key="SuccessColor">#5CD6A0</Color>
+    <Color x:Key="WarningColor">#F5B94C</Color>
+    <Color x:Key="DangerColor">#F26D7D</Color>
+    <Color x:Key="InfoColor">#6CB4FF</Color>
 
-    <Color x:Key="DiffAdd">#265CD6A0</Color>
-    <Color x:Key="DiffRemove">#26F26D7D</Color>
+    <Color x:Key="DiffAddColor">#265CD6A0</Color>
+    <Color x:Key="DiffRemoveColor">#26F26D7D</Color>
 
 </ResourceDictionary>

@@ -107,4 +107,64 @@ public class ThemeOrderTests
 
         offenders.Should().BeEmpty();
     }
+
+    [Fact]
+    public void ColorKeys_AndBrushKeys_NeverCollide()
+    {
+        // A color key shadowed by a same-named brush makes StaticResource hand a Brush to
+        // Color-typed properties (observed: GradientStop.Color received '\#FF080B16' because
+        // Brushes.xaml's BgDeep brush shadowed Colors.xaml's BgDeep color).
+        var themesDirectory = ThemesDirectory();
+        var colorKeys = new HashSet<string>(StringComparer.Ordinal);
+        var brushKeys = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var file in Directory.GetFiles(themesDirectory, "*.xaml"))
+        {
+            foreach (var line in File.ReadAllLines(file))
+            {
+                var keyMatch = Regex.Match(line, "x:Key=\"([A-Za-z]+)\"");
+                if (!keyMatch.Success)
+                    continue;
+
+                var key = keyMatch.Groups[1].Value;
+                if (line.Contains("<Color"))
+                    colorKeys.Add(key);
+                else if (line.Contains("Brush"))
+                    brushKeys.Add(key);
+            }
+        }
+
+        colorKeys.Should().NotBeEmpty("Colors.xaml defines the color tokens");
+        brushKeys.Should().NotBeEmpty("Brushes.xaml defines one brush per color token");
+        colorKeys.Overlaps(brushKeys).Should().BeFalse("color keys and brush keys must never share a name");
+    }
+
+    [Fact]
+    public void GradientStopColors_ResolveToColorResources()
+    {
+        var themesDirectory = ThemesDirectory();
+        var colorsXaml = File.ReadAllText(Path.Combine(themesDirectory, "Colors.xaml"));
+        var colorKeys = Regex.Matches(colorsXaml, "<Color x:Key=\"([A-Za-z]+)\"")
+            .Select(match => match.Groups[1].Value)
+            .ToList();
+
+        colorKeys.Should().NotBeEmpty();
+
+        var violations = new List<string>();
+        foreach (var file in Directory.GetFiles(themesDirectory, "*.xaml"))
+        {
+            var lines = File.ReadAllLines(file);
+            for (var line = 0; line < lines.Length; line++)
+            {
+                foreach (Match match in Regex.Matches(lines[line], "GradientStop Color=\"StaticResource ([A-Za-z]+)\""))
+                {
+                    var key = match.Groups[1].Value;
+                    if (!colorKeys.Contains(key))
+                        violations.Add($"{Path.GetFileName(file)}:{line + 1} GradientStop uses StaticResource {key}, which is not a <Color> in Colors.xaml");
+                }
+            }
+        }
+
+        violations.Should().BeEmpty("GradientStop.Color needs a Color, not a brush");
+    }
 }
