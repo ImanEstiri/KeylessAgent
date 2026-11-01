@@ -113,6 +113,45 @@ public class ChatDiagnosticsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AttachmentChipKeys_WhenNothingMatches_PrintTheComposerCandidate()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage();
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), fakePage as IChatPage))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        foreach (var key in new[] { "AttachmentChips", "AttachmentRemove", "AttachmentFailed" })
+        {
+            var check = report.Data.Checks.First(c => c.Key == key);
+            check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+            check.Detail.Should().Contain("Closest candidate (composer, trimmed)",
+                "unverified {0} selectors must be fixable from facts", key);
+        }
+    }
+
+    [Fact]
+    public async Task AttachmentRemove_WithChipsVisibleButNoMatch_ReportsNotFoundWithChipCandidate()
+    {
+        var inspector = FullyWorking();
+        inspector.Matched.Add("AttachmentChips"); // the chips ARE visible on the page
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage();
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), fakePage as IChatPage))));
+        // Chips visible, remove control not matched: NotFound with the CHIP candidate.
+        inspector.CapturedHtml = "<div class='file-chip'><button>x</button></div>";
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "AttachmentRemove");
+        check.Status.Should().Be(SelectorCheckStatus.NotFound);
+        check.Detail.Should().Contain("file-chip");
+    }
+
+    [Fact]
     public async Task MissingRequiredSelector_MarksReportAsFailing()
     {
         var inspector = FullyWorking();

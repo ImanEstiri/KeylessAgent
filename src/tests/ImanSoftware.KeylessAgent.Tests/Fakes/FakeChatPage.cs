@@ -313,6 +313,24 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
         }
     }
 
+    public Task ReloadAndWaitForComposerAsync(CancellationToken cancellationToken = default)
+    {
+        ReloadCalls++;
+        ThrowIfClosed();
+        if (!FailReload)
+        {
+            InputHasText = false;
+            StaleChipCount = 0;
+            FailedChipCount = 0;
+            ChipsVisible = false;
+            InputFileNames.Clear();
+            VisibleFileNames.Clear();
+            SendEnabled = true; // a freshly loaded composer has an enabled send control
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default)
     {
         Screenshots.Add(fullPath);

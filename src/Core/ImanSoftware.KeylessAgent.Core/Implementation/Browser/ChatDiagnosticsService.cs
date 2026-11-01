@@ -248,8 +248,14 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
 
             var chip = await inspector.ProbeAsync(catalog.AttachmentChips, cancellationToken);
             if (chip is null)
+            {
+                var composer = await inspector.CaptureTrimmedAsync(catalog.InputBox, cancellationToken);
+                var composerNote = string.IsNullOrWhiteSpace(composer)
+                    ? string.Empty
+                    : $" Closest candidate (composer, trimmed): {composer.Truncate(300)}";
                 return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0,
-                    "No attachment chips are visible right now (nothing to remove).");
+                    "No attachment chips are visible right now (nothing to remove)." + composerNote);
+            }
 
             var candidate = await inspector.CaptureTrimmedAsync(catalog.AttachmentChips, cancellationToken);
             var candidateNote = string.IsNullOrWhiteSpace(candidate)
@@ -306,9 +312,21 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             _ => string.Empty,
         };
 
-        return notApplicable.Length > 0
-            ? new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicable)
-            : new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0, "No fallback selector matched — this key is required and must be fixed.");
+        if (notApplicable.Length > 0)
+        {
+            // The chip keys report against the COMPOSER: when they match nothing, print the
+            // trimmed composer-area HTML so unverified selectors can be fixed from facts.
+            var composerCandidate = key is "AttachmentChips" or "AttachmentRemove" or "AttachmentFailed"
+                ? await inspector.CaptureTrimmedAsync(catalog.InputBox, cancellationToken)
+                : null;
+            var composerNote = string.IsNullOrWhiteSpace(composerCandidate)
+                ? string.Empty
+                : $" Closest candidate (composer, trimmed): {composerCandidate.Truncate(300)}";
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicable + composerNote);
+        }
+
+        return new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0, "No fallback selector matched — this key is required and must be fixed.");
     }
 
     internal static async Task<IReadOnlyList<string>> CaptureAsync(

@@ -41,6 +41,13 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// <summary>1-based counter of send attempts (names the attempt in logs and diagnostics).</summary>
     private int _sendCounter;
 
+    /// <summary>
+    /// Safety net for the untrusted chip selectors: set when a send with attachments ends
+    /// without a confirmed send, cleared only by a confirmed send. When set, the NEXT send
+    /// reloads the chat page before touching the composer.
+    /// </summary>
+    private bool _composerSuspect;
+
     public PlaywrightChatSession(
         IChatPage page,
         Func<ValueTask> disposeAsync,
@@ -99,6 +106,16 @@ internal sealed class PlaywrightChatSession : IChatSession
             // The reset runs once per message, BEFORE any upload or paste — never again inside
             // the send attempts (the Enter retry must not wipe a pending message). Stale text
             // or chips from a failed earlier attempt would poison this message otherwise.
+            if (_composerSuspect)
+            {
+                // Chip detection is not trusted: the previous send may have left chips the
+                // selectors cannot see. Wait out any generation, then reload — a fresh page
+                // discards drafts and attachments unconditionally.
+                _log.LogWarning("Previous send failed; reloading the chat to discard any stale draft or attachments (chip detection is not trusted)");
+                await WaitForGenerationAsync(cancellationToken);
+                await _page.ReloadAndWaitForComposerAsync(cancellationToken);
+            }
+
             _sendCounter++;
             var reset = await _page.ResetComposerAsync(_options.Browser.ReplyTimeoutSeconds, cancellationToken);
             if (!reset.Clean)
@@ -116,6 +133,8 @@ internal sealed class PlaywrightChatSession : IChatSession
             if (!await _page.IsOnlineAsync(cancellationToken) && !await WaitForNetworkAsync(cancellationToken))
             {
                 _log.LogWarning("Offline: nothing was uploaded or sent.");
+                if (attachments.Count > 0)
+                    _composerSuspect = true; // chips/text may be on the page from an earlier attempt
                 return Outcome.Failure(OfflineError());
             }
 
@@ -142,6 +161,8 @@ internal sealed class PlaywrightChatSession : IChatSession
                 // offline failure returns through the same path for the same reason.
                 if (delivery.Error.Code is ErrorCodes.NetworkOffline or ErrorCodes.AttachmentUploadFailed)
                     await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                if (attachments.Count > 0)
+                    _composerSuspect = true;
                 return delivery;
             }
             if (delivery.Data == AttachmentDelivery.FellBackToPaste)
@@ -244,11 +265,16 @@ internal sealed class PlaywrightChatSession : IChatSession
                 {
                     _log.LogWarning("The connection dropped while confirming the send; cleaning the composer.");
                     await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                    if (attachments.Count > 0)
+                        _composerSuspect = true;
                     return Outcome.Failure(OfflineError());
                 }
 
                 if (confirmed)
+                {
+                    _composerSuspect = false; // a confirmed send proves the composer is clean again
                     return Outcome.Successful();
+                }
 
                 // Re-check BEFORE any retry: a slow message may have landed after the window
                 // closed — resending it would create a duplicate.
@@ -256,6 +282,7 @@ internal sealed class PlaywrightChatSession : IChatSession
                 if (Confirmed(late))
                 {
                     _log.LogInformation("Send confirmed after the confirm window closed (signals arrived late); no retry.");
+                    _composerSuspect = false;
                     return Outcome.Successful();
                 }
 
@@ -264,6 +291,7 @@ internal sealed class PlaywrightChatSession : IChatSession
                 if (await _page.IsInputClearedAsync(cancellationToken))
                 {
                     _log.LogInformation("Send treated as delivered: the input no longer holds the text (attachment still attached if any).");
+                    _composerSuspect = false;
                     return Outcome.Successful();
                 }
 
@@ -272,6 +300,8 @@ internal sealed class PlaywrightChatSession : IChatSession
                     var screenshot = await CaptureDiagnosticsAsync("send-not-confirmed", cancellationToken);
                     if (uploadedThisAttempt.Count > 0)
                         await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                    if (attachments.Count > 0)
+                        _composerSuspect = true;
                     return Outcome.Failure(new OutcomeError(
                         $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator)."
                         + DiagnosticsHint(screenshot),
@@ -288,9 +318,23 @@ internal sealed class PlaywrightChatSession : IChatSession
         {
             await CaptureDiagnosticsAsync("send-failed", cancellationToken);
             if (uploadedThisAttempt.Count > 0)
+            {
                 await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                _composerSuspect = true;
+            }
             return Outcome.Failure(new OutcomeError(ex));
         }
+    }
+
+    /// <summary>
+    /// Waits (100 ms polling) while the stop/generating indicator is visible, up to
+    /// <c>Browser.ReplyTimeoutSeconds</c> — used before touching or reloading the composer.
+    /// </summary>
+    private async Task WaitForGenerationAsync(CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.ReplyTimeoutSeconds);
+        while (DateTime.UtcNow < deadline && await _page.IsStopIndicatorVisibleAsync(cancellationToken))
+            await Task.Delay(100, cancellationToken);
     }
 
     /// <summary>The failure raised whenever a send is attempted while the machine is offline.</summary>
@@ -667,7 +711,7 @@ internal sealed class PlaywrightChatSession : IChatSession
     }
 
     private async Task<Outcome<AttachmentDelivery>> DeliverAttachmentsAsync(
-        IReadOnlyList<SnapshotAttachment> attachments, List<string> uploadedThisAttempt, CancellationToken cancellationToken)
+        IReadOnlyList<SnapshotAttachment> attachments, List<string> uploadedThisAttempt, CancellationToken cancellationToken, bool retried = false)
     {
         if (attachments.Count == 0)
             return Outcome.Successful(AttachmentDelivery.NothingToAttach);
@@ -761,6 +805,29 @@ internal sealed class PlaywrightChatSession : IChatSession
                 sendSeen = true;
                 sendEnabled = sendState.Value;
             }
+        }
+
+        // Second dirty signal, independent of the chip selectors: the send control is
+        // DETECTED and stayed disabled for the whole window while InspectComposerAsync
+        // shows no chips at all and the page is online. That composer state cannot send —
+        // reload once, redo the whole delivery once, then give up with a precise code.
+        var composerNow = await _page.InspectComposerAsync(cancellationToken);
+        var suspicious = sendSeen && !sendEnabled
+            && composerNow.ChipCount == 0 && composerNow.FailedChipCount == 0
+            && await _page.IsOnlineAsync(cancellationToken);
+
+        if (suspicious && retried)
+            return Outcome.Failure<AttachmentDelivery>(new OutcomeError(
+                "The composer did not recover after a reload: the send control stayed disabled with no attachment chips. Nothing was sent.",
+                ErrorCodes.ComposerNotClean, OutcomeErrorType.Failure));
+
+        if (suspicious)
+        {
+            _log.LogWarning(
+                "The send control stayed disabled for {Seconds}s with no visible chips; reloading the chat and retrying the delivery once.",
+                _options.Browser.UploadWaitSeconds);
+            await _page.ReloadAndWaitForComposerAsync(cancellationToken);
+            return await DeliverAttachmentsAsync(attachments, uploadedThisAttempt, cancellationToken, retried: true);
         }
 
         if (uploadSign && (!sendSeen || sendEnabled))

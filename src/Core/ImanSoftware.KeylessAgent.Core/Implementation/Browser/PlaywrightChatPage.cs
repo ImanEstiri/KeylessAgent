@@ -483,6 +483,14 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<bool> AreFailedChipsVisibleAsync(CancellationToken cancellationToken = default)
         => await IsAnyVisibleAsync(_page, _selectors.AttachmentFailed, cancellationToken);
 
+    /// <inheritdoc />
+    public async Task ReloadAndWaitForComposerAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await WithCancellationAsync(_page.ReloadAsync(), cancellationToken);
+        await WaitForAnyVisibleAsync(_selectors.InputBox, 10_000, cancellationToken);
+    }
+
     /// <summary>Counts visible elements across the fallback list (one combined locator).</summary>
     private async Task<int> GetInputTextLengthAsync(CancellationToken cancellationToken)
     {

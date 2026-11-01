@@ -195,4 +195,11 @@ internal interface IChatPage
 
     /// <summary>Whether any attachment chip shows the failed/error state (the upload did not land).</summary>
     Task<bool> AreFailedChipsVisibleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reloads the current chat page and waits for the input box to come back (the combined
+    /// wait helper). A reload discards unsent drafts and attachment chips — the safety net
+    /// when the chip selectors cannot be trusted.
+    /// </summary>
+    Task ReloadAndWaitForComposerAsync(CancellationToken cancellationToken = default);
 }
