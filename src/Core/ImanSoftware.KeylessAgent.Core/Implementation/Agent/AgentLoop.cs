@@ -344,7 +344,7 @@ internal sealed class AgentLoop : IAgentLoop
                 var dirtyChoice = await ui.ChooseAsync(dirtyMenu, cancellationToken);
                 lastDirtyChoice = dirtyChoice.SelectedId;
                 if (dirtyChoice.Cancelled || dirtyChoice.SelectedId == "cancel")
-                    return Failed("Cancelled by the user (dirty working tree).", dryRun);
+                    return Failed("Cancelled by the user (dirty working tree).", dryRun, ErrorCodes.Cancelled);
 
                 if (dirtyChoice.SelectedId == "stash")
                 {
