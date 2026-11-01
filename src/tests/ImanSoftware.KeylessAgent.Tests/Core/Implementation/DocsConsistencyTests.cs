@@ -150,7 +150,7 @@ public class DocsConsistencyTests
         var documented = ParseDocumentedJsonBlocks(doc);
 
         var serializer = ConfigurationService.CreateSerializer();
-        var serialized = serializer.Serialize(new KeylessOptions());
+        var serialized = serializer.Serialize(KeylessOptions.CreateDefault());
         using var actual = JsonDocument.Parse(serialized);
 
         var problems = new List<string>();

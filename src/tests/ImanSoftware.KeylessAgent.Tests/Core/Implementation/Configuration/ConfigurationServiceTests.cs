@@ -35,6 +35,7 @@ public class ConfigurationServiceTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
             """
             {
+              "SchemaVersion": 2,
               // approval mode
               "mode": "AutoSafe",   // string enum, lowercase key
               "Limits": {

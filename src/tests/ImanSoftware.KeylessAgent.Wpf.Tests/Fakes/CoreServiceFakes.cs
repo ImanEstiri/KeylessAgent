@@ -46,6 +46,8 @@ public sealed class FakeConfigurationService : IConfigurationService
 
     public KeylessOptions Options { get; }
 
+    public bool LastLoadMigratedSchema => false;
+
     public Task<Outcome<KeylessOptions>> LoadAsync(string workspaceRoot)
         => Task.FromResult(_fail
             ? Outcome.Failure<KeylessOptions>(new OutcomeError(

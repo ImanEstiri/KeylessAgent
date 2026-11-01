@@ -298,6 +298,17 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                 ? "No assistant message is visible — the Copy button appears only on a reply."
                 : "Nothing is generating right now.";
 
+            // The Copy button is the highest-value selector: when an assistant message IS
+            // visible but the button did not match, dump every real button candidate with
+            // its actual aria-label and class names.
+            if (key == "MessageCopyButton")
+            {
+                var buttons = await inspector.DumpButtonsAsync(catalog.AssistantMessage, cancellationToken);
+                candidateNote += buttons.Length > 0
+                    ? $" Buttons on the newest message: {buttons.Truncate(400)}"
+                    : string.Empty;
+            }
+
             return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicableNow + candidateNote);
         }
 

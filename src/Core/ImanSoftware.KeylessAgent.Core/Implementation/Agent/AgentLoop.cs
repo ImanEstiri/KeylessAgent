@@ -121,7 +121,9 @@ internal sealed class AgentLoop : IAgentLoop
         return string.Join("\n",
             "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
             "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@mkdir <path> / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
-            "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
+            "The WHOLE reply is plain AgentScript v1 - no outer markdown fence around the reply. BUT every CONTENT payload inside @@newfile or @@updatefile MUST be wrapped in its own triple-backtick fence: a ``` (or ```html) line, then the file content, then a ``` line BEFORE CONTENT>>>. The program strips that inner fence before writing the file; without it the chat renderer collapses newlines and the reply is corrupted.",
+            "Example: @@newfile src/x.html, then <<<CONTENT, then ```html, then the file content, then ```, then CONTENT>>>, then @@end.",
+            "Markers are ALONE on their own line, then @@end ends the block. End with @@eof. No @@command, no JSON envelope.",
             "Every payload marker (<<<NAME and NAME>>>) MUST be ALONE on its own line — never chain \"CONTENT>>> @@end @@newfile x\" on one line.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
             "Missing tools: never edit, move or create files via python/node/shell when a file command exists; if a needed tool is missing (e.g. dotnet for a build), say so in @@say, skip that verification, finish the rest, and tell the user what to install — never retry a missing tool.",
@@ -174,6 +176,12 @@ internal sealed class AgentLoop : IAgentLoop
             if (configOutcome.IsFailure)
                 return Failed(configOutcome.Error.Message, dryRun);
             options = configOutcome.Data;
+            if (_configuration.LastLoadMigratedSchema)
+            {
+                ui.Say("[!] keyless.json in this workspace was upgraded to the current schema. " +
+                    "Previous defaults like ReplyTimeoutSeconds 300, SendConfirmSeconds 15 and UploadWaitSeconds 60 " +
+                    "have been replaced with the new tuned defaults. The old file is backed up as keyless.json.v1.bak in the workspace root.");
+            }
             timings.Stop("config");
 
             // The pace (CLI/WPF override or keyless.json) decides how many non-say commands

@@ -8,6 +8,22 @@ namespace ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 /// </summary>
 public sealed record KeylessOptions
 {
+    /// <summary>The current keyless.json schema version.</summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>
+    /// The keyless.json schema version this file was written for. Null means the file was
+    /// written before versioning existed (schema version 1) and it will be migrated on load.
+    /// </summary>
+    public int? SchemaVersion { get; init; }
+
+    /// <summary>
+    /// Creates the current default configuration with the schema version set, for fresh
+    /// workspaces and for the schema migration.
+    /// </summary>
+    public static KeylessOptions CreateDefault() => new() { SchemaVersion = CurrentSchemaVersion };
+
+
     /// <summary>
     /// How much confirmation the agent asks for. Default: <see cref="ApprovalMode.Ask"/>.
     /// </summary>
@@ -155,12 +171,12 @@ public sealed record BrowserOptions
     /// <summary>
     /// Minimum artificial delay between browser actions. Default 400 ms.
     /// </summary>
-    public int MinDelayMs { get; init; } = 0;
+    public int MinDelayMs { get; init; } = 400;
 
     /// <summary>
     /// Maximum artificial delay between browser actions. Default 1500 ms.
     /// </summary>
-    public int MaxDelayMs { get; init; } = 150;
+    public int MaxDelayMs { get; init; } = 1500;
 
     /// <summary>
     /// Rate limit for messages sent to the chat. Default 6 per minute.
@@ -338,5 +354,5 @@ public sealed record CommandsOptions
     /// <summary>
     /// Timeout for every external process. Default 180 seconds.
     /// </summary>
-    public int TimeoutSeconds { get; init; } = 300;
+    public int TimeoutSeconds { get; init; } = 180;
 }

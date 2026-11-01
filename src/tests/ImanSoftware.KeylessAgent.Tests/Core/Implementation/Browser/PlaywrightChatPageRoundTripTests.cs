@@ -121,7 +121,7 @@ public class PlaywrightChatPageRoundTripTests
         hidden0.Received(1).IsVisibleAsync();
         hidden1.Received(1).IsVisibleAsync();
         visible2.Received(1).IsVisibleAsync();
-        visible2.Received(1).FillAsync(Arg.Any<string?>());
+        visible2.Received(1).FillAsync(Arg.Any<string?>(), Arg.Any<LocatorFillOptions?>());
     }
 
     [Fact]

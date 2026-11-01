@@ -59,10 +59,13 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             if (!string.IsNullOrEmpty(options.ResumeChatUrl) &&
                 !page.Url.StartsWith(options.ResumeChatUrl, StringComparison.OrdinalIgnoreCase))
             {
+                // Commit returns as soon as the navigation is acknowledged; the composer
+                // reset after login waits for the input box separately, so DOM-ready is not
+                // needed and a hung navigation cannot cost a full minute.
                 await page.GotoAsync(options.ResumeChatUrl, new PageGotoOptions
                 {
-                    WaitUntil = WaitUntilState.DOMContentLoaded,
-                    Timeout = 60_000,
+                    WaitUntil = WaitUntilState.Commit,
+                    Timeout = 15_000,
                 });
             }
 
@@ -194,27 +197,48 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     /// </summary>
     internal static async Task MinimizeWindowAsync(IPage page, int launchedProcessId, CancellationToken cancellationToken = default)
     {
+        // The CDP block gets its own five-second window: a hung CDP call falls through to
+        // the Win32 fallback instead of running until the caller's cancellation.
+        using var cdpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cdpCts.CancelAfter(TimeSpan.FromSeconds(5));
+        var cdpTimedOut = false;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var session = await page.Context.NewCDPSessionAsync(page);
             try
             {
-                var window = await session.SendAsync("Browser.getWindowForTarget");
-                var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
-                await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+                // ICDPSession.SendAsync has no CancellationToken overload, so the whole CDP
+                // exchange is raced against the five-second window; a hung call loses the
+                // race and the Win32 fallback takes over.
+                var cdpWork = Task.Run(async () =>
                 {
-                    ["windowId"] = windowId,
-                    ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
-                });
+                    var window = await session.SendAsync("Browser.getWindowForTarget");
+                    var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
+                    await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+                    {
+                        ["windowId"] = windowId,
+                        ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
+                    });
+                }, cdpCts.Token);
+
+                var completed = await Task.WhenAny(cdpWork, Task.Delay(Timeout.Infinite, cdpCts.Token));
+                if (completed != cdpWork)
+                    throw new OperationCanceledException(cdpCts.Token);
+
+                await cdpWork;
                 return;
+            }
+            catch (OperationCanceledException) when (cdpCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                cdpTimedOut = true; // fall through to the Win32 fallback
             }
             finally
             {
                 await session.DetachAsync();
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -222,6 +246,9 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         {
             System.Diagnostics.Debug.WriteLine($"CDP minimize failed: {ex.Message}; falling back to Win32.");
         }
+
+        if (cdpTimedOut)
+            System.Diagnostics.Debug.WriteLine("CDP minimize timed out after 5 s; falling back to Win32.");
 
         try
         {

@@ -7,6 +7,10 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   // How much confirmation the agent asks for.
   "Mode": "Ask",            // Ask | AutoSafe | Auto
 
+  // Schema version of this file; absent = v1. The loader migrates stale files to
+  // CurrentSchemaVersion (backing up the original as keyless.json.v<N>.bak).
+  "SchemaVersion": 2,
+
   "Browser": {
     "ChromeDebugPort": 9222,        // CDP port; ignored by Chrome's DEFAULT profile since Chrome 136
     "UserDataDir": "",              // dedicated profile; empty = %LOCALAPPDATA%\KeylessAgent\chrome-profile
@@ -18,18 +22,18 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "EnableDeepThink": true,        // DeepThink toggle before the first message
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",
-    "ReplyTimeoutSeconds": 300,
+    "ReplyTimeoutSeconds": 180,
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
     "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
     "MaxTurnsPerChat": 20,           // turns per chat before a new chat starts automatically
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
-    "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
-    "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
+    "SendConfirmSeconds": 8,         // wait for proof the message was sent before retrying once
+    "UploadWaitSeconds": 15,         // wait for attachment chips + enabled send before pasting
     "WaitForNetworkSeconds": 0,      // when offline before a send: poll up to N s for the connection (0 = fail at once)
-    "MinDelayMs": 0,                // random delay between actions (default: event-driven only)
-    "MaxDelayMs": 150,
+    "MinDelayMs": 400,              // random delay between actions (default: event-driven only)
+    "MaxDelayMs": 1500,
     "MaxMessagesPerMinute": 6,      // local rate limiter
     "Debug": false                  // screenshots on errors
   },
@@ -69,7 +73,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "Allowlist": [ "dotnet", "git", "npm", "node", "python" ],
     "AutoApprove": [ "ReadOnly", "Build" ],
     "BatchFailureMode": "StopOnMutationFailure",
-    "TimeoutSeconds": 300
+    "TimeoutSeconds": 180
   }
 }
 ```

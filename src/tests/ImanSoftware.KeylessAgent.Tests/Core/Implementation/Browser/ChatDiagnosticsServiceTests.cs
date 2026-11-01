@@ -69,6 +69,15 @@ public class ChatDiagnosticsServiceTests : IDisposable
             return Task.FromResult(key is null || !Matched.Contains(key) ? null : CapturedHtml);
         }
 
+        public Task<string> DumpButtonsAsync(string[] assistantMessageSelectors, CancellationToken cancellationToken = default)
+        {
+            var key = KeyFor(assistantMessageSelectors);
+            var dump = key is not null && Matched.Contains(key) && !string.IsNullOrWhiteSpace(CapturedHtml)
+                ? "[{\"label\":\"Copy reply\"}]"
+                : "Not found";
+            return Task.FromResult(dump);
+        }
+
         /// <summary>Maps the first fallback selector back to its catalog key (test bookkeeping).</summary>
         private static string? KeyFor(string[] selectors)
         {

@@ -175,7 +175,20 @@ internal sealed class PlaywrightChatSession : IChatSession
             }
 
             // --- Step 3: insert the whole text and send ---
-            await _page.InsertTextAsync(text, cancellationToken);
+            // A hung insert must not cost the default Playwright timeout: 15 s, then the
+            // send loop's Enter fallback takes over.
+            using (var insertCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                insertCts.CancelAfter(TimeSpan.FromSeconds(15));
+                try
+                {
+                    await _page.InsertTextAsync(text, insertCts.Token);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _log.LogWarning("InsertText timed out after 15 s; the send loop falls back to Enter.");
+                }
+            }
             if (_options.Browser.HumanDelay)
             {
                 await Task.Delay(_random.Next(
@@ -211,7 +224,12 @@ internal sealed class PlaywrightChatSession : IChatSession
 
                     if (attempt == 1)
                     {
-                        if (!await _page.TryClickSendAsync(cancellationToken))
+                        // A hung click must not cost the default Playwright timeout: 10 s,
+                        // then the Enter fallback takes over within the same attempt.
+                        using var clickCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        clickCts.CancelAfter(TimeSpan.FromSeconds(10));
+                        var clicked = await _page.TryClickSendAsync(clickCts.Token);
+                        if (!clicked)
                             await _page.PressEnterAsync(cancellationToken);
                     }
                     else

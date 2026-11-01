@@ -123,7 +123,7 @@ public class PaceLoopTests : IDisposable
         var loop = CreateLoop(chat);
         var ui = new FakeAgentUserInterface();
 
-        await loop.RunAsync(_root, "create three files", ui);
+        await loop.RunAsync(_root, "create three files", ui, paceOverride: pace);
 
         File.Exists(Path.Combine(_root, "a1.txt")).Should().BeTrue();
         File.Exists(Path.Combine(_root, "a2.txt")).Should().Be(expectedExecuted >= 2);

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using ImanSoftware.FileStorage;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.Outcomes;
 using ImanSoftware.Serialization;
@@ -51,18 +52,20 @@ internal sealed class ConfigurationService : IConfigurationService
 
         if (!_storage.FileExists(path))
         {
+            // A fresh file is born at the CURRENT schema version; writing a versionless
+            // default here would make the very next load "migrate" it pointlessly.
             var serializer = CreateSerializer();
-            var defaults = serializer.Serialize(new KeylessOptions());
+            var defaults = KeylessOptions.CreateDefault();
 
             var mkdir = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(path)!);
             if (mkdir.IsFailure)
                 return Outcome.Failure<KeylessOptions>(mkdir.Error);
 
-            var write = await _storage.WriteAllTextAsync(path, defaults);
+            var write = await _storage.WriteAllTextAsync(path, serializer.Serialize(defaults));
             if (write.IsFailure)
                 return Outcome.Failure<KeylessOptions>(write.Error);
 
-            return Outcome.Successful(new KeylessOptions());
+            return Outcome.Successful(defaults);
         }
 
         var read = await _storage.ReadAllTextAsync(path);
@@ -91,7 +94,49 @@ internal sealed class ConfigurationService : IConfigurationService
         if (validation.IsFailure)
             return Outcome.Failure<KeylessOptions>(validation.Error);
 
-        return Outcome.Successful(options);
+        var (migratedOptions, migrated) = await MigrateIfStaleAsync(path, read.Data, options);
+        LastLoadMigratedSchema = migrated;
+        return Outcome.Successful(migratedOptions);
+    }
+
+    /// <inheritdoc />
+    public bool LastLoadMigratedSchema { get; private set; }
+
+    /// <summary>
+    /// Migrates a pre-schema-version keyless.json to the current defaults: backs up the raw
+    /// file as keyless.json.v{version}.bak, preserves the four most common user
+    /// customizations (Mode, ReplyTimeoutSeconds, ChromeDebugPort, Allowlist) and replaces
+    /// every other value — including the stale timeout defaults — with the current ones.
+    /// </summary>
+    private async Task<(KeylessOptions Options, bool Migrated)> MigrateIfStaleAsync(
+        string path, string rawContents, KeylessOptions loaded)
+    {
+        var effectiveVersion = loaded.SchemaVersion ?? 1;
+        if (effectiveVersion >= KeylessOptions.CurrentSchemaVersion)
+            return (loaded, false);
+
+        var backupPath = $"{path}.v{effectiveVersion}.bak";
+        var backupWrite = await _storage.WriteAllTextAsync(backupPath, rawContents);
+        if (backupWrite.IsFailure)
+            return (loaded, false);
+
+        var fresh = KeylessOptions.CreateDefault();
+        if (loaded.Mode != ApprovalMode.Ask)
+            fresh = fresh with { Mode = loaded.Mode };
+        if (loaded.Browser.ReplyTimeoutSeconds != 300)
+            fresh = fresh with { Browser = fresh.Browser with { ReplyTimeoutSeconds = loaded.Browser.ReplyTimeoutSeconds } };
+        if (loaded.Browser.ChromeDebugPort != 9222)
+            fresh = fresh with { Browser = fresh.Browser with { ChromeDebugPort = loaded.Browser.ChromeDebugPort } };
+        if (!loaded.Commands.Allowlist.SequenceEqual(
+                new[] { "dotnet", "git", "npm", "node", "python" }, StringComparer.OrdinalIgnoreCase))
+            fresh = fresh with { Commands = fresh.Commands with { Allowlist = loaded.Commands.Allowlist } };
+
+        var serializer = CreateSerializer();
+        var write = await _storage.WriteAllTextAsync(path, serializer.Serialize(fresh));
+        if (write.IsFailure)
+            return (loaded, false);
+
+        return (fresh, true);
     }
 
     /// <summary>

@@ -360,7 +360,7 @@ internal sealed class PlaywrightChatPage : IChatPage
 
         var (input, index) = match.Value;
         _log.LogDebug("InputBox matched selector #{Index}: {Selector}", index, _selectors.InputBox[index]);
-        await input.FillAsync(string.Empty);
+        await input.FillAsync(string.Empty, new LocatorFillOptions { Timeout = 5_000 });
         await _page.Keyboard.InsertTextAsync(text);
     }
 
@@ -455,8 +455,8 @@ internal sealed class PlaywrightChatPage : IChatPage
         {
             _log.LogWarning("Chip removal did not clean the composer; reloading the chat page to discard the draft.");
             method = "page reloaded";
-            await WithCancellationAsync(_page.ReloadAsync(), cancellationToken);
-            await WaitForAnyVisibleAsync(_selectors.InputBox, 10_000, cancellationToken);
+            await WithCancellationAsync(_page.ReloadAsync(new PageReloadOptions { Timeout = 10_000 }), cancellationToken);
+            await WaitForAnyVisibleAsync(_selectors.InputBox, 5_000, cancellationToken);
             state = await InspectComposerAsync(cancellationToken);
         }
 
@@ -498,8 +498,8 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task ReloadAndWaitForComposerAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await WithCancellationAsync(_page.ReloadAsync(), cancellationToken);
-        await WaitForAnyVisibleAsync(_selectors.InputBox, 10_000, cancellationToken);
+        await WithCancellationAsync(_page.ReloadAsync(new PageReloadOptions { Timeout = 10_000 }), cancellationToken);
+        await WaitForAnyVisibleAsync(_selectors.InputBox, 5_000, cancellationToken);
     }
 
     /// <summary>Counts visible elements across the fallback list (one combined locator).</summary>
@@ -545,7 +545,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             return;
 
         var (input, _) = match.Value;
-        await WithCancellationAsync(input.ClickAsync(), cancellationToken);
+        await WithCancellationAsync(input.ClickAsync(new LocatorClickOptions { Timeout = 3_000 }), cancellationToken);
         await _page.Keyboard.PressAsync("Control+a");
         await _page.Keyboard.PressAsync("Delete");
 
@@ -566,7 +566,7 @@ internal sealed class PlaywrightChatPage : IChatPage
 
         try
         {
-            await WithCancellationAsync(match.Value.Item1.ClickAsync(), cancellationToken);
+            await WithCancellationAsync(match.Value.Item1.ClickAsync(new LocatorClickOptions { Timeout = 3_000 }), cancellationToken);
             return true;
         }
         catch (OperationCanceledException)
@@ -630,7 +630,7 @@ internal sealed class PlaywrightChatPage : IChatPage
 
             _log.LogDebug("SendButton matched selector #{Index}: {Selector} (control <{Tag}>, label '{Label}')",
                 index, _selectors.SendButton[index], clickedTag, clickedLabel);
-            await locator.ClickAsync();
+            await locator.ClickAsync(new LocatorClickOptions { Timeout = 5_000 });
             return true;
         }
         catch (OperationCanceledException)
@@ -711,7 +711,7 @@ internal sealed class PlaywrightChatPage : IChatPage
 
         try
         {
-            await newest.HoverAsync();
+            await newest.HoverAsync(new LocatorHoverOptions { Timeout = 2_000 });
         }
         catch (OperationCanceledException)
         {
@@ -810,6 +810,34 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 _log.LogDebug("Accessibility copy fallback #{Attempt} failed: {Message}", attempt + 1, ex.Message);
             }
+        }
+
+        // Third strategy: enumerate every button-like element on the newest message and click
+        // the first whose label (aria-label / title / text) contains "copy" in any case.
+        try
+        {
+            var candidates = newest.Locator("button, [role='button']");
+            var count = await WithCancellationAsync(candidates.CountAsync(), cancellationToken);
+            for (var i = 0; i < count; i++)
+            {
+                var label = await EvaluateAsync(candidates.Nth(i),
+                    "element => [element.getAttribute('aria-label'), element.getAttribute('title'), (element.textContent || '').trim()].filter(Boolean).join(' | ').toLowerCase()",
+                    cancellationToken);
+                if (string.IsNullOrEmpty(label) || !label.Contains("copy", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                await WithCancellationAsync(candidates.Nth(i).ClickAsync(new LocatorClickOptions { Timeout = 3_000 }), cancellationToken);
+                _log.LogInformation("Copy control matched via label scan (candidate #{Index}): {Label}", i, label);
+                return true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Label-scan copy fallback failed: {Message}", ex.Message);
         }
 
         return false;

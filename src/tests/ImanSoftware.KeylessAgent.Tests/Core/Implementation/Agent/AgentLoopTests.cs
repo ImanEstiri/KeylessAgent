@@ -175,7 +175,7 @@ public class AgentLoopTests : IDisposable
     public async Task RunAsync_CommandLimit_ExecutesFirstNAndReportsSkipped()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Limits": { "MaxCommandsPerResponse": 2 }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+            """{ "SchemaVersion": 2, "Limits": { "MaxCommandsPerResponse": 2 }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
         var chat = new FakeChatProvider(
             """
             @@newfile a1.txt
@@ -214,7 +214,7 @@ public class AgentLoopTests : IDisposable
     public async Task RunAsync_InAutoSafe_ShowsSecurityBoundaryWarning()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Mode": "AutoSafe" }""");
+            """{ "SchemaVersion": 2, "Mode": "AutoSafe" }""");
         var chat = new FakeChatProvider(DoneReply("done"));
         var loop = CreateLoop(chat);
         var ui = new FakeAgentUserInterface();
@@ -272,7 +272,7 @@ public class AgentLoopTests : IDisposable
         try
         {
             File.WriteAllText(Path.Combine(notARepo, "keyless.json"),
-                "{ \"Git\": { \"AutoInit\": false } }");
+                "{ \"SchemaVersion\": 2, \"Git\": { \"AutoInit\": false } }");
             var loop = CreateLoop(new FakeChatProvider(DoneReply("x")));
             var ui = new FakeAgentUserInterface();
 
@@ -333,7 +333,7 @@ public class AgentLoopTests : IDisposable
     public async Task StopOnMutationFailure_ThirdCommandNotExecuted()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+            """{ "SchemaVersion": 2, "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
         var chat = new FakeChatProvider(
             """
             @@newfile a1.txt
@@ -366,7 +366,7 @@ public class AgentLoopTests : IDisposable
     public async Task ReadOnlyProbeFailure_DoesNotStop()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+            """{ "SchemaVersion": 2, "Commands": { "BatchFailureMode": "StopOnMutationFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
         var chat = new FakeChatProvider(
             """
             @@runcommand
@@ -397,7 +397,7 @@ public class AgentLoopTests : IDisposable
     public async Task OnErrorContinue_OverridesStopOnAnyFailure()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Commands": { "BatchFailureMode": "StopOnAnyFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+            """{ "SchemaVersion": 2, "Commands": { "BatchFailureMode": "StopOnAnyFailure" }, "Browser": { "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
         var chat = new FakeChatProvider(
             """
             @@runcommand on_error=continue
@@ -440,7 +440,7 @@ public class AgentLoopTests : IDisposable
     public async Task RunAsync_MaxTurnsPerChat_StartsNewChatBeforeSendingSecondTurn()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Browser": { "MaxTurnsPerChat": 1, "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
+            """{ "SchemaVersion": 2, "Browser": { "MaxTurnsPerChat": 1, "MaxMessagesPerMinute": 1000, "MinDelayMs": 0, "MaxDelayMs": 0 } }""");
         var chat = new FakeChatProvider(DoneReply("first turn done"), DoneReply("second turn done"));
         var loop = CreateLoop(chat);
         var ui = new FakeAgentUserInterface();
@@ -753,7 +753,7 @@ public class AgentLoopTests : IDisposable
     public async Task RunAsync_RefreshAfterEachBatch_RefreshesBetweenBatches()
     {
         File.WriteAllText(Path.Combine(_root, "keyless.json"),
-            """{ "Snapshot": { "RefreshAfterEachBatch": true } }""");
+            """{ "SchemaVersion": 2, "Snapshot": { "RefreshAfterEachBatch": true } }""");
         var snapshot = new FakeSnapshotService();
         var chat = new FakeChatProvider(
             """

@@ -55,6 +55,8 @@ CONTENT>>>
 @@end
 ```
 
+This is the only way to write file content. Writing CONTENT without the inner backtick fence is rejected because the chat markdown renderer collapses newlines before the parser sees the reply.
+
 WRONG (newlines will be destroyed — this reply is rejected):
 
 ```
