@@ -3,6 +3,7 @@ using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
@@ -72,14 +73,70 @@ public sealed class WorkspaceViewModelTests : IDisposable
             _feed);
     }
 
+    private sealed class FakeEnvironmentTools(Dictionary<string, ToolStatus> tools) : IEnvironmentTools
+    {
+        public int Calls { get; private set; }
+        public int ForceRefreshCalls { get; private set; }
+
+        public Task<IReadOnlyDictionary<string, ToolStatus>> GetToolsCachedAsync(
+            string workspaceRoot, bool forceRefresh, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (forceRefresh)
+                ForceRefreshCalls++;
+            return Task.FromResult<IReadOnlyDictionary<string, ToolStatus>>(tools);
+        }
+
+        public Task<ToolStatus> GetToolStatusAsync(string workspaceRoot, string tool, CancellationToken cancellationToken = default)
+            => Task.FromResult(tools.TryGetValue(tool, out var status)
+                ? status
+                : new ToolStatus(tool, ToolStates.Missing, string.Empty, string.Empty, string.Empty));
+
+        public Task InvalidateToolAsync(string workspaceRoot, string tool, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task EnvironmentCard_MapsToolStates_AndRecheckForcesRefresh()
+    {
+        var tools = new Dictionary<string, ToolStatus>(StringComparer.Ordinal)
+        {
+            ["git"] = new("git", ToolStates.Available, "2.45.0", "git", string.Empty),
+            ["dotnet"] = new("dotnet", ToolStates.Missing, string.Empty, string.Empty, string.Empty),
+        };
+        var fake = new FakeEnvironmentTools(tools);
+        var viewModel = CreateViewModel(new FakeInspector(), environmentTools: fake);
+        _agent.WorkspaceRoot = @"G:\demo";
+
+        viewModel.RecheckToolsCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.EnvironmentRows.Count == 2);
+
+        viewModel.EnvironmentRows[0].Tool.Should().Be("git");
+        viewModel.EnvironmentRows[0].State.Should().Be("OK");
+        viewModel.EnvironmentRows[0].Link.Should().BeEmpty();
+        viewModel.EnvironmentRows[1].Tool.Should().Be("dotnet");
+        viewModel.EnvironmentRows[1].State.Should().Be("MISSING");
+        viewModel.EnvironmentRows[1].Link.Should().Be("https://dotnet.microsoft.com/download");
+        fake.ForceRefreshCalls.Should().Be(1, "the Re-check button forces a re-probe");
+    }
+
+    [Fact]
+    public void EnvironmentCard_WithoutTheToolsFacade_StaysEmpty()
+    {
+        var viewModel = CreateViewModel(new FakeInspector());
+
+        viewModel.EnvironmentRows.Should().BeEmpty();
+        viewModel.HasEnvironmentRows.Should().BeFalse();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
             Directory.Delete(_root, recursive: true);
     }
 
-    private WorkspaceViewModel CreateViewModel(FakeInspector inspector, Func<string?>? browse = null)
-        => new(_agent, inspector, _settings, _dispatcher, browse ?? (() => null));
+    private WorkspaceViewModel CreateViewModel(FakeInspector inspector, Func<string?>? browse = null, IEnvironmentTools? environmentTools = null)
+        => new(_agent, inspector, _settings, _dispatcher, browse ?? (() => null), environmentTools);
 
     [Fact]
     public async Task SelectValidFolder_InspectsCapabilities_AndPersistsTheRecent()

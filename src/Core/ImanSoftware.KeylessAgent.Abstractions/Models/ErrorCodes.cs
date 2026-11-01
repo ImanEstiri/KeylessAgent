@@ -130,6 +130,9 @@ public static class ErrorCodes
     /// <summary>The composer still holds stale text or attachment chips after the reset attempt.</summary>
     public const string ComposerNotClean = "KA_COMPOSER_NOT_CLEAN";
 
+    /// <summary>A runcommand's tool is listed as Missing in the environment — the process was never started.</summary>
+    public const string ToolMissing = "KA_TOOL_MISSING";
+
     /// <summary>The chat hit its length limit and could not be continued.</summary>
     public const string ChatExhausted = "KA_CHAT_EXHAUSTED";
     public const string Cancelled = "KA_CANCELLED";

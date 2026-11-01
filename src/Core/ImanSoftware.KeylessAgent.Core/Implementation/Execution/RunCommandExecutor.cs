@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
@@ -14,20 +15,25 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 /// </summary>
 internal sealed class RunCommandExecutor : ICommandExecutor
 {
+    private static readonly HashSet<string> KnownTools = new(StringComparer.OrdinalIgnoreCase)
+        { "git", "dotnet", "node", "npm", "python", "py", "python3" };
+
     private readonly ICommandPolicy _policy;
     private readonly ICommandRiskClassifier _riskClassifier;
     private readonly IProcessRunner _runner;
+    private readonly IEnvironmentTools? _environmentTools;
 
     public RunCommandExecutor()
         : this(new CommandPolicy(), new CommandRiskClassifier(), new ProcessRunner())
     {
     }
 
-    internal RunCommandExecutor(ICommandPolicy policy, ICommandRiskClassifier riskClassifier, IProcessRunner runner)
+    internal RunCommandExecutor(ICommandPolicy policy, ICommandRiskClassifier riskClassifier, IProcessRunner runner, IEnvironmentTools? environmentTools = null)
     {
         _policy = policy;
         _riskClassifier = riskClassifier;
         _runner = runner;
+        _environmentTools = environmentTools;
     }
 
     /// <inheritdoc />
@@ -59,6 +65,29 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         // the shell so built-ins, &&/|| chains and redirects work as the model wrote them.
         var (program, _) = SplitCommandLine(run.CommandLine);
         var (shellFile, shellArguments) = ShellInvocationFor(run.CommandLine, OperatingSystem.IsWindows());
+
+        // Fail fast: a tool the environment lists as Missing is never started and never
+        // retried — the model must use the file commands or ask the user to install it.
+        // A cache older than 1 h re-probes that one tool first (cheap) to stay current.
+        if (_environmentTools is not null && KnownTools.Contains(program))
+        {
+            var toolStatus = await _environmentTools.GetToolStatusAsync(
+                context.WorkspaceRoot, program.ToLowerInvariant(), context.CancellationToken);
+            if (toolStatus.State is ToolStates.Missing or ToolStates.StoreAlias)
+            {
+                return new CommandExecutionResult
+                {
+                    Number = command.Number,
+                    Kind = command.Kind,
+                    Target = command.Target,
+                    Status = CommandStatus.Error,
+                    ErrorCode = ErrorCodes.ToolMissing,
+                    FailureReason = "tool_missing",
+                    Tier = assessment.Data.Tier,
+                    ErrorMessage = $"'{program}' is not installed on this machine (see Environment). Do not retry it. Use the file commands, or ask the user to install it.",
+                };
+            }
+        }
 
         // Approval policy per mode and tier.
         var autoApproved = false;
@@ -116,6 +145,12 @@ internal sealed class RunCommandExecutor : ICommandExecutor
 
         if (result.NotStarted)
         {
+            // The program is not on the machine although the cache said it is installed —
+            // reality wins: re-probe the tool so the fail-fast rule stays current (or the
+            // reverse: a cache miss gets corrected too).
+            if (_environmentTools is not null && KnownTools.Contains(program))
+                await _environmentTools.InvalidateToolAsync(context.WorkspaceRoot, program.ToLowerInvariant(), context.CancellationToken);
+
             return new CommandExecutionResult
             {
                 Number = command.Number,
@@ -171,6 +206,10 @@ internal sealed class RunCommandExecutor : ICommandExecutor
             var message = notFoundReason
                 ? NotAvailableMessage(program)
                 : $"Command exited with code {result.ExitCode}.";
+
+            // Same auto-invalidation as NotStarted: reality wins over the cache.
+            if (notFoundReason && _environmentTools is not null && KnownTools.Contains(program))
+                await _environmentTools.InvalidateToolAsync(context.WorkspaceRoot, program.ToLowerInvariant(), context.CancellationToken);
 
             return new CommandExecutionResult
             {

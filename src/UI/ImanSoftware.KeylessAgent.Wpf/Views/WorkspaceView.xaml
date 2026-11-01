@@ -139,6 +139,45 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
+            <!-- Environment: installed tools from Core's probe (git/dotnet/python/node) -->
+            <Border Style="{DynamicResource GlassCard}" Margin="0,12,0,0" Padding="12">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Environment" Style="{DynamicResource BodyText}" Foreground="{DynamicResource Gold}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="Re-check tools"
+                                Style="{DynamicResource GhostButton}"
+                                Command="{Binding RecheckToolsCommand}"
+                                MinWidth="130" />
+                    </Grid>
+                    <TextBlock Text="Select a workspace to check the installed tools."
+                               Style="{DynamicResource CaptionText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding HasEnvironmentRows, Converter={StaticResource BoolToVisibility}, ConverterParameter=Inverse}" />
+                    <ItemsControl ItemsSource="{Binding EnvironmentRows}" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Tool}" Style="{DynamicResource MonoText}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding State}" Style="{DynamicResource CaptionText}"
+                                               Foreground="{DynamicResource TextSecondary}" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Link}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <!-- Recent workspaces -->
             <TextBlock Text="Recent workspaces" Style="{DynamicResource BodyText}" Foreground="{DynamicResource Gold}" Margin="0,20,0,4" />
             <TextBlock Text="No recent workspaces yet — Browse… to pick a folder."

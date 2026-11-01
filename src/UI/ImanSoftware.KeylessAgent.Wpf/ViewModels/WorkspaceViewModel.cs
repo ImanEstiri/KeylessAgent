@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.IO;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Mvvm;
+using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Wpf.ViewModels;
@@ -13,6 +15,12 @@ namespace ImanSoftware.KeylessAgent.Wpf.ViewModels;
 /// <param name="Value">The probe result ("yes"/"no" or the branch name).</param>
 /// <param name="Ok">Whether the capability is available (chip color).</param>
 public sealed record CapabilityRow(string Label, string Value, bool Ok);
+
+/// <summary>One row of the Environment card (the installed-tools status from Core's probe).</summary>
+/// <param name="Tool">The tool name.</param>
+/// <param name="State">OK, MISSING or STORE-ALIAS ONLY.</param>
+/// <param name="Link">The official download page for a missing tool; empty when OK.</param>
+public sealed record EnvironmentRow(string Tool, string State, string Link);
 
 /// <summary>One recent-workspace card (name, path, newest badge, open/remove commands).</summary>
 public sealed class RecentWorkspaceViewModel
@@ -59,11 +67,14 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly IUiDispatcher _ui;
     private readonly Func<string?> _browseFolder;
+    private readonly IEnvironmentTools? _environmentTools;
     private readonly GitOptions _gitOptions = new();
     private string _selectedPath = string.Empty;
     private string _note = string.Empty;
     private bool _isInspecting;
+    private bool _isRecheckingTools;
     private IReadOnlyList<CapabilityRow> _capabilities = [];
+    private IReadOnlyList<EnvironmentRow> _environmentRows = [];
 
     /// <summary>Creates the workspace page view model and restores the last workspace.</summary>
     /// <param name="agent">The agent view model receiving the selection.</param>
@@ -71,15 +82,26 @@ public sealed class WorkspaceViewModel : ObservableObject
     /// <param name="settings">The settings service (recent-workspace persistence).</param>
     /// <param name="ui">Dispatcher for safe UI-thread updates.</param>
     /// <param name="browseFolder">Opens the folder picker; returns the chosen path or null.</param>
-    public WorkspaceViewModel(AgentViewModel agent, IWorkspaceInspector inspector, SettingsService settings, IUiDispatcher ui, Func<string?> browseFolder)
+    /// <param name="environmentTools">The Core environment-tools facade for the Environment card (optional).</param>
+    public WorkspaceViewModel(AgentViewModel agent, IWorkspaceInspector inspector, SettingsService settings, IUiDispatcher ui, Func<string?> browseFolder, IEnvironmentTools? environmentTools = null)
     {
         _agent = agent ?? throw new ArgumentNullException(nameof(agent));
         _inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _browseFolder = browseFolder ?? throw new ArgumentNullException(nameof(browseFolder));
+        _environmentTools = environmentTools;
 
         BrowseCommand = new RelayCommand(Browse);
+        RecheckToolsCommand = new AsyncRelayCommand(
+            () => LoadEnvironmentRowsAsync(forceRefresh: true),
+            () => _agent.HasWorkspace && !IsRecheckingTools);
+        RecheckToolsCommand.IsRunningChanged += (_, running) =>
+        {
+            IsRecheckingTools = running.IsRunning;
+            RecheckToolsCommand.NotifyCanExecuteChanged();
+        };
+
         var saved = _settings.Load();
         RefreshRecents(saved);
         if (saved.LastWorkspace.Length > 0)
@@ -88,6 +110,30 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     /// <summary>Opens the folder picker.</summary>
     public RelayCommand BrowseCommand { get; }
+
+    /// <summary>Re-probes the installed tools for the current workspace (Environment card).</summary>
+    public AsyncRelayCommand RecheckToolsCommand { get; }
+
+    /// <summary>Whether the environment re-probe is running.</summary>
+    public bool IsRecheckingTools
+    {
+        get => _isRecheckingTools;
+        private set => SetProperty(ref _isRecheckingTools, value);
+    }
+
+    /// <summary>The Environment card rows (one per tool); empty when no probe has run.</summary>
+    public IReadOnlyList<EnvironmentRow> EnvironmentRows
+    {
+        get => _environmentRows;
+        private set
+        {
+            if (SetProperty(ref _environmentRows, value))
+                OnPropertyChanged(nameof(HasEnvironmentRows));
+        }
+    }
+
+    /// <summary>Whether the Environment card has rows to show.</summary>
+    public bool HasEnvironmentRows => _environmentRows.Count > 0;
 
     /// <summary>The recent-workspace cards, newest first.</summary>
     public ObservableCollection<RecentWorkspaceViewModel> Recents { get; private set; } = [];
@@ -195,6 +241,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
 
         _ = InspectAsync(trimmed);
+        _ = LoadEnvironmentRowsAsync(forceRefresh: false);
     }
 
     private async Task InspectAsync(string path)
@@ -249,6 +296,53 @@ public sealed class WorkspaceViewModel : ObservableObject
         });
     }
 
+    private async Task LoadEnvironmentRowsAsync(bool forceRefresh)
+    {
+        if (_environmentTools is null || _agent.WorkspaceRoot.Trim().Length == 0)
+            return;
+
+        try
+        {
+            var tools = await _environmentTools.GetToolsCachedAsync(_agent.WorkspaceRoot, forceRefresh, CancellationToken.None);
+            _ui.Post(() =>
+            {
+                if (_agent.WorkspaceRoot.Trim().Length == 0)
+                    return;
+
+                EnvironmentRows = OrderTools(tools)
+                    .Select(tool => new EnvironmentRow(
+                        tool.Tool,
+                        tool.State switch
+                        {
+                            ToolStates.Available => "OK",
+                            ToolStates.StoreAlias => "STORE-ALIAS ONLY",
+                            _ => "MISSING",
+                        },
+                        tool.State == ToolStates.Available ? string.Empty : LinkOf(tool.Tool)))
+                    .ToList();
+            });
+        }
+        catch (Exception)
+        {
+            // The Environment card is informational; a probe failure never blocks the page.
+        }
+    }
+
+    private static IEnumerable<ToolStatus> OrderTools(IReadOnlyDictionary<string, ToolStatus> tools)
+    {
+        var order = new[] { "git", "dotnet", "python", "py", "python3", "node", "npm" };
+        return tools.Values
+            .OrderBy(tool => Array.IndexOf(order, tool.Tool) is var at && at >= 0 ? at : int.MaxValue);
+    }
+
+    private static string LinkOf(string tool) => tool switch
+    {
+        "git" => "https://git-scm.com/downloads",
+        "dotnet" => "https://dotnet.microsoft.com/download",
+        "python" or "py" or "python3" => "https://www.python.org/downloads/",
+        _ => "https://nodejs.org",
+    };
+
     private void RefreshRecents(WpfSettings settings)
     {
         Recents = new ObservableCollection<RecentWorkspaceViewModel>(
@@ -256,4 +350,5 @@ public sealed class WorkspaceViewModel : ObservableObject
         OnPropertyChanged(nameof(Recents));
         OnPropertyChanged(nameof(HasRecents));
     }
+
 }

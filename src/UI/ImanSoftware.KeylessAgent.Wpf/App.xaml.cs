@@ -22,7 +22,7 @@ public partial class App : Application
         {
             WriteCrashLog(args.Exception);
             ShowErrorOnUi(args.Exception.Message);
-            args.Handled = true;
+            args.Handled = false;
         };
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>

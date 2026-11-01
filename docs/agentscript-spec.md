@@ -213,6 +213,7 @@ Every failure the agent reports carries a stable code.
 | `KA_SEND_NOT_CONFIRMED` | the message could not be sent (not confirmed in the DOM, retry failed too) |
 | `KA_ATTACHMENT_UPLOAD_FAILED` | file upload failed (falls back to pasting) |
 | `KA_NETWORK_OFFLINE` | the machine is offline — nothing was uploaded or sent; the chat session stays valid, resend the same request |
+| `KA_TOOL_MISSING` | a runcommand tool is listed as Missing in the environment — the process is never started; do not retry it |
 | `KA_COMPOSER_NOT_CLEAN` | the composer still holds stale text or attachment chips after the reset attempt (run `keyless doctor` to fix the AttachmentRemove/AttachmentFailed selectors) |
 | `KA_CHAT_EXHAUSTED` | chat hit its length limit |
 

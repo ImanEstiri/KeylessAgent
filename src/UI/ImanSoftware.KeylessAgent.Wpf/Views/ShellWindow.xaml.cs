@@ -52,7 +52,8 @@ public partial class ShellWindow : Window
             KeylessAgentServiceFactory.CreateWorkspaceInspector(),
             new SettingsService(),
             _dispatcher,
-            BrowseForFolder);
+            BrowseForFolder,
+            KeylessAgentServiceFactory.CreateEnvironmentTools());
 
         var chromeViewModel = new ChromeViewModel(
             KeylessAgentServiceFactory.CreateBrowserConnector(), configuration, agentViewModel, uiFactory, _dispatcher);

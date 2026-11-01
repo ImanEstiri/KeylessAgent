@@ -95,6 +95,14 @@ public static class KeylessAgentServiceFactory
         => new WorkspaceInspector();
 
     /// <summary>
+    /// Creates the environment-tools facade (probed git/dotnet/node/npm/python states with
+    /// caching, per-tool re-probes and invalidation) for the fail-fast rule and the UIs.
+    /// </summary>
+    /// <returns>The environment tools.</returns>
+    public static IEnvironmentTools CreateEnvironmentTools()
+        => new EnvironmentProbe();
+
+    /// <summary>
     /// Creates the change tracker (git porcelain or no-git index).
     /// </summary>
     /// <returns>The change tracker.</returns>

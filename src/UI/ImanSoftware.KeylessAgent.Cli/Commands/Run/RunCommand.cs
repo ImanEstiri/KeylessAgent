@@ -1,4 +1,6 @@
 using ImanSoftware.KeylessAgent.Cli.Helpers;
+using ImanSoftware.KeylessAgent.Core.Factory;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -16,12 +18,19 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
 
         ConsoleWriter.Shared.Header(workspace);
 
+        // One explicit tool status per session: git/dotnet/python/node with download pages
+        // for anything missing (served from the same 24 h cache the agent loop uses).
+        var environmentTools = KeylessAgentServiceFactory.CreateEnvironmentTools();
+        var tools = await environmentTools.GetToolsCachedAsync(workspace, settings.RefreshEnv, cancellationToken);
+        ConsoleWriter.Shared.Info(IEnvironmentTools.FormatToolsLine(tools));
+
         using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Console.CancelKeyPress += OnCancelKeyPress;
         try
         {
             return await AgentCliRunner.RunTurnAsync(
-                workspace, request, settings.DryRun, settings.Verbose, turnCts.Token, timing: settings.Timing);
+                workspace, request, settings.DryRun, settings.Verbose, turnCts.Token, timing: settings.Timing,
+                refreshEnv: settings.RefreshEnv);
         }
         finally
         {

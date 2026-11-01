@@ -5,6 +5,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using ImanSoftware.KeylessAgent.Tests.Fakes;
 using ImanSoftware.Outcomes;
 
@@ -25,6 +26,63 @@ public class RunCommandExecutorTests
             new CommandPolicy(),
             new CommandRiskClassifier(),
             _runner);
+
+    private sealed class FakeEnvironmentTools(ToolStatus? status = null) : ImanSoftware.KeylessAgent.Core.Implementation.Workspace.IEnvironmentTools
+    {
+        public List<string> Invalidated { get; } = [];
+
+        public ToolStatus Status { get; set; } = status
+            ?? new ToolStatus("dotnet", ToolStates.Missing, string.Empty, string.Empty,
+                DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+
+        public Task<IReadOnlyDictionary<string, ToolStatus>> GetToolsCachedAsync(
+            string workspaceRoot, bool forceRefresh, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyDictionary<string, ToolStatus>>(new Dictionary<string, ToolStatus>());
+
+        public Task<ToolStatus> GetToolStatusAsync(string workspaceRoot, string tool, CancellationToken cancellationToken = default)
+            => Task.FromResult(Status);
+
+        public Task InvalidateToolAsync(string workspaceRoot, string tool, CancellationToken cancellationToken = default)
+        {
+            Invalidated.Add(tool);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task RunCommand_MissingTool_FailsFastWithoutStartingTheProcess()
+    {
+        Directory.CreateDirectory(_root);
+        var tools = new FakeEnvironmentTools(new ToolStatus(
+            "dotnet", ToolStates.Missing, string.Empty, string.Empty,
+            DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+        var executor = new RunCommandExecutor(new CommandPolicy(), new CommandRiskClassifier(), _runner, tools);
+
+        var result = await executor.ExecuteAsync(new RunCommandCommand("dotnet build") { Number = 1 }, Context());
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_TOOL_MISSING");
+        result.FailureReason.Should().Be("tool_missing");
+        result.ErrorMessage.Should().Contain("'dotnet' is not installed on this machine (see Environment). Do not retry it.");
+        _runner.LastFileName.Should().BeNull("the process is never started for a missing tool");
+    }
+
+    [Fact]
+    public async Task RunCommand_CommandNotFound_InvalidatesTheToolCache()
+    {
+        Directory.CreateDirectory(_root);
+        var tools = new FakeEnvironmentTools(new ToolStatus(
+            "dotnet", ToolStates.Available, "10.0.100", "dotnet",
+            DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+        _runner.Result = new ProcessResult(9009, string.Empty,
+            "'dotnet' is not recognized as an internal or external command", 0.1, TimedOut: false);
+        var executor = new RunCommandExecutor(new CommandPolicy(), new CommandRiskClassifier(), _runner, tools);
+
+        var result = await executor.ExecuteAsync(new RunCommandCommand("dotnet build") { Number = 1 }, Context());
+
+        result.FailureReason.Should().Be("command_not_found");
+        tools.Invalidated.Should().Equal("dotnet");
+    }
 
     private AgentExecutionContext Context(ApprovalMode mode = ApprovalMode.Auto)
         => new()

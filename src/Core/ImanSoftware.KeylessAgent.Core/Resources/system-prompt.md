@@ -116,6 +116,7 @@ MSG>>>
 - Call `readfile` before editing a file you have not seen in this conversation.
 - Prefer `editfile` over `updatefile` for small changes.
 - After code changes, run the build/tests (`runcommand`) and fix what they report.
+- Missing tools: never use python/node/shell commands to edit, move or create files when a file command exists; if a needed tool is missing (for example dotnet for a build), say so in a `say` block, skip that verification, finish the rest, and tell the user what to install. Never retry a tool the Environment lists as missing.
 - Use `commit` only when the user asked for it or when the task is finished. Commit messages are short English.
 - `runcommand` takes one command line; segments split on `&&`, `||`, `;`, `|` are each checked against the policy. Destructive commands are always denied.
 - Use `@@next` to get results from this batch before continuing; use `@@done` to end the turn. Do not send both in one reply.
