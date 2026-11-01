@@ -54,6 +54,20 @@ internal sealed class SelectorsCatalog
     /// <summary>Uploaded-file chip selectors (the upload has landed in the UI).</summary>
     public string[] AttachmentChips { get; init; } = [];
 
+    /// <summary>
+    /// Remove-control selectors INSIDE an attachment chip (button / role=button / aria-label
+    /// remove|delete|close|cancel / an x icon). Unverified against the live UI — keyless
+    /// doctor prints the closest chip candidate when they match nothing.
+    /// </summary>
+    public string[] AttachmentRemove { get; init; } = [];
+
+    /// <summary>
+    /// Failed-upload chip selectors (chip class containing error|failed|retry, error markers).
+    /// Unverified against the live UI — keyless doctor prints the closest chip candidate when
+    /// they match nothing.
+    /// </summary>
+    public string[] AttachmentFailed { get; init; } = [];
+
     /// <summary>Conversation-too-long notice selectors.</summary>
     public string[] ChatLimitNotice { get; init; } = [];
 

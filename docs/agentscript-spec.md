@@ -212,6 +212,8 @@ Every failure the agent reports carries a stable code.
 | `KA_REPLY_TIMEOUT` | no complete reply within the timeout |
 | `KA_SEND_NOT_CONFIRMED` | the message could not be sent (not confirmed in the DOM, retry failed too) |
 | `KA_ATTACHMENT_UPLOAD_FAILED` | file upload failed (falls back to pasting) |
+| `KA_NETWORK_OFFLINE` | the machine is offline — nothing was uploaded or sent; the chat session stays valid, resend the same request |
+| `KA_COMPOSER_NOT_CLEAN` | the composer still holds stale text or attachment chips after the reset attempt (run `keyless doctor` to fix the AttachmentRemove/AttachmentFailed selectors) |
 | `KA_CHAT_EXHAUSTED` | chat hit its length limit |
 
 ### Configuration / snapshot / internal

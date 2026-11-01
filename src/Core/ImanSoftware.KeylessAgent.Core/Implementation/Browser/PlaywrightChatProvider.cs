@@ -76,6 +76,25 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             await WaitForLoginIfNeeded(chatPage, selectors.Data, options, cancellationToken);
 
+            // One composer reset right after the session starts: stale text or attachment
+            // chips from an earlier failed turn must not leak into the first message.
+            try
+            {
+                var reset = await chatPage.ResetComposerAsync(options.Browser.ReplyTimeoutSeconds, cancellationToken);
+                if (!reset.Clean)
+                    new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory).LogWarning(
+                        "The composer is not clean after StartSession (method: {Method}); the next send resets it again.", reset.Method);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory).LogWarning(
+                    "The post-StartSession composer reset failed best-effort: {Message}", ex.Message);
+            }
+
             // Logged in (or just logged in): get the window out of the user's way.
             if (options.Browser.MinimizeAfterLogin)
                 await MinimizeWindowAsync(page, cancellationToken);

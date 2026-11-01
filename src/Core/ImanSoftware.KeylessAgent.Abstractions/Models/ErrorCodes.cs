@@ -124,6 +124,12 @@ public static class ErrorCodes
     /// <summary>Uploading attachments to the chat failed.</summary>
     public const string AttachmentUploadFailed = "KA_ATTACHMENT_UPLOAD_FAILED";
 
+    /// <summary>The machine is offline: nothing was uploaded or sent.</summary>
+    public const string NetworkOffline = "KA_NETWORK_OFFLINE";
+
+    /// <summary>The composer still holds stale text or attachment chips after the reset attempt.</summary>
+    public const string ComposerNotClean = "KA_COMPOSER_NOT_CLEAN";
+
     /// <summary>The chat hit its length limit and could not be continued.</summary>
     public const string ChatExhausted = "KA_CHAT_EXHAUSTED";
     public const string Cancelled = "KA_CANCELLED";

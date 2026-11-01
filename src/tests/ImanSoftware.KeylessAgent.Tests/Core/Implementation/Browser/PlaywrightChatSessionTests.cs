@@ -587,6 +587,187 @@ public class PlaywrightChatSessionTests : IDisposable
         (await session.WaitForReplyAsync()).Data.Should().Be("reply");
     }
 
+    // ---------- stale-composer reset + offline detection ----------
+
+    private static SnapshotAttachment Attachment(string name, string content)
+        => new(name, SnapshotAttachmentKind.CodeDump, content);
+
+    [Fact]
+    public async Task Reset_RemovesStaleTextAndChips_ThenSendSucceedsInSameCall()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 2;
+        page.FailedChipCount = 1;
+        page.ChipsVisible = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("442", "ok", 2));
+        };
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("fresh message", []);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.ResetCalls.Should().Be(1);
+        page.LastResetMethod.Should().Be("chips removed");
+        page.LastInsertedText.Should().Be("fresh message");
+    }
+
+    [Fact]
+    public async Task Reset_RemoveClickDoesNothing_ReloadFallbackCleans()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 1;
+        page.RemoveClickDoesNothing = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("442", "ok", 2));
+        };
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", []);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.ReloadCalls.Should().Be(1, "the reload fallback is used when the remove clicks do nothing");
+        page.LastResetMethod.Should().Be("page reloaded");
+    }
+
+    [Fact]
+    public async Task Reset_ReloadAlsoFails_ComposerNotClean_NothingSent()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 1;
+        page.RemoveClickDoesNothing = true;
+        page.FailReload = true;
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.ComposerNotClean);
+        page.Sends.Should().BeEmpty("nothing is sent from a dirty composer");
+        page.UploadCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Offline_BeforeSend_FailsFast_ZeroUploadsZeroPastes()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.Online = false;
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        outcome.Error.Message.Should().Contain("Nothing was sent");
+        page.UploadCalls.Should().Be(0, "nothing is uploaded while offline");
+        page.LastInsertedText.Should().BeNull("nothing is pasted while offline");
+    }
+
+    [Fact]
+    public async Task ConnectionDropsDuringUploadWait_NetworkOffline_ComposerCleaned()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnlineDropsAfterFirstCheck = true;
+        page.OnUpload = () =>
+        {
+            page.StaleChipCount = 1;
+            page.ChipsVisible = true;
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 5);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var outcome = await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+        sw.Stop();
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "the offline check stops the upload wait at once");
+        page.ResetCalls.Should().Be(2, "the initial reset plus the best-effort cleanup");
+        page.StaleChipCount.Should().Be(0, "the composer is cleaned after the failure");
+    }
+
+    [Fact]
+    public async Task Message1FailsOffline_Message2OnSameSession_SucceedsWithItsOwnAttachments()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.Online = false;
+        page.StaleChipCount = 2;
+        page.FailedChipCount = 1;
+        page.ChipsVisible = true;
+        var session = CreateSession(page, uploadWaitSeconds: 2);
+
+        var outcome1 = await session.SendMessageAsync("first message", [Attachment("one.md", "one")]);
+
+        outcome1.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        page.UploadCalls.Should().Be(0, "the offline gate runs before any upload");
+
+        page.Online = true;
+        page.InputFileNames.Add("a.md");
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("443", "second reply", 2));
+        };
+
+        var outcome2 = await session.SendMessageAsync("second message",
+            [Attachment("a.md", "A"), Attachment("b.md", "B")]);
+
+        outcome2.IsSuccess.Should().BeTrue();
+        page.ResetCalls.Should().Be(2, "message 2's reset cleaned the stale chips left by message 1");
+        page.StaleChipCount.Should().Be(0);
+        page.FailedChipCount.Should().Be(0);
+        page.UploadCalls.Should().Be(1);
+        page.LastInsertedText.Should().Be("second message", "only message 2's text, no stale content");
+    }
+
+    [Fact]
+    public async Task EnterRetry_DoesNotTriggerAnotherComposerReset()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => { }; // nothing lands: unconfirmed → exactly one Enter retry
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+
+        var outcome = await session.SendMessageAsync("request", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        page.Sends.Select(s => s.Method).Should().Equal("click", "enter");
+        page.ResetCalls.Should().Be(1, "the reset runs once per message — the Enter retry must not wipe the pending text");
+    }
+
+    [Fact]
+    public async Task CleanupComposer_NeverThrows_WhenThePageIsClosed()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnUpload = () =>
+        {
+            page.Closed = true;
+            page.StaleChipCount = 1;
+            page.ChipsVisible = true;
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 5);
+
+        var act = async () => await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+
+        var outcome = await act.Should().NotThrowAsync();
+        outcome.Subject.IsFailure.Should().BeTrue("the original failure is reported, not the cleanup failure");
+        outcome.Subject.Error.Message.Should().Contain("The page is closed.");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); } catch { /* best-effort */ }

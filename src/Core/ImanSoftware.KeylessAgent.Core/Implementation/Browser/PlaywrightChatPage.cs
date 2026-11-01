@@ -355,6 +355,212 @@ internal sealed class PlaywrightChatPage : IChatPage
         await _page.Keyboard.InsertTextAsync(text);
     }
 
+    /// <summary>The composer-state probe script: text length of the input box.</summary>
+    private const string InputTextLengthScript =
+        "element => (element.value !== undefined ? String(element.value) : String(element.innerText || '')).length";
+
+    /// <summary>
+    /// The online probe: a cheap no-store HEAD of the chat origin with a 3 s abort timeout.
+    /// ANY HTTP response counts as online (the network is up even behind a captive portal).
+    /// </summary>
+    private const string OnlineProbeScript = """
+        async () => {
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 3000);
+                const response = await fetch(location.origin, { method: 'HEAD', cache: 'no-store', signal: controller.signal });
+                clearTimeout(timer);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        """;
+
+    private DateTime _onlineCheckedAt = DateTime.MinValue;
+    private bool _lastOnlineState = true;
+
+    /// <inheritdoc />
+    public async Task<ComposerState> InspectComposerAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var textLength = await GetInputTextLengthAsync(cancellationToken);
+        var chips = await CountVisibleAsync(_selectors.AttachmentChips, cancellationToken);
+        var failed = await CountVisibleAsync(_selectors.AttachmentFailed, cancellationToken);
+        var send = await IsSendEnabledAsync(cancellationToken);
+        return new ComposerState(textLength, chips, failed, send);
+    }
+
+    /// <inheritdoc />
+    public async Task<ComposerResetResult> ResetComposerAsync(int replyTimeoutSeconds, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // (1) Never touch the composer while a reply is still generating.
+        var generatingDeadline = DateTime.UtcNow.AddSeconds(replyTimeoutSeconds);
+        while (DateTime.UtcNow < generatingDeadline &&
+               await IsStopIndicatorVisibleAsync(cancellationToken))
+        {
+            await WithCancellationAsync(Task.Delay(100, cancellationToken), cancellationToken);
+        }
+
+        var state = await InspectComposerAsync(cancellationToken);
+        if (state.TextLength == 0 && state.ChipCount == 0 && state.FailedChipCount == 0)
+            return new ComposerResetResult(true, "already clean", 0);
+
+        // (2) Clear the textarea (select all + delete), then verify.
+        var method = "text cleared";
+        await ClearTextInputAsync(cancellationToken);
+        state = await InspectComposerAsync(cancellationToken);
+
+        // (3) Remove every chip, failed ones first: click the remove control inside the chip,
+        // re-inspect after each click, at most 10 rounds inside a 3 s total budget.
+        var chipsRemoved = 0;
+        var rounds = 0;
+        var chipDeadline = DateTime.UtcNow.AddSeconds(3);
+        while ((state.ChipCount > 0 || state.FailedChipCount > 0) && rounds < 10 && DateTime.UtcNow < chipDeadline)
+        {
+            rounds++;
+            var clicked = state.FailedChipCount > 0
+                ? await ClickFirstVisibleAsync(_selectors.AttachmentFailed, cancellationToken) ||
+                  await ClickFirstVisibleAsync(_selectors.AttachmentRemove, cancellationToken)
+                : await ClickFirstVisibleAsync(_selectors.AttachmentRemove, cancellationToken) ||
+                  await ClickFirstVisibleAsync(_selectors.AttachmentFailed, cancellationToken);
+            if (!clicked)
+                break;
+
+            chipsRemoved++;
+            method = "chips removed";
+            await WithCancellationAsync(Task.Delay(100, cancellationToken), cancellationToken);
+            state = await InspectComposerAsync(cancellationToken);
+        }
+
+        if (state.TextLength > 0)
+            await ClearTextInputAsync(cancellationToken);
+
+        // (4) Reload fallback: a fresh load discards unsent drafts and attachments.
+        state = await InspectComposerAsync(cancellationToken);
+        if (state.TextLength > 0 || state.ChipCount > 0 || state.FailedChipCount > 0)
+        {
+            _log.LogWarning("Chip removal did not clean the composer; reloading the chat page to discard the draft.");
+            method = "page reloaded";
+            await WithCancellationAsync(_page.ReloadAsync(), cancellationToken);
+            await WaitForAnyVisibleAsync(_selectors.InputBox, 10_000, cancellationToken);
+            state = await InspectComposerAsync(cancellationToken);
+        }
+
+        // (5) Verify: text empty AND no chips remain.
+        var clean = state.TextLength == 0 && state.ChipCount == 0 && state.FailedChipCount == 0;
+        return new ComposerResetResult(clean, clean ? method : "not clean", chipsRemoved);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsOnlineAsync(CancellationToken cancellationToken = default)
+    {
+        if ((DateTime.UtcNow - _onlineCheckedAt).TotalSeconds < 2)
+            return _lastOnlineState;
+
+        _onlineCheckedAt = DateTime.UtcNow;
+        try
+        {
+            var onLine = await WithCancellationAsync(_page.EvaluateAsync<bool>("() => navigator.onLine === true"), cancellationToken);
+            _lastOnlineState = onLine && await WithCancellationAsync(_page.EvaluateAsync<bool>(OnlineProbeScript), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Online probe failed ({Message}); treating the page as offline.", ex.Message);
+            _lastOnlineState = false;
+        }
+
+        return _lastOnlineState;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> AreFailedChipsVisibleAsync(CancellationToken cancellationToken = default)
+        => await IsAnyVisibleAsync(_page, _selectors.AttachmentFailed, cancellationToken);
+
+    /// <summary>Counts visible elements across the fallback list (one combined locator).</summary>
+    private async Task<int> GetInputTextLengthAsync(CancellationToken cancellationToken)
+    {
+        var match = await FirstVisibleAsync(_page, _selectors.InputBox, 10_000, cancellationToken);
+        if (match is null)
+            return 0;
+
+        var raw = await EvaluateAsync(match.Value.Item1, InputTextLengthScript, cancellationToken);
+        return int.TryParse(raw, out var length) ? length : 0;
+    }
+
+    /// <summary>Counts visible elements across the fallback list (one combined locator).</summary>
+    private async Task<int> CountVisibleAsync(string[] selectors, CancellationToken cancellationToken)
+    {
+        if (selectors.Length == 0)
+            return 0;
+
+        var combined = _page.Locator(selectors[0]);
+        for (var index = 1; index < selectors.Length; index++)
+            combined = combined.Or(_page.Locator(selectors[index]));
+
+        try
+        {
+            return await WithCancellationAsync(combined.CountAsync(), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Select-all + delete in the input box, then one fallback sweep; verified by the caller.</summary>
+    private async Task ClearTextInputAsync(CancellationToken cancellationToken)
+    {
+        var match = await FirstVisibleAsync(_page, _selectors.InputBox, 10_000, cancellationToken);
+        if (match is null)
+            return;
+
+        var (input, _) = match.Value;
+        await WithCancellationAsync(input.ClickAsync(), cancellationToken);
+        await _page.Keyboard.PressAsync("Control+a");
+        await _page.Keyboard.PressAsync("Delete");
+
+        var raw = await EvaluateAsync(input, InputTextLengthScript, cancellationToken);
+        if (int.TryParse(raw, out var length) && length > 0)
+        {
+            await _page.Keyboard.PressAsync("Control+a");
+            await _page.Keyboard.PressAsync("Delete");
+        }
+    }
+
+    /// <summary>Clicks the first visible match of the fallback list; false when nothing matched.</summary>
+    private async Task<bool> ClickFirstVisibleAsync(string[] selectors, CancellationToken cancellationToken)
+    {
+        var match = await FirstVisibleAsync(_page, selectors, 1_000, cancellationToken);
+        if (match is null)
+            return false;
+
+        try
+        {
+            await WithCancellationAsync(match.Value.Item1.ClickAsync(), cancellationToken);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug("Remove-control click failed ({Message}); trying the next fallback.", ex.Message);
+            return false;
+        }
+    }
+
     /// <inheritdoc />
     public async Task<bool> TryClickSendAsync(CancellationToken cancellationToken = default)
     {

@@ -41,7 +41,8 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     /// <summary>Keys that legitimately cannot exist in some page states.</summary>
     internal static readonly IReadOnlyList<string> ConditionalKeys =
     [
-        "StopIndicator", "AttachmentChips", "Reasoning", "FinalAnswer", "LoginIndicator",
+        "StopIndicator", "AttachmentChips", "AttachmentRemove", "AttachmentFailed",
+        "Reasoning", "FinalAnswer", "LoginIndicator",
     ];
 
     /// <inheritdoc />
@@ -211,6 +212,8 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         yield return ("DeepThinkToggle", catalog.DeepThinkToggle);
         yield return ("SearchToggle", catalog.SearchToggle);
         yield return ("AttachmentChips", catalog.AttachmentChips);
+        yield return ("AttachmentRemove", catalog.AttachmentRemove);
+        yield return ("AttachmentFailed", catalog.AttachmentFailed);
         yield return ("LoginIndicator", catalog.LoginIndicator);
         yield return ("ChatLimitNotice", catalog.ChatLimitNotice);
     }
@@ -226,6 +229,37 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                     "Login page detected: log in manually; doctor does not proceed past this state.")
                 : new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0,
                     "Not on the login page (the session looks logged in).");
+        }
+
+        // The two attachment-chip repair keys: they only matter when a chip is actually
+        // visible. Without chips they are legitimately not applicable; WITH chips a miss is
+        // a real problem, so the doctor prints the closest chip candidate (trimmed HTML) to
+        // fix the selectors from facts.
+        if (key is "AttachmentRemove" or "AttachmentFailed")
+        {
+            var own = await inspector.ProbeAsync(selectors, cancellationToken);
+            if (own is not null)
+            {
+                var ownDetail = key == "AttachmentRemove"
+                    ? $"The chip's remove control matched (fallback #{own.Value.Index})."
+                    : "A failed/error chip marker matched (the upload did not land).";
+                return new SelectorCheck(key, SelectorCheckStatus.Matched, own.Value.Index, own.Value.Count, ownDetail);
+            }
+
+            var chip = await inspector.ProbeAsync(catalog.AttachmentChips, cancellationToken);
+            if (chip is null)
+                return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0,
+                    "No attachment chips are visible right now (nothing to remove).");
+
+            var candidate = await inspector.CaptureTrimmedAsync(catalog.AttachmentChips, cancellationToken);
+            var candidateNote = string.IsNullOrWhiteSpace(candidate)
+                ? string.Empty
+                : $" Closest chip candidate (trimmed): {candidate.Truncate(300)}";
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0,
+                (key == "AttachmentRemove"
+                    ? "A chip is visible but its remove control did not match."
+                    : "A chip is visible but no failed/error marker matched.") + candidateNote);
         }
 
         var probe = await inspector.ProbeAsync(selectors, cancellationToken);

@@ -129,6 +129,13 @@ public sealed record BrowserOptions
     public int UploadWaitSeconds { get; init; } = 60;
 
     /// <summary>
+    /// When the machine is offline before a send, wait up to this many seconds for the
+    /// connection to come back (polling every 2 seconds) instead of failing immediately.
+    /// Default 0 — fail at once with KA_NETWORK_OFFLINE.
+    /// </summary>
+    public int WaitForNetworkSeconds { get; init; } = 0;
+
+    /// <summary>
     /// Minimum artificial delay between browser actions. Default 400 ms.
     /// </summary>
     public int MinDelayMs { get; init; } = 0;

@@ -27,6 +27,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
     "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
     "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
+    "WaitForNetworkSeconds": 0,      // when offline before a send: poll up to N s for the connection (0 = fail at once)
     "MinDelayMs": 0,                // random delay between actions (default: event-driven only)
     "MaxDelayMs": 150,
     "MaxMessagesPerMinute": 6,      // local rate limiter

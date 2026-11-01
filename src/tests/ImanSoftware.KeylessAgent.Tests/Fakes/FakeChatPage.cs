@@ -180,7 +180,138 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     }
 
     public Task<bool> TryUploadFilesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
-        => Task.FromResult(!FailUpload);
+    {
+        UploadCalls++;
+        OnUpload?.Invoke();
+        return Task.FromResult(!FailUpload);
+    }
+
+    /// <summary>Runs when SetInputFiles is about to be simulated (the upload is starting).</summary>
+    public Action? OnUpload { get; set; }
+
+    /// <summary>How often SetInputFiles was simulated.</summary>
+    public int UploadCalls { get; private set; }
+
+    // ---------- composer state / reset / online ----------
+
+    /// <summary>Stale (non-failed) attachment chips currently in the composer.</summary>
+    public int StaleChipCount { get; set; }
+
+    /// <summary>Failed attachment chips currently in the composer.</summary>
+    public int FailedChipCount { get; set; }
+
+    /// <summary>When true, clicking a chip's remove control does nothing (the chip stays).</summary>
+    public bool RemoveClickDoesNothing { get; set; }
+
+    /// <summary>When true, the reload fallback fails (the composer stays dirty).</summary>
+    public bool FailReload { get; set; }
+
+    /// <summary>When true, every page call throws (simulates a closed page; cleanup must swallow).</summary>
+    public bool Closed { get; set; }
+
+    /// <summary>Whether the fake is online (navigator.onLine + origin probe).</summary>
+    public bool Online { get; set; } = true;
+
+    /// <summary>When true, the SECOND and later online checks report offline (a mid-flight drop).</summary>
+    public bool OnlineDropsAfterFirstCheck { get; set; }
+
+    /// <summary>How often the online state was checked.</summary>
+    public int OnlineChecks { get; private set; }
+
+    /// <summary>How often the composer reset ran.</summary>
+    public int ResetCalls { get; private set; }
+
+    /// <summary>How often the reload fallback ran.</summary>
+    public int ReloadCalls { get; private set; }
+
+    /// <summary>The Method of the last reset result ("already clean", "chips removed", "page reloaded", …).</summary>
+    public string? LastResetMethod { get; private set; }
+
+    private void ThrowIfClosed()
+    {
+        if (Closed)
+            throw new InvalidOperationException("The page is closed.");
+    }
+
+    public Task<ImanSoftware.KeylessAgent.Core.Implementation.Browser.ComposerState> InspectComposerAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfClosed();
+        lock (_lock)
+        {
+            return Task.FromResult(new ImanSoftware.KeylessAgent.Core.Implementation.Browser.ComposerState(
+                TextLength: InputHasText ? 12 : 0,
+                ChipCount: StaleChipCount,
+                FailedChipCount: FailedChipCount,
+                SendEnabled: SendEnabled));
+        }
+    }
+
+    public async Task<ImanSoftware.KeylessAgent.Core.Implementation.Browser.ComposerResetResult> ResetComposerAsync(int replyTimeoutSeconds, CancellationToken cancellationToken = default)
+    {
+        ResetCalls++;
+        ThrowIfClosed();
+
+        // The real reset waits out a still-running generation first.
+        var deadline = DateTime.UtcNow.AddSeconds(replyTimeoutSeconds);
+        while (StopVisible && DateTime.UtcNow < deadline)
+            await Task.Delay(10, cancellationToken);
+
+        var method = "already clean";
+        if (InputHasText)
+        {
+            InputHasText = false;
+            method = "text cleared";
+        }
+
+        var chipsRemoved = 0;
+        if (StaleChipCount > 0 || FailedChipCount > 0)
+        {
+            if (!RemoveClickDoesNothing)
+            {
+                chipsRemoved = StaleChipCount + FailedChipCount;
+                StaleChipCount = 0;
+                FailedChipCount = 0;
+                ChipsVisible = false;
+                method = "chips removed";
+            }
+
+            // RemoveClickDoesNothing: the chips stay — the reload fallback decides below.
+        }
+
+        if (InputHasText || StaleChipCount > 0 || FailedChipCount > 0)
+        {
+            ReloadCalls++;
+            if (FailReload)
+                return new ImanSoftware.KeylessAgent.Core.Implementation.Browser.ComposerResetResult(false, "not clean", chipsRemoved);
+
+            method = "page reloaded";
+            InputHasText = false;
+            StaleChipCount = 0;
+            FailedChipCount = 0;
+            ChipsVisible = false;
+        }
+
+        LastResetMethod = method;
+        return new ImanSoftware.KeylessAgent.Core.Implementation.Browser.ComposerResetResult(true, method, chipsRemoved);
+    }
+
+    public Task<bool> IsOnlineAsync(CancellationToken cancellationToken = default)
+    {
+        OnlineChecks++;
+        var online = Online;
+        if (OnlineDropsAfterFirstCheck && OnlineChecks >= 2)
+            online = false;
+        return Task.FromResult(online);
+    }
+
+    public Task<bool> AreFailedChipsVisibleAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfClosed();
+        lock (_lock)
+        {
+            return Task.FromResult(FailedChipCount > 0);
+        }
+    }
 
     public Task SaveDebugScreenshotAsync(string fullPath, CancellationToken cancellationToken = default)
     {

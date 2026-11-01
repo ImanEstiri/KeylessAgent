@@ -38,6 +38,9 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// <summary>Whether the DeepThink/Search toggles were already handled for this chat.</summary>
     private bool _togglesApplied;
 
+    /// <summary>1-based counter of send attempts (names the attempt in logs and diagnostics).</summary>
+    private int _sendCounter;
+
     public PlaywrightChatSession(
         IChatPage page,
         Func<ValueTask> disposeAsync,
@@ -77,6 +80,7 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// <inheritdoc />
     public async Task<Outcome> SendMessageAsync(string message, IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken = default)
     {
+        var uploadedThisAttempt = new List<string>();
         try
         {
             await _rateLimiter.WaitAsync(cancellationToken);
@@ -91,6 +95,30 @@ internal sealed class PlaywrightChatSession : IChatSession
                     await ApplyChatTogglesAsync(cancellationToken);
             }
 
+            // --- Step 0: a clean composer and a live connection before anything is typed ---
+            // The reset runs once per message, BEFORE any upload or paste — never again inside
+            // the send attempts (the Enter retry must not wipe a pending message). Stale text
+            // or chips from a failed earlier attempt would poison this message otherwise.
+            _sendCounter++;
+            var reset = await _page.ResetComposerAsync(_options.Browser.ReplyTimeoutSeconds, cancellationToken);
+            if (!reset.Clean)
+            {
+                _log.LogWarning("The composer is not clean after the reset attempt (method: {Method}); nothing was sent.", reset.Method);
+                return Outcome.Failure(new OutcomeError(
+                    "The chat composer still holds stale text or attachment chips after the reset attempt — the message was not sent."
+                    + " Run 'keyless doctor' to inspect the AttachmentRemove/AttachmentFailed selectors.",
+                    ErrorCodes.ComposerNotClean, OutcomeErrorType.Failure));
+            }
+
+            if (reset.ChipsRemoved > 0)
+                _log.LogWarning("Composer reset removed {Count} stale chip(s) (not from this attempt).", reset.ChipsRemoved);
+
+            if (!await _page.IsOnlineAsync(cancellationToken) && !await WaitForNetworkAsync(cancellationToken))
+            {
+                _log.LogWarning("Offline: nothing was uploaded or sent.");
+                return Outcome.Failure(OfflineError());
+            }
+
             // --- Step 1: fingerprint the current newest assistant message (pre-send baseline) ---
             _preSendStamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
             var itemCountBefore = await _page.GetMessageItemCountAsync(cancellationToken);
@@ -101,7 +129,7 @@ internal sealed class PlaywrightChatSession : IChatSession
             Outcome<AttachmentDelivery> delivery;
             try
             {
-                delivery = await DeliverAttachmentsAsync(attachments, cancellationToken);
+                delivery = await DeliverAttachmentsAsync(attachments, uploadedThisAttempt, cancellationToken);
             }
             finally
             {
@@ -109,7 +137,13 @@ internal sealed class PlaywrightChatSession : IChatSession
             }
 
             if (delivery.IsFailure)
+            {
+                // Attachment-level failures already cleaned the composer when they could; the
+                // offline failure returns through the same path for the same reason.
+                if (delivery.Error.Code is ErrorCodes.NetworkOffline or ErrorCodes.AttachmentUploadFailed)
+                    await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
                 return delivery;
+            }
             if (delivery.Data == AttachmentDelivery.FellBackToPaste)
             {
                 _options.Timings?.Start("paste");
@@ -204,6 +238,15 @@ internal sealed class PlaywrightChatSession : IChatSession
                         signals.StopVisible,
                     });
 
+                // A dropped connection while the confirm window was open stops the wait at
+                // once: clean the composer and report the network, not a generic timeout.
+                if (!signals.Online)
+                {
+                    _log.LogWarning("The connection dropped while confirming the send; cleaning the composer.");
+                    await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                    return Outcome.Failure(OfflineError());
+                }
+
                 if (confirmed)
                     return Outcome.Successful();
 
@@ -227,6 +270,8 @@ internal sealed class PlaywrightChatSession : IChatSession
                 if (attempt == 2)
                 {
                     var screenshot = await CaptureDiagnosticsAsync("send-not-confirmed", cancellationToken);
+                    if (uploadedThisAttempt.Count > 0)
+                        await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
                     return Outcome.Failure(new OutcomeError(
                         $"The message was not sent within {2 * _options.Browser.SendConfirmSeconds}s (input still holds the text, no generating indicator)."
                         + DiagnosticsHint(screenshot),
@@ -242,7 +287,68 @@ internal sealed class PlaywrightChatSession : IChatSession
         catch (Exception ex)
         {
             await CaptureDiagnosticsAsync("send-failed", cancellationToken);
+            if (uploadedThisAttempt.Count > 0)
+                await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
             return Outcome.Failure(new OutcomeError(ex));
+        }
+    }
+
+    /// <summary>The failure raised whenever a send is attempted while the machine is offline.</summary>
+    private static OutcomeError OfflineError() => new(
+        "No internet connection. Nothing was sent. Check your connection and try again.",
+        ErrorCodes.NetworkOffline, OutcomeErrorType.Failure);
+
+    /// <summary>
+    /// Waits (polling every 2 s) for the connection to come back when
+    /// <c>Browser.WaitForNetworkSeconds</c> is greater than zero; false when it stays offline
+    /// or the wait is disabled.
+    /// </summary>
+    private async Task<bool> WaitForNetworkAsync(CancellationToken cancellationToken)
+    {
+        var seconds = _options.Browser.WaitForNetworkSeconds;
+        if (seconds <= 0)
+            return false;
+
+        _log.LogWarning("No internet connection. Waiting for the connection… (up to {Seconds}s)", seconds);
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(2000, cancellationToken);
+            if (await _page.IsOnlineAsync(cancellationToken))
+            {
+                _log.LogInformation("The connection is back; continuing.");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Best-effort composer cleanup after a failed/timed-out/cancelled attempt: removes stale
+    /// chips and text so the NEXT message can be sent. Never throws; logs what was removed,
+    /// by which method, and which files THIS attempt had uploaded (so the log can say the
+    /// chips were "not from this attempt").
+    /// </summary>
+    private async Task CleanupComposerAsync(IReadOnlyList<string> uploadedThisAttempt, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reset = await _page.ResetComposerAsync(_options.Browser.ReplyTimeoutSeconds, cancellationToken);
+            if (reset.ChipsRemoved > 0)
+                _log.LogWarning(
+                    "Composer cleanup removed {Count} stale chip(s) (not from this attempt — this attempt uploaded: {Files}) via {Method}.",
+                    reset.ChipsRemoved,
+                    uploadedThisAttempt.Count == 0 ? "nothing" : string.Join(", ", uploadedThisAttempt),
+                    reset.Method);
+            else if (!reset.Clean)
+                _log.LogWarning("Composer cleanup could not reach a clean state (method: {Method}).", reset.Method);
+        }
+        catch (Exception ex)
+        {
+            // The cleanup is best-effort: a closed page or a dying tab must never turn the
+            // original failure into a different exception.
+            _log.LogWarning("Composer cleanup failed best-effort: {Message}", ex.Message);
         }
     }
 
@@ -408,11 +514,31 @@ internal sealed class PlaywrightChatSession : IChatSession
             return ChatExhausted();
 
         _options.Timings?.Start("first-token");
+        var offlinePolls = 0;
         try
         {
             while (DateTime.UtcNow < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // A dropped connection never brings the reply back by waiting longer: after
+                // two consecutive offline polls end the wait — the chat session stays valid
+                // and the same request can be resent.
+                if (!await _page.IsOnlineAsync(cancellationToken))
+                {
+                    offlinePolls++;
+                    if (offlinePolls >= 2)
+                    {
+                        _log.LogWarning("The connection dropped while waiting for the reply; the chat session stays valid — resend the same request.");
+                        return Outcome.Failure<string>(new OutcomeError(
+                            "No internet connection. The reply did not arrive. The chat session stays valid — resend the same request.",
+                            ErrorCodes.NetworkOffline, OutcomeErrorType.Failure));
+                    }
+                }
+                else
+                {
+                    offlinePolls = 0;
+                }
 
                 var stillGenerating = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
                 var stamp = await _page.GetNewestAssistantStampAsync(cancellationToken);
@@ -476,7 +602,8 @@ internal sealed class PlaywrightChatSession : IChatSession
         bool UserTextMatched,
         bool InputCleared,
         bool Chips,
-        bool StopVisible);
+        bool StopVisible,
+        bool Online = true);
 
     private static bool Confirmed(SendSignals s)
         => s.FingerprintChanged || s.UserTextMatched || (s.InputCleared && !s.Chips) || s.StopVisible;
@@ -507,8 +634,9 @@ internal sealed class PlaywrightChatSession : IChatSession
         var inputCleared = await _page.IsInputClearedAsync(cancellationToken);
         var chips = await _page.AreAttachmentChipsVisibleAsync(cancellationToken);
         var stopVisible = await _page.IsStopIndicatorVisibleAsync(cancellationToken);
+        var online = await _page.IsOnlineAsync(cancellationToken);
 
-        return new SendSignals(fingerprintChanged, userTextMatched, inputCleared, chips, stopVisible);
+        return new SendSignals(fingerprintChanged, userTextMatched, inputCleared, chips, stopVisible, online);
     }
 
     /// <summary>
@@ -526,6 +654,8 @@ internal sealed class PlaywrightChatSession : IChatSession
             cancellationToken.ThrowIfCancellationRequested();
 
             var signals = await ObserveSendSignalsAsync(itemStampBefore, sentPrefix, cancellationToken);
+            if (!signals.Online)
+                return (false, signals); // the caller cleans up and reports the network
             if (Confirmed(signals))
                 return (true, signals);
 
@@ -536,7 +666,8 @@ internal sealed class PlaywrightChatSession : IChatSession
         return (Confirmed(final), final);
     }
 
-    private async Task<Outcome<AttachmentDelivery>> DeliverAttachmentsAsync(IReadOnlyList<SnapshotAttachment> attachments, CancellationToken cancellationToken)
+    private async Task<Outcome<AttachmentDelivery>> DeliverAttachmentsAsync(
+        IReadOnlyList<SnapshotAttachment> attachments, List<string> uploadedThisAttempt, CancellationToken cancellationToken)
     {
         if (attachments.Count == 0)
             return Outcome.Successful(AttachmentDelivery.NothingToAttach);
@@ -557,6 +688,10 @@ internal sealed class PlaywrightChatSession : IChatSession
             created.Add(path);
         }
 
+        // The names this attempt actually uploaded — the cleanup log distinguishes "stale
+        // chips (not from this attempt)" from this attempt's own files.
+        uploadedThisAttempt.AddRange(attachments.Select(a => a.Name));
+
         if (!await _page.TryUploadFilesAsync(created, cancellationToken))
         {
             _log.LogWarning("SetInputFiles failed; pasting the attachment content instead.");
@@ -567,6 +702,7 @@ internal sealed class PlaywrightChatSession : IChatSession
         // finished. Wait for both: a positive upload sign (files registered / chips visible)
         // AND an enabled send control, as long as the send control can be detected at all
         // (when none of its selectors match, do not block on it — Enter is the fallback).
+        // A dropped connection or a chip in the failed state ends the wait at once.
         var uploadNames = attachments.Select(a => a.Name).ToList();
         var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.UploadWaitSeconds);
         var uploadSign = false;
@@ -576,6 +712,24 @@ internal sealed class PlaywrightChatSession : IChatSession
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!await _page.IsOnlineAsync(cancellationToken))
+            {
+                _log.LogWarning("The connection dropped while the upload was pending; cleaning the composer.");
+                return Outcome.Failure<AttachmentDelivery>(OfflineError());
+            }
+
+            // A chip in the failed/error state means the upload is DONE FAILING — no point
+            // waiting out the window. Clean the composer and paste only when online.
+            if (await _page.AreFailedChipsVisibleAsync(cancellationToken))
+            {
+                _log.LogWarning("An attachment chip reports a failed upload; cleaning the composer.");
+                await CleanupComposerAsync(uploadedThisAttempt, cancellationToken);
+                if (!await _page.IsOnlineAsync(cancellationToken))
+                    return Outcome.Failure<AttachmentDelivery>(OfflineError());
+
+                return Outcome.Successful(AttachmentDelivery.FellBackToPaste);
+            }
 
             if (!uploadSign && await HasUploadSignAsync(uploadNames, cancellationToken))
             {
