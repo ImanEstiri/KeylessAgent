@@ -40,6 +40,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
 
             var lines = SplitLines(reply);
             lines = StripSurroundingCodeFence(lines);
+            lines = RepairKnownCorruptions(lines);
 
             var problems = new List<FormatProblem>();
             var commands = new List<AgentScriptCommand>();
@@ -268,9 +269,43 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
     }
 
     /// <summary>
-    /// Converts a finished block into its command record, adding problems for missing
-    /// arguments, missing payloads and unexpected payloads.
+    /// Strips ONE outer Markdown code fence from a CONTENT payload: the first non-blank line
+    /// must open with three backticks (optionally followed by a language identifier) and the
+    /// last non-blank line must be exactly a closing fence of backticks. Anything else is
+    /// returned unchanged, so file content that legitimately contains fences deeper inside
+    /// is never touched.
     /// </summary>
+    private static string StripOuterCodeFence(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return content;
+
+        var lf = Convert.ToChar(10);
+        var crlf = string.Concat(Convert.ToChar(13), lf);
+        var normalized = content.Replace(crlf, new string(lf, 1));
+        var lines = normalized.Split(lf);
+        if (lines.Length < 2)
+            return content;
+
+        var first = 0;
+        while (first < lines.Length && lines[first].Trim().Length == 0) first++;
+        var last = lines.Length - 1;
+        while (last >= 0 && lines[last].Trim().Length == 0) last--;
+
+        if (first >= last)
+            return content;
+
+        var opener = lines[first].TrimStart();
+        if (!opener.StartsWith("```", StringComparison.Ordinal))
+            return content;
+
+        var closer = lines[last].Trim();
+        if (closer.Length < 3 || !closer.All(c => c == '`'))
+            return content;
+
+        return string.Join(lf.ToString(), lines[(first + 1)..last]);
+    }
+
     private static void BuildCommand(BlockContext block, List<FormatProblem> problems, List<AgentScriptCommand> commands)
     {
         var problemCountBefore = problems.Count;
@@ -297,6 +332,17 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         // an empty MSG are both valid); everything not required and not optional is rejected.
         var optional = block.Kind == CommandKind.Next ? new[] { SectionNames.Msg } : Array.Empty<string>();
 
+        // "@@say hello" is unambiguously "@@say" with MSG = "hello": none of these commands
+        // use the argument slot for anything else, so a bare argument becomes the MSG payload.
+        // This accepts the one-line say shape that markdown-collapsed replies produce.
+        if (block.Kind is CommandKind.Say or CommandKind.Done or CommandKind.Next
+            or CommandKind.Ask or CommandKind.Commit
+            && !string.IsNullOrWhiteSpace(block.Argument)
+            && !block.Sections.ContainsKey(SectionNames.Msg))
+        {
+            block.Sections[SectionNames.Msg] = block.Argument.Trim();
+        }
+
         foreach (var extra in block.Sections.Keys.Where(k => !required.Contains(k) && !optional.Contains(k)))
         {
             problems.Add(new FormatProblem(block.StartLine, ErrorCodes.ParseUnexpectedPayload,
@@ -313,6 +359,17 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
                 $"Command \"{block.Kind.GetDescription()}\" needs a path after the keyword."));
         }
 
+        // "@@say hello" is unambiguously "@@say" with MSG = "hello": none of these control
+        // commands use the argument slot for anything else, so a bare argument becomes the
+        // MSG payload. This accepts the one-line say shape that collapsed replies produce.
+        if (block.Kind is CommandKind.Say or CommandKind.Done or CommandKind.Next
+            or CommandKind.Ask or CommandKind.Commit
+            && !string.IsNullOrWhiteSpace(block.Argument)
+            && !block.Sections.ContainsKey(SectionNames.Msg))
+        {
+            block.Sections[SectionNames.Msg] = block.Argument.Trim();
+        }
+
         if (problems.Count > problemCountBefore)
         {
             // The block is malformed; nothing to add — numbering continues with the next block.
@@ -320,6 +377,19 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         }
 
         var payload = block.Sections;
+
+        // The outer code fence is purely cosmetic markdown: DeepSeek renders an unfenced
+        // CONTENT payload as one collapsed paragraph, so models wrap file content in a
+        // ``` fence. Its presence or absence does not change which file is written or its
+        // content, so it is stripped before the command record is built.
+        if (block.Kind is CommandKind.NewFile or CommandKind.UpdateFile
+            && block.Sections.TryGetValue(SectionNames.Content, out var rawContent))
+        {
+            var stripped = StripOuterCodeFence(rawContent);
+            if (!ReferenceEquals(stripped, rawContent) && stripped != rawContent)
+                block.Sections[SectionNames.Content] = stripped;
+        }
+
         string? onError = null;
         var argText = block.Argument;
         if (block.Kind == CommandKind.RunCommand && argText.StartsWith("on_error=", StringComparison.OrdinalIgnoreCase))
@@ -423,6 +493,83 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         while (reader.ReadLine() is { } line)
             lines.Add(line);
         return lines;
+    }
+
+    /// <summary>
+    /// Repairs the two corruptions observed in real turn logs, where the chat's markdown
+    /// renderer collapses the model's newlines before the parser sees them. Only patterns
+    /// that CANNOT be valid AgentScript as-is are repaired: a payload close marker chained
+    /// with a @@ command on one line ("hello CONTENT>>> @@end"), and @@end chained with a
+    /// @@ command on one line. Both are split into two lines; everything else is copied
+    /// unchanged, so legitimate content (e.g. a line reading "a CONTENT>>> b") is never
+    /// corrupted by this recovery.
+    /// </summary>
+    /// <summary>
+    /// Repairs the known corruptions to a FIXPOINT (at most 3 passes): chains like
+    /// "CONTENT>>> @@end @@newfile x <<<CONTENT" split first at the close marker, leaving
+    /// "@@end @@newfile x <<<CONTENT" for the @@end rule on the next pass.
+    /// </summary>
+    internal static List<string> RepairKnownCorruptions(List<string> lines)
+    {
+        var current = lines;
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var repaired = RepairPass(current);
+            if (repaired.Count == current.Count && repaired.SequenceEqual(current, StringComparer.Ordinal))
+                return repaired;
+            current = repaired;
+        }
+
+        return current;
+    }
+
+    private static List<string> RepairPass(List<string> lines)
+    {
+        var closeMarkerThenCommand = new System.Text.RegularExpressions.Regex(
+            "^(?<before>.*?)(?<marker>(?:CONTENT|MSG|FIND|REPLACE|CMD|TO)>>>)((?<cmd>[ \t]+@@.*))$");
+        var endThenCommand = new System.Text.RegularExpressions.Regex(
+            "^(?<marker>@@end)(?<cmd>[ \t]+@@.*)$");
+        // A block opener fused with its payload opener ("@@newfile login.css <<<CONTENT")
+        // would otherwise write a file named "login.css <<<CONTENT" — never intentional.
+        var blockOpenerThenPayload = new System.Text.RegularExpressions.Regex(
+            "^(@@(?:newfile|updatefile)[ \t]+(?<path>[^<]*?))(?<payload><<<CONTENT[ \t]*)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        var repaired = new List<string>(lines.Count);
+        foreach (var line in lines)
+        {
+            var closeMatch = closeMarkerThenCommand.Match(line);
+            if (closeMatch.Success)
+            {
+                // Three lines: the content before the marker (if any), the close marker
+                // ALONE on its line (so the strict close check recognizes it), and the command.
+                if (closeMatch.Groups["before"].Value.Trim().Length > 0)
+                    repaired.Add(closeMatch.Groups["before"].Value.TrimEnd());
+                repaired.Add(closeMatch.Groups["marker"].Value);
+                repaired.Add(closeMatch.Groups["cmd"].Value.Trim());
+                continue;
+            }
+
+            var endMatch = endThenCommand.Match(line);
+            if (endMatch.Success)
+            {
+                repaired.Add(endMatch.Groups["marker"].Value);
+                repaired.Add(endMatch.Groups["cmd"].Value.Trim());
+                continue;
+            }
+
+            var openerMatch = blockOpenerThenPayload.Match(line);
+            if (openerMatch.Success)
+            {
+                repaired.Add(openerMatch.Groups[1].Value.Trim());
+                repaired.Add(openerMatch.Groups["payload"].Value.Trim());
+                continue;
+            }
+
+            repaired.Add(line);
+        }
+
+        return repaired;
     }
 
     /// <summary>

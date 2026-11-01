@@ -129,21 +129,21 @@ public sealed record BrowserOptions
     public ReplySourceMode ReplySource { get; init; } = ReplySourceMode.Auto;
 
     /// <summary>
-    /// How long to wait for a complete reply. Default 300 seconds.
+    /// How long to wait for a complete reply. Default 180 seconds.
     /// </summary>
-    public int ReplyTimeoutSeconds { get; init; } = 300;
+    public int ReplyTimeoutSeconds { get; init; } = 180;
 
     /// <summary>
     /// How long to wait for confirmation that a message was actually sent (new message item,
-    /// or empty input plus generating indicator) before retrying once and failing. Default 15 seconds.
+    /// or empty input plus generating indicator) before retrying once and failing. Default 8 seconds.
     /// </summary>
-    public int SendConfirmSeconds { get; init; } = 15;
+    public int SendConfirmSeconds { get; init; } = 8;
 
     /// <summary>
     /// How long to wait for attachment uploads to settle (chips visible, send enabled)
-    /// before falling back to pasting the content. Default 60 seconds.
+    /// before falling back to pasting the content. Default 15 seconds.
     /// </summary>
-    public int UploadWaitSeconds { get; init; } = 60;
+    public int UploadWaitSeconds { get; init; } = 15;
 
     /// <summary>
     /// When the machine is offline before a send, wait up to this many seconds for the
@@ -336,7 +336,7 @@ public sealed record CommandsOptions
     public string BatchFailureMode { get; init; } = "StopOnMutationFailure";
 
     /// <summary>
-    /// Timeout for every external process. Default 300 seconds.
+    /// Timeout for every external process. Default 180 seconds.
     /// </summary>
     public int TimeoutSeconds { get; init; } = 300;
 }

@@ -32,14 +32,16 @@
     ".ds-think-content"
   ],
   "MessageCopyButton": [
-    ".ds-message [role=\"button\"][aria-label=\"Copy\"]",
+    "[role=\"button\"][aria-label=\"copy\" i]",
+    "[role=\"button\"][title=\"copy\" i]",
+    ".ds-message [role=\"button\"][aria-label*=\"copy\" i]",
     ".ds-message .ds-flex [role=\"button\"]:first-child",
     ".ds-message [role=\"button\"]:has-text(\"Copy\")"
   ],
   "StopIndicator": [
+    "div:has(textarea) [role=\"button\"][aria-label=\"Stop\"]",
     "[role=\"button\"][aria-label=\"Stop\"]",
-    "[role=\"button\"]:has-text(\"Stop\")",
-    ".ds-button--filled:has-text(\"Stop\")"
+    ".ds-button--filled[aria-label=\"Stop\"]"
   ],
   "FileInput": [
     "input[type=\"file\"][multiple]",

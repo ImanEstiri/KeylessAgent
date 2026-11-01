@@ -145,11 +145,14 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     {
         var windowFlag = WindowModeFlag(windowMode);
         var windowPrefix = windowFlag.Length > 0 ? windowFlag + " " : string.Empty;
+
+        // NO URL is passed: Chrome 136+ ignores --start-minimized when a URL is present
+        // (the window must be visible to load it). The chat tab is opened via CDP after
+        // the attach, so the launched window can start minimized.
         return windowPrefix +
             $"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1 " +
             $"--user-data-dir=\"{userDataDir}\" --no-first-run --no-default-browser-check " +
             "--disable-renderer-backgrounding --disable-background-timer-throttling " +
-            "--disable-backgrounding-occluded-windows " +
-            "https://chat.deepseek.com/";
+            "--disable-backgrounding-occluded-windows";
     }
 }

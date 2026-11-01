@@ -332,7 +332,9 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// </summary>
     private async Task WaitForGenerationAsync(CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(_options.Browser.ReplyTimeoutSeconds);
+        // Capped at 10 seconds: a StopIndicator selector that always matches would otherwise
+        // make every composer reload wait the full reply timeout.
+        var deadline = DateTime.UtcNow.AddSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 10));
         while (DateTime.UtcNow < deadline && await _page.IsStopIndicatorVisibleAsync(cancellationToken))
             await Task.Delay(100, cancellationToken);
     }

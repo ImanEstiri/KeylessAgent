@@ -39,6 +39,32 @@ full file content
 CONTENT>>>
 @@end
 
+## CONTENT payload MUST be wrapped in a code fence
+
+Every `<<<CONTENT` payload MUST start with a code fence line on its own — three backticks, or three backticks followed by a language identifier — and MUST end with a line containing only three backticks, placed BEFORE the `CONTENT>>>` marker. The program strips the outer fence before writing the file, and INSIDE the fence newlines are preserved exactly. Without the fence, the chat's markdown renderer collapses your newlines into spaces and the reply is rejected.
+
+CORRECT:
+
+```
+@@newfile src/login.html
+<<<CONTENT
+```html
+<html></html>
+```
+CONTENT>>>
+@@end
+```
+
+WRONG (newlines will be destroyed — this reply is rejected):
+
+```
+@@newfile src/login.html
+<<<CONTENT
+<html></html>
+CONTENT>>>
+@@end
+```
+
 @@updatefile src/Foo/Bar.cs
 <<<CONTENT
 full new content (replaces the file)

@@ -231,7 +231,8 @@ public class BrowserConnectorTests
         arguments.Should().NotContain(forbiddenFlag);
         arguments.Should().Contain("--remote-debugging-port=9222");
         arguments.Should().Contain("--disable-renderer-backgrounding", "the throttling flags are kept");
-        arguments.Should().Contain("https://chat.deepseek.com/");
+        arguments.Should().NotContain("chat.deepseek.com",
+            "Chrome 136+ ignores --start-minimized when a URL is present — the tab is opened via CDP");
     }
 
     [Fact]

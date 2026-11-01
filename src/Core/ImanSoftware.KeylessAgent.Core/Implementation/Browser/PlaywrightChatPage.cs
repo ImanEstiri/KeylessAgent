@@ -171,18 +171,27 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 var locator = _page.Locator(selector).First;
 
-                // Instant probe: absent elements cost one Evaluate round trip, never a wait.
-                // The disable state crosses as a JSON string so no bool/string mangling can
-                // flip the result (a raw bool would ToString as "True" and compare unequal).
-                // The disable-value assert is manual via `keyless doctor` (the unit tests run
-                // against FakeChatPage, which returns the bool directly).
-                var disabledJson = await EvaluateAsync(locator,
-                    "element => JSON.stringify({ d: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled') })",
+                // ONE round trip evaluates BOTH states: the disable state and the paperclip
+                // state (the iconLabelPrimary button next to the file input is the file-attach
+                // button, not send — a match there must be skipped, not reported). The states
+                // cross as a JSON string so no bool/string mangling can flip the result.
+                var stateJson = await EvaluateAsync(locator,
+                    "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
                     cancellationToken);
-                if (disabledJson is null)
+                if (stateJson is null)
                     continue; // selector matched nothing; try the next fallback.
 
-                var isDisabled = IsDisabledFromJson(disabledJson);
+                var parsed = System.Text.Json.JsonDocument.Parse(stateJson);
+                var paperclip = parsed.RootElement.TryGetProperty("paperclip", out var paperclipValue) &&
+                    paperclipValue.ValueKind == System.Text.Json.JsonValueKind.True;
+                if (paperclip)
+                {
+                    // The file-attach button is not the send control: keep looking.
+                    continue;
+                }
+
+                var isDisabled = parsed.RootElement.TryGetProperty("dis", out var disValue) &&
+                    disValue.ValueKind == System.Text.Json.JsonValueKind.True;
                 return !isDisabled;
             }
             catch (OperationCanceledException)
@@ -396,8 +405,10 @@ internal sealed class PlaywrightChatPage : IChatPage
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // (1) Never touch the composer while a reply is still generating.
-        var generatingDeadline = DateTime.UtcNow.AddSeconds(replyTimeoutSeconds);
+        // (1) Never touch the composer while a reply is still generating. The wait is capped
+        // at 10 seconds: a broken StopIndicator selector that always matches would otherwise
+        // make every reset wait the full reply timeout (up to five minutes by default).
+        var generatingDeadline = DateTime.UtcNow.AddSeconds(Math.Min(replyTimeoutSeconds, 10));
         while (DateTime.UtcNow < generatingDeadline &&
                await IsStopIndicatorVisibleAsync(cancellationToken))
         {
@@ -691,7 +702,12 @@ internal sealed class PlaywrightChatPage : IChatPage
         cancellationToken.ThrowIfCancellationRequested();
         var newest = await GetNewestAssistantLocatorAsync(cancellationToken);
         if (newest is null)
+        {
+            _log.LogWarning(
+                "MessageCopyButton: no assistant message is visible; {Count} selector(s) not tried ({Selectors}). Run 'keyless doctor --capture' and inspect newest-message.html to find the real aria-label.",
+                _selectors.MessageCopyButton.Length, string.Join(" | ", _selectors.MessageCopyButton));
             return false;
+        }
 
         try
         {
@@ -710,7 +726,14 @@ internal sealed class PlaywrightChatPage : IChatPage
         // timeout is the caller's upper bound once, never once per fallback selector.
         var match = await FirstVisibleAsync(newest, _selectors.MessageCopyButton, (int)timeout.TotalMilliseconds, cancellationToken);
         if (match is null)
+        {
+            // The reply source degrades to Dom here, which loses the raw Markdown; make the
+            // failure diagnosable instead of silent.
+            _log.LogWarning(
+                "MessageCopyButton did not match: tried {Count} selector(s) ({Selectors}) within {Timeout:F0}s. Run 'keyless doctor --capture' and inspect newest-message.html to find the real aria-label.",
+                _selectors.MessageCopyButton.Length, string.Join(" | ", _selectors.MessageCopyButton), timeout.TotalSeconds);
             return false;
+        }
 
         _log.LogDebug("MessageCopyButton matched selector #{Index}: {Selector}", match.Value.Index, _selectors.MessageCopyButton[match.Value.Index]);
         return true;
@@ -727,7 +750,7 @@ internal sealed class PlaywrightChatPage : IChatPage
         var totalMs = 3_000 * _selectors.MessageCopyButton.Length;
         var match = await FirstVisibleAsync(newest, _selectors.MessageCopyButton, totalMs, cancellationToken);
         if (match is null)
-            return false;
+            return await ClickCopyControlViaAccessibilityRoleAsync(newest, cancellationToken);
 
         _log.LogDebug("MessageCopyButton matched selector #{Index}: {Selector}", match.Value.Index, _selectors.MessageCopyButton[match.Value.Index]);
         try
@@ -744,6 +767,52 @@ internal sealed class PlaywrightChatPage : IChatPage
             _log.LogWarning("Copy click failed on #{Index}: {Message}", match.Value.Index, ex.Message);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Accessibility fallback: the live aria-label may be "Copy", "copy" or "Copy message",
+    /// which fixed strings miss. Resolves the copy control by accessible role + name regex,
+    /// first directly and then after hovering the newest message (the bar may be hover-only).
+    /// </summary>
+    private async Task<bool> ClickCopyControlViaAccessibilityRoleAsync(ILocator newest, CancellationToken cancellationToken)
+    {
+        const string successDirect = "Copy control matched via accessibility role";
+        const string successHover = "Copy control matched after hover";
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                if (attempt == 1)
+                {
+                    await WithCancellationAsync(newest.HoverAsync(), cancellationToken);
+                    await Task.Delay(300, cancellationToken);
+                }
+
+                var roleMatch = newest.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions
+                {
+                    NameRegex = new System.Text.RegularExpressions.Regex("copy", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+                });
+                var count = await WithCancellationAsync(roleMatch.CountAsync(), cancellationToken);
+                if (count > 0)
+                {
+                    await WithCancellationAsync(
+                        roleMatch.First.ClickAsync(new LocatorClickOptions { Timeout = 3_000 }), cancellationToken);
+                    _log.LogInformation(attempt == 0 ? successDirect : successHover);
+                    return true;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug("Accessibility copy fallback #{Attempt} failed: {Message}", attempt + 1, ex.Message);
+            }
+        }
+
+        return false;
     }
 
     /// <inheritdoc />
@@ -1090,22 +1159,6 @@ internal sealed class PlaywrightChatPage : IChatPage
     /// Null, empty or invalid JSON reads as NOT disabled (the send probe then behaves as
     /// before: enabled unless proven otherwise).
     /// </summary>
-    internal static bool IsDisabledFromJson(string? disabledJson)
-    {
-        if (string.IsNullOrWhiteSpace(disabledJson))
-            return false;
-
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(disabledJson);
-            return document.RootElement.TryGetProperty("d", out var d) &&
-                   d.ValueKind == System.Text.Json.JsonValueKind.True;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     /// <summary>Non-generic task variant of the cancellation race.</summary>
     private static async Task WithCancellationAsync(Task task, CancellationToken cancellationToken)

@@ -44,4 +44,26 @@ MSG>>>
 Valid keywords ONLY: @@say, @@newfile, @@updatefile, @@editfile, @@movefile, @@deletefile, @@readfile, @@runcommand, @@ask, @@commit, @@next, @@done — plus the final line @@eof. There is no @@command, no JSON, no markdown fences around the reply. Every block starts with @@keyword, may contain <<<NAME ... NAME>>> payload sections, and ends with @@end.
 Also remember: payload markers are ALONE on their own line (never "<<<CONTENT text CONTENT>>>" on one line); paths never start with "./"; use @@next to get this batch's results before continuing and @@done to end the turn (never both); and YOU execute commands yourself via @@runcommand — never give the user commands to run.
 HARD RULE — EVERY payload marker (<<<NAME and NAME>>>) must be the ENTIRE line. "CONTENT>>> @@end @@newfile x" on ONE line is a FORMAT ERROR and the whole reply is REJECTED.
+EXAMPLE OF A VALID RESPONSE (copy this shape exactly):
+
+@@say
+<<<MSG
+I will create the two files now.
+MSG>>>
+@@end
+@@newfile src/login.html
+<<<CONTENT
+```html
+<html></html>
+```
+CONTENT>>>
+@@end
+@@done
+<<<MSG
+Both files are created.
+MSG>>>
+@@end
+@@eof
+
+Every marker must be ALONE on its own line, and file content must be inside a backtick fence.
 Resend your COMPLETE response using only AgentScript v1. Do not apologize or explain. Do not add text outside blocks.

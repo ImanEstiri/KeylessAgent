@@ -97,7 +97,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             // Logged in (or just logged in): get the window out of the user's way.
             if (options.Browser.MinimizeAfterLogin)
-                await MinimizeWindowAsync(page, cancellationToken);
+                await MinimizeWindowAsync(page, attachment.LaunchedProcessId, cancellationToken);
 
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
@@ -180,28 +180,61 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     /// Minimizes the browser window via CDP (Browser.setWindowBounds) so a successful launch
     /// does not steal the user's focus. Best-effort.
     /// </summary>
-    internal static async Task MinimizeWindowAsync(IPage page, CancellationToken cancellationToken = default)
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_MINIMIZE = 6;
+
+    /// <summary>
+    /// Minimizes the chat window: CDP first (Browser.setWindowBounds), then a Win32
+    /// ShowWindow fallback through the launched Chrome process id. Chrome 136+ ignores
+    /// --start-minimized when a URL is passed, so the launched window needs this explicit
+    /// minimize. Best-effort: every failure is swallowed.
+    /// </summary>
+    internal static async Task MinimizeWindowAsync(IPage page, int launchedProcessId, CancellationToken cancellationToken = default)
     {
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var session = await page.Context.NewCDPSessionAsync(page);
-            var window = await session.SendAsync("Browser.getWindowForTarget");
-            var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
-            await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+            try
             {
-                ["windowId"] = windowId,
-                ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
-            });
-            await session.DetachAsync();
+                var window = await session.SendAsync("Browser.getWindowForTarget");
+                var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
+                await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+                {
+                    ["windowId"] = windowId,
+                    ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
+                });
+                return;
+            }
+            finally
+            {
+                await session.DetachAsync();
+            }
         }
         catch (OperationCanceledException)
         {
             throw;
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"CDP minimize failed: {ex.Message}; falling back to Win32.");
+        }
+
+        try
+        {
+            if (launchedProcessId > 0 &&
+                System.Diagnostics.Process.GetProcessById(launchedProcessId) is { MainWindowHandle: var handle } &&
+                handle != IntPtr.Zero)
+            {
+                ShowWindow(handle, SW_MINIMIZE);
+            }
+        }
         catch
         {
-            // Minimizing is best-effort.
+            // Minimize is best-effort; a failure here is never fatal.
         }
     }
 

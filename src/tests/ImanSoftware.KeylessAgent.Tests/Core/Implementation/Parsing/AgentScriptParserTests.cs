@@ -130,8 +130,10 @@ public class AgentScriptParserTests
     }
 
     [Fact]
-    public void Parse_InlinePayloadCloseFollowedByCommand_IsRejected()
+    public void Parse_InlinePayloadCloseFollowedByCommand_IsRepairedIntoBothCommands()
     {
+        // The repair splits the transport-corrupted line (close marker chained with commands)
+        // so the model's FULL intent is recovered instead of silently swallowing the rest.
         const string script = """
             @@newfile src/app.css
             <<<CONTENT
@@ -142,11 +144,12 @@ public class AgentScriptParserTests
             @@eof
             """;
 
-        var result = ParseBad(script);
+        var result = ParseOk(script);
 
-        var problem = result.Problems.Should().ContainSingle(p => p.Code == ErrorCodes.ParseBadMarker).Subject;
-        problem.Line.Should().Be(3);
-        result.Commands.Should().BeEmpty("a reply with a rejected format is never executed");
+        var appCss = result.Commands.OfType<NewFileCommand>().First(c => c.Path == "src/app.css");
+        appCss.Content.Should().Be("body { color: black; }");
+        var loginCss = result.Commands.OfType<NewFileCommand>().First(c => c.Path == "login.css");
+        loginCss.Content.Should().Be(".login { color: red; }");
     }
 
     [Fact]

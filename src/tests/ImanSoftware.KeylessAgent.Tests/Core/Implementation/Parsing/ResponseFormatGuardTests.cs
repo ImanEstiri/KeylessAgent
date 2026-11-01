@@ -120,8 +120,9 @@ public class ResponseFormatGuardTests
 
         var outcome = _guard.Check(script, Limits());
 
-        outcome.Data.IsValid.Should().BeFalse();
-        outcome.Data.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseSayOnly);
+        // A say-only reply is a valid conversational turn: the loop re-waits for the model.
+        outcome.Data.IsValid.Should().BeTrue();
+        outcome.Data.Problems.Should().NotContain(p => p.Code == ErrorCodes.ParseSayOnly);
     }
 
     [Fact]
