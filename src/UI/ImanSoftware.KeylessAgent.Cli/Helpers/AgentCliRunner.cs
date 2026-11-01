@@ -32,7 +32,8 @@ internal static class AgentCliRunner
         CancellationToken cancellationToken = default,
         bool timing = false,
         IChatProvider? chatProvider = null,
-        bool refreshEnv = false)
+        bool refreshEnv = false,
+        ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace? paceOverride = null)
     {
         ILoggerFactory? loggerFactory = null;
         if (verbose)
@@ -52,7 +53,7 @@ internal static class AgentCliRunner
 
         try
         {
-            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken, refreshEnv);
+            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken, refreshEnv, paceOverride);
 
             AnsiConsole.WriteLine();
             if (result.ErrorMessage is not null)

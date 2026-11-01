@@ -25,6 +25,7 @@ public static class SettingsGroupMapper
             new SettingsGroup("Mode",
             [
                 new SettingRow("Approval", options.Mode.ToString()),
+                new SettingRow("Pace", options.Agent.Pace.ToString()),
             ]),
             new SettingsGroup("Browser",
             [

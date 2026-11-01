@@ -95,7 +95,24 @@ internal sealed class AgentLoop : IAgentLoop
     /// <summary>
     /// A compact fixed reminder (~8 lines) prepended to every user-request message.
     /// </summary>
-    private static string BuildPerMessageReminder(string envSummary, bool noGitMode)
+
+    /// <summary>
+    /// Counts the numbered plan lines ("1. …", "2) …") in the reply's FIRST say block.
+    /// Returns null when the reply has no say or no numbered plan.
+    /// </summary>
+    private static int? CountPlanSteps(IReadOnlyList<AgentScriptCommand> commands)
+    {
+        var say = commands.FirstOrDefault(c => c.Kind == CommandKind.Say) as SayCommand;
+        if (say is null)
+            return null;
+
+        var numbered = say.Message
+            .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .Count(line => System.Text.RegularExpressions.Regex.IsMatch(line, "^ *[0-9]+[.)] "));
+        return numbered > 0 ? numbered : null;
+    }
+
+    private static string BuildPerMessageReminder(string envSummary, bool noGitMode, AgentPace pace)
     {
         var gitNote = noGitMode
             ? "git is NOT installed — do not use @@commit or git commands."
@@ -111,7 +128,9 @@ internal sealed class AgentLoop : IAgentLoop
             $"Environment: {envSummary}",
             "Commands run in cmd.exe on Windows (built-ins like mkdir/dir/type and && chains work); for files and folders prefer @@newfile/@@editfile/@@movefile — a new file's parent folders are created automatically.",
             gitNote,
-            "Investigate first (read-only commands, readfile) instead of guessing; use @@next to get results before continuing; use @@done to end the turn.",
+            pace == AgentPace.Step
+                ? "Pace is STEP: send ONE command, then @@next, and verify the result (verification summary or readfile) before the next command."
+                : "Group at most 3 related commands, verify after each group.",
             "[/REMINDER]");
     }
 
@@ -121,7 +140,8 @@ internal sealed class AgentLoop : IAgentLoop
         IAgentUserInterface ui,
         bool dryRun = false,
         CancellationToken cancellationToken = default,
-        bool refreshEnv = false)
+        bool refreshEnv = false,
+        AgentPace? paceOverride = null)
     {
         var logger = new TurnLogger(ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage(), _time);
         KeylessOptions options = new();
@@ -155,6 +175,31 @@ internal sealed class AgentLoop : IAgentLoop
                 return Failed(configOutcome.Error.Message, dryRun);
             options = configOutcome.Data;
             timings.Stop("config");
+
+            // The pace (CLI/WPF override or keyless.json) decides how many non-say commands
+            // one response may carry: min(Pace limit, Limits.MaxCommandsPerResponse). Step
+            // pace also raises MaxIterationsPerTurn to at least 60 (one command per response
+            // needs more rounds) and says so once.
+            var pace = paceOverride ?? options.Agent.Pace;
+            var paceLimit = pace switch
+            {
+                AgentPace.Step => 1,
+                AgentPace.Balanced => 3,
+                _ => int.MaxValue,
+            };
+            var effectiveCommandLimit = Math.Min(paceLimit, options.Limits.MaxCommandsPerResponse);
+            var effectiveIterations = options.Limits.MaxIterationsPerTurn;
+            if (pace == AgentPace.Step && effectiveIterations < 60)
+            {
+                effectiveIterations = 60;
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting,
+                    "Step pace: MaxIterationsPerTurn raised to 60 for this turn."));
+            }
+
+            // The system prompt must describe the pace actually used this turn.
+            options = options with { Agent = options.Agent with { Pace = pace } };
+            var executedNonSayTotal = 0; // turn-scoped counter for the "Step k/N" plan labels
+            var turnPlanSteps = (int?)null; // captured from the first say with a numbered plan
 
             if (options.Mode is ApprovalMode.AutoSafe or ApprovalMode.Auto)
             {
@@ -487,7 +532,7 @@ internal sealed class AgentLoop : IAgentLoop
 
             // Message 2: the user's request + a compact AgentScript reminder + the workspace
             // snapshot attachments. The full system prompt stays on the first message only.
-            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed);
+            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed, pace);
             var message = reminder + "\n\n" + request;
             if (!dryRun)
             {
@@ -506,7 +551,7 @@ internal sealed class AgentLoop : IAgentLoop
             // --- Step 8: The conversation loop ---
             var formatRetries = 0;
             var batch = 0;
-            while (batch < options.Limits.MaxIterationsPerTurn)
+            while (batch < effectiveIterations)
             {
                 batch++;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -627,6 +672,10 @@ internal sealed class AgentLoop : IAgentLoop
                 formatRetries = 0;
 
                 // --- Step 8b: Execute (say always; others up to the batch limit; rest skipped) ---
+                // The model's plan (a short numbered list in the first say) drives the
+                // "Step k/N" progress labels; missing or unparsable plans show nothing.
+                turnPlanSteps ??= CountPlanSteps(script.Commands);
+                var planSteps = turnPlanSteps;
                 var executed = new List<CommandExecutionResult>();
                 var usedSlots = 0;
                 var stopBatch = false;
@@ -642,7 +691,7 @@ internal sealed class AgentLoop : IAgentLoop
                         continue;
                     }
 
-                    if (usedSlots >= options.Limits.MaxCommandsPerResponse)
+                    if (usedSlots >= effectiveCommandLimit)
                     {
                         executed.Add(new CommandExecutionResult
                         {
@@ -650,14 +699,18 @@ internal sealed class AgentLoop : IAgentLoop
                             Kind = command.Kind,
                             Target = command.Target,
                             Status = CommandStatus.Skipped,
-                            ErrorMessage = "batch limit reached",
+                            ErrorMessage = paceLimit < options.Limits.MaxCommandsPerResponse
+                                ? $"pace={pace}: only {effectiveCommandLimit} command(s) per response; send the next one after reading this result"
+                                : "batch limit reached",
                         });
                         continue;
                     }
 
                     usedSlots++;
+                    executedNonSayTotal++;
+                    var planNote = planSteps is not null ? $"Step {Math.Min(executedNonSayTotal, planSteps.Value)}/{planSteps.Value}: " : string.Empty;
                     ui.ShowProgress(new AgentProgressEvent(AgentEventType.ExecutingCommand,
-                        $"#{command.Number} {command.Kind} {command.Target}"));
+                        $"{planNote}#{command.Number} {command.Kind} {command.Target}"));
 
                     if (stopBatch)
                     {
@@ -764,9 +817,9 @@ internal sealed class AgentLoop : IAgentLoop
                     break;
                 }
 
-                if (batch >= options.Limits.MaxIterationsPerTurn)
+                if (batch >= effectiveIterations)
                 {
-                    stoppedReason = $"iteration limit reached ({options.Limits.MaxIterationsPerTurn} responses)";
+                    stoppedReason = $"iteration limit reached ({effectiveIterations} responses)";
                     break;
                 }
 
@@ -777,7 +830,7 @@ internal sealed class AgentLoop : IAgentLoop
                     : [];
                 timings.Stop("attachments");
 
-                var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits);
+                var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits, workspaceRoot);
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
                 await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)

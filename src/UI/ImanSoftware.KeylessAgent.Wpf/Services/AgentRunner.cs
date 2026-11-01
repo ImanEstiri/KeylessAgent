@@ -39,13 +39,14 @@ public sealed class AgentRunner
     /// <param name="cancellationToken">Cancels the turn.</param>
     /// <returns>The mapped summary; null when the turn failed, was cancelled, or ended with an error.</returns>
     public async Task<TurnSummaryItem?> RunTurnAsync(
-        string workspaceRoot, string request, bool dryRun, bool verbose, CancellationToken cancellationToken)
+        string workspaceRoot, string request, bool dryRun, bool verbose, CancellationToken cancellationToken,
+        ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace? paceOverride = null)
     {
         var ui = _uiFactory();
         try
         {
             var loop = _loopFactory(workspaceRoot, verbose);
-            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken);
+            var result = await loop.RunAsync(workspaceRoot, request, ui, dryRun, cancellationToken, paceOverride: paceOverride);
 
             if (result.ErrorMessage is not null)
             {

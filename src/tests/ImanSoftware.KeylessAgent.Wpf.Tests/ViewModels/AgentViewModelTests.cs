@@ -1,5 +1,6 @@
 using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
@@ -37,13 +38,17 @@ public sealed class AgentViewModelTests
         /// <summary>Completes the held turn as cancelled.</summary>
         public void CancelGate() => _gate?.TrySetCanceled();
 
+        public AgentPace? LastPaceOverride { get; private set; }
+
         public Task<AgentTurnResult> RunAsync(
             string workspaceRoot, string request, IAgentUserInterface ui,
-            bool dryRun = false, CancellationToken cancellationToken = default, bool refreshEnv = false)
+            bool dryRun = false, CancellationToken cancellationToken = default, bool refreshEnv = false,
+            AgentPace? paceOverride = null)
         {
             RunCount++;
             LastRequest = request;
             LastDryRun = dryRun;
+            LastPaceOverride = paceOverride;
 
             if (_thrown is not null)
                 return Task.FromException<AgentTurnResult>(_thrown);
@@ -71,6 +76,23 @@ public sealed class AgentViewModelTests
         ConfirmedCommands = 1,
         DiffStat = " src/a.cs | 2 +-",
     };
+
+    [Fact]
+    public void StepByStep_Toggle_MapsToThePaceOverride()
+    {
+        var (viewModel, _, loop) = CreateViewModel(SuccessfulTurn());
+        viewModel.WorkspaceRoot = @"G:\demo";
+
+        viewModel.StepByStep = true;
+        viewModel.RequestText = "first";
+        viewModel.SendCommand.Execute(null);
+        loop.LastPaceOverride.Should().Be(AgentPace.Step, "the toggle maps on to Step (one command per response)");
+
+        viewModel.StepByStep = false;
+        viewModel.RequestText = "second";
+        viewModel.SendCommand.Execute(null);
+        loop.LastPaceOverride.Should().Be(AgentPace.Balanced, "the toggle maps off to Balanced");
+    }
 
     [Fact]
     public async Task Send_RunsTheTurn_ShowsSummaryAndChangedFiles_AndClearsTheComposer()

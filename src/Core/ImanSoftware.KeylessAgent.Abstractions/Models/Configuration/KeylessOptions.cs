@@ -37,6 +37,23 @@ public sealed record KeylessOptions
     /// External command policy settings.
     /// </summary>
     public CommandsOptions Commands { get; init; } = new();
+
+    /// <summary>
+    /// Pacing of the model's replies: how many non-say commands one response may carry.
+    /// </summary>
+    public AgentOptions Agent { get; init; } = new();
+}
+
+/// <summary>
+/// The <c>Agent</c> section: reply pacing. The effective per-response command limit is
+/// min(Pace limit, Limits.MaxCommandsPerResponse).
+/// </summary>
+public sealed record AgentOptions
+{
+    /// <summary>
+    /// Step = 1 command per response, Balanced = 3 (default), Batch = Limits.MaxCommandsPerResponse.
+    /// </summary>
+    public AgentPace Pace { get; init; } = AgentPace.Balanced;
 }
 
 /// <summary>

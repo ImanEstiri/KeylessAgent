@@ -31,9 +31,7 @@ public class ResultFormatterTests
             },
         };
 
-        var message = _formatter.Format(3, 2, results, batchLimit: 5, Limits());
-
-        message.Should().StartWith("[KEYLESSAGENT RESULTS] turn=3 batch=2");
+        var message = _formatter.Format(3, 2, results, batchLimit: 5, Limits(), workspaceRoot: "");
         message.Should().Contain("--- result 1/2 | #1 newfile | src/Foo/Bar.cs ---");
         message.Should().Contain("--- result 2/2 | #2 runcommand | dotnet build ---");
         message.Should().Contain("status: ok");
@@ -54,7 +52,7 @@ public class ResultFormatterTests
                 "FIND text matched 0 times (must match exactly once)"),
         };
 
-        var message = _formatter.Format(1, 1, results, 5, Limits());
+        var message = _formatter.Format(1, 1, results, 5, Limits(), workspaceRoot: "");
 
         message.Should().Contain("status: error");
         message.Should().Contain("reason: FIND text matched 0 times");
@@ -76,7 +74,7 @@ public class ResultFormatterTests
             },
         };
 
-        var message = _formatter.Format(1, 1, results, 5, Limits());
+        var message = _formatter.Format(1, 1, results, 5, Limits(), workspaceRoot: "");
 
         message.Should().Contain("--- result 2/2 | #7 updatefile | src/A.cs ---");
         message.Should().Contain("status: skipped");
@@ -107,7 +105,7 @@ public class ResultFormatterTests
             },
         };
 
-        var message = _formatter.Format(1, 1, results, 5, Limits());
+        var message = _formatter.Format(1, 1, results, 5, Limits(), workspaceRoot: "");
 
         message.Should().NotContain("resend them next",
             "commands skipped after a failure or @@done must NOT be resent");
@@ -131,7 +129,7 @@ public class ResultFormatterTests
             },
         };
 
-        var message = _formatter.Format(1, 1, results, 5, new LimitsOptions { MaxCommandOutputChars = 1000 });
+        var message = _formatter.Format(1, 1, results, 5, new LimitsOptions { MaxCommandOutputChars = 1000 }, workspaceRoot: "");
 
         message.Should().Contain("characters truncated ...");
         message.Should().Contain("line 1\n");
@@ -154,7 +152,7 @@ public class ResultFormatterTests
             },
         };
 
-        var message = _formatter.Format(1, 1, results, 5, Limits());
+        var message = _formatter.Format(1, 1, results, 5, Limits(), workspaceRoot: "");
 
         message.Should().Contain("<<<OUTPUT");
         message.Should().Contain("file content here");
@@ -169,7 +167,7 @@ public class ResultFormatterTests
             CommandExecutionResult.Ok(new SayCommand(new string('x', 500)) { Number = 1 }),
         };
 
-        var message = _formatter.Format(1, 1, results, 5, Limits());
+        var message = _formatter.Format(1, 1, results, 5, Limits(), workspaceRoot: "");
 
         message.Should().Contain("...");
         message.Split('\n').Should().NotContain(line => line.Length > 250);

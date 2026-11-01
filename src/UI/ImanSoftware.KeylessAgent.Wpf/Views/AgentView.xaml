@@ -116,6 +116,11 @@
                                  VerticalAlignment="Center"
                                  Margin="0,0,10,0"
                                  Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
+                        <CheckBox Content="Step by step"
+                                  Style="{DynamicResource ToggleSwitch}"
+                                  IsChecked="{Binding StepByStep}"
+                                  ToolTip="One command per response; the model verifies every result before the next step"
+                                  Margin="0,0,12,0" />
                         <CheckBox Content="Dry run"
                                   Style="{DynamicResource ToggleSwitch}"
                                   IsChecked="{Binding DryRun}" />

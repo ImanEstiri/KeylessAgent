@@ -61,6 +61,10 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "ProtectedBranchPatterns": [ "main", "master", "release*" ]
   },
 
+  "Agent": {
+    "Pace": "Balanced"            // Step = 1 command per response, Balanced = 3, Batch = Limits.MaxCommandsPerResponse
+  },
+
   "Commands": {
     "Allowlist": [ "dotnet", "git", "npm", "node", "python" ],
     "AutoApprove": [ "ReadOnly", "Build" ],

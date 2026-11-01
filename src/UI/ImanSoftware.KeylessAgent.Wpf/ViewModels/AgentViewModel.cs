@@ -22,6 +22,7 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     private string? _branchName;
     private bool _dryRun;
     private bool _verbose;
+    private bool _stepByStep;
     private bool _isRunning;
     private TurnSummaryItem? _lastSummary;
 
@@ -118,6 +119,13 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _verbose, value);
     }
 
+    /// <summary>Step-by-step pacing: one command per response (maps Agent.Pace Step/Balanced).</summary>
+    public bool StepByStep
+    {
+        get => _stepByStep;
+        set => SetProperty(ref _stepByStep, value);
+    }
+
     /// <summary>Whether a turn is currently running (drives the Stop button and busy state).</summary>
     public bool IsRunning
     {
@@ -155,7 +163,8 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
         _turnCancellation = new CancellationTokenSource();
         try
         {
-            var summary = await _runner.RunTurnAsync(WorkspaceRoot, request, DryRun, Verbose, _turnCancellation.Token);
+            var summary = await _runner.RunTurnAsync(WorkspaceRoot, request, DryRun, Verbose, _turnCancellation.Token,
+            _stepByStep ? ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace.Step : ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace.Balanced);
             if (summary is not null)
             {
                 LastSummary = summary;

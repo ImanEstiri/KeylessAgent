@@ -23,6 +23,8 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
         var environmentTools = KeylessAgentServiceFactory.CreateEnvironmentTools();
         var tools = await environmentTools.GetToolsCachedAsync(workspace, settings.RefreshEnv, cancellationToken);
         ConsoleWriter.Shared.Info(IEnvironmentTools.FormatToolsLine(tools));
+        ConsoleWriter.Shared.Info($"Pace: {settings.Pace?.ToString() ?? "Balanced (default)"} — non-say commands per response: " +
+            (settings.Pace == ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace.Step ? "1" : settings.Pace == ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace.Batch ? "Limits.MaxCommandsPerResponse" : "3"));
 
         using var turnCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Console.CancelKeyPress += OnCancelKeyPress;
@@ -30,7 +32,7 @@ internal sealed class RunCommand : AsyncCommand<RunSettings>
         {
             return await AgentCliRunner.RunTurnAsync(
                 workspace, request, settings.DryRun, settings.Verbose, turnCts.Token, timing: settings.Timing,
-                refreshEnv: settings.RefreshEnv);
+                refreshEnv: settings.RefreshEnv, paceOverride: settings.Pace);
         }
         finally
         {

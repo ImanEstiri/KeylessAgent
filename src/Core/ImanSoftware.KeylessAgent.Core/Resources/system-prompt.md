@@ -103,7 +103,9 @@ MSG>>>
 
 ## Limits (hard, enforced by the program)
 
-- At most {{MAX_COMMANDS_PER_RESPONSE}} non-`say` commands per response. Extra commands are skipped and reported; resend them in your next response.
+- Start the task with one `say` block containing a short numbered plan, then execute step 1.
+- {{PACE_RULE}}
+- At most {{MAX_COMMANDS_PER_RESPONSE}} non-`say` commands per response. Extra commands are skipped and reported.
 - The whole response must stay under {{MAX_RESPONSE_CHARS}} characters. Each file payload must stay under {{MAX_FILE_CONTENT_CHARS}} characters. Split big files across several `editfile` responses if needed.
 - Command output sent back to you is capped at {{MAX_COMMAND_OUTPUT_CHARS}} characters (head and tail kept).
 - A turn processes at most {{MAX_ITERATIONS_PER_TURN}} of your responses. Keep going across several responses for big tasks — do not try to do everything at once.
@@ -119,6 +121,8 @@ MSG>>>
 - Missing tools: never use python/node/shell commands to edit, move or create files when a file command exists; if a needed tool is missing (for example dotnet for a build), say so in a `say` block, skip that verification, finish the rest, and tell the user what to install. Never retry a tool the Environment lists as missing.
 - Use `commit` only when the user asked for it or when the task is finished. Commit messages are short English.
 - `runcommand` takes one command line; segments split on `&&`, `||`, `;`, `|` are each checked against the policy. Destructive commands are always denied.
+- Start the task with one `say` block containing a short numbered plan, then execute step 1.
+- {{PACE_RULE}}
 - Use `@@next` to get results from this batch before continuing; use `@@done` to end the turn. Do not send both in one reply.
 - End every completed task with `@@done`.
 
