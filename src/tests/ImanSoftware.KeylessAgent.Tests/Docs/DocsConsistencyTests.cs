@@ -78,6 +78,45 @@ public class DocsConsistencyTests
     }
 
     [Fact]
+    public void CliCommands_AndSlashCommands_AreDocumented()
+    {
+        var root = FindRepoRoot();
+        var readme = File.ReadAllText(Path.Combine(root, "README.md"));
+        var cliReadme = File.ReadAllText(Path.Combine(root, "src", "UI", "ImanSoftware.KeylessAgent.Cli", "README.md"));
+
+        foreach (var command in new[] { "run", "resume", "undo", "config", "chrome", "doctor" })
+            readme.Should().Contain($"keyless {command}", "README must document the keyless {0} command", command);
+
+        foreach (var slash in new[] { "/workspace", "/newchat", "/tools", "/refreshenv", "/help" })
+            (readme + cliReadme).Should().Contain(slash, "the interactive slash command {0} must be documented", slash);
+
+        readme.Should().Contain("--pace", "the run command's --pace option must be documented");
+        readme.Should().Contain("--refresh-env", "the run command's --refresh-env option must be documented");
+    }
+
+    [Fact]
+    public void BrowserAutomationDoc_CoversTheNewAttachmentSelectors()
+    {
+        var root = FindRepoRoot();
+        var doc = File.ReadAllText(Path.Combine(root, "docs", "browser-automation.md"));
+
+        doc.Should().Contain("AttachmentRemove", "the remove-chip selector key must be documented");
+        doc.Should().Contain("AttachmentFailed", "the failed-chip selector key must be documented");
+        doc.Should().Contain("KA_NETWORK_OFFLINE", "the offline behavior must be documented");
+        doc.Should().Contain("KA_COMPOSER_NOT_CLEAN", "the composer-reset behavior must be documented");
+    }
+
+    [Fact]
+    public void WpfUiDoc_CoversThePaceAndVerifiedSurfaces()
+    {
+        var root = FindRepoRoot();
+        var doc = File.ReadAllText(Path.Combine(root, "docs", "wpf-ui.md"));
+
+        doc.Should().Contain("StepByStep", "the composer toggle must be documented");
+        doc.Should().Contain("#8F98B5", "the TextMuted contrast adjustment must be documented");
+    }
+
+    [Fact]
     public void DefaultKeylessOptions_SerializeMatchesDocumentedJson()
     {
         // The documented keyless.json block must parse into the default options object.

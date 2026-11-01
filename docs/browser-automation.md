@@ -228,3 +228,11 @@ Built from a DOM sample, verified only by unit tests so far. Before relying on i
 5. Toggle labels (`DeepThink`/`Search` texts) and `aria-pressed` values.
 
 Record the results of this checklist in this file after testing.
+
+## Offline, composer reset and verified results
+
+Before every message the composer is reset: leftover text is cleared (select-all + delete, verified), stale attachment chips are removed (failed chips first, via the `AttachmentRemove` / `AttachmentFailed` selector keys in `selectors.json`, reload fallback), and the result is verified — otherwise the turn fails with `KA_COMPOSER_NOT_CLEAN`. A `StartSession` performs the same reset once.
+
+Every send is gated on connectivity (`navigator.onLine` plus a no-store probe of the chat origin, cached 2 s). Offline before a send → `KA_NETWORK_OFFLINE` and nothing is uploaded or pasted (optionally wait `Browser.WaitForNetworkSeconds`); a drop during upload/confirmation/reply wait stops the wait at once and reports the same code. A chip in the failed state right after `SetInputFiles` fails the upload immediately (`KA_ATTACHMENT_UPLOAD_FAILED`, composer cleaned, paste fallback only while online).
+
+Successful file commands carry a `verified:` line in the results message (path, bytes, lines, SHA-8, first/last 60 characters) — see [agentscript-spec.md](agentscript-spec.md#verified-line). The `AttachmentRemove`/`AttachmentFailed` selector keys are UNVERIFIED against the live UI; `keyless doctor` prints the closest chip candidate so they can be fixed from facts.

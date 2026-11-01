@@ -28,7 +28,7 @@ keyless chrome "G:\Projects\MyApp"   # start the dedicated Chrome (one-time Deep
 keyless doctor "G:\Projects\MyApp"   # live selector check, never sends anything
 ```
 
-Inside the interactive session: `/workspace <path>` switches workspaces, `/newchat` starts a fresh chat in the same workspace, `/help` lists slash commands, any other `/`-input is rejected with a hint.
+Inside the interactive session: `/workspace <path>` switches workspaces, `/newchat` starts a fresh chat in the same workspace, `/tools` shows the installed tools, `/refreshenv` re-probes them, `/help` lists slash commands, any other `/`-input is rejected with a hint.
 
 **Ctrl+C** is safe: during a turn it cancels only that turn (press again within 2 seconds to exit); at the `keyless>` prompt it exits gracefully. `keyless run` accepts `--timing` to print the per-phase timing table after the turn.
 
@@ -43,3 +43,9 @@ Full documentation — AgentScript, configuration, selectors, reply sources, sec
 ## License
 
 MIT — see [LICENSE](https://github.com/ImanEstiri/KeylessAgent/blob/main/LICENSE.txt).
+
+## Pacing and tools
+
+`keyless run … --pace Step|Balanced|Batch` (and `--pace` on the interactive command) caps how many non-`say` commands one response may carry: Step = 1, Balanced = 3, Batch = `Limits.MaxCommandsPerResponse`. Skipped commands are reported with `pace=<Pace>: only N command(s) per response; send the next one after reading this result`.
+
+Each session prints one tools line (`Tools: git OK, dotnet MISSING (https://…), …`). `runcommand`s whose tool is missing are never started (`KA_TOOL_MISSING`) — use the file commands or install the tool. `--refresh-env` re-probes the environment instead of using the 24 h cache.

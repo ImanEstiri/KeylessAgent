@@ -120,6 +120,10 @@ with `DynamicResource` so the order only matters for StaticResource-based styles
 `Views/StyleGalleryWindow.xaml` renders every style once and opens from the About page in
 debug builds only.
 
+**Composer pace toggle:** the agent composer has a "Step by step" switch (`AgentViewModel.StepByStep`) that maps to `AgentPace.Step` when on and `AgentPace.Balanced` when off, passed as the turn's pace override.
+
+**TextMuted contrast:** `TextMuted` (#8F98B5) was lightened from #6F7898 so it passes WCAG AA on the glass surfaces: 6.0:1 on regular glass (GlassFill over BgDeep ≈ #171A24) and 4.6:1 on the strongest surface (GlassFillStrong ≈ #2D2F39), up from 3.96:1. Cards are spaced 8 px apart, all buttons are ≥ 32 px high with visible gold focus rings (including the toggle, ComboBox and ListBoxItem), the feed and changes panel have empty states ("Type a request to start" / "No changes yet"), and the title-bar icon buttons carry tooltips.
+
 ### Backdrop
 
 `Infrastructure/BackdropPlanner` is a pure function of (OS build, preference, reduce effects):
@@ -160,7 +164,7 @@ short error dialog is shown. The app keeps running.
 
 ## Testing
 
-`dotnet test src/tests/ImanSoftware.KeylessAgent.Wpf.Tests` — 193 tests at the time of writing.
+`dotnet test src/tests/ImanSoftware.KeylessAgent.Wpf.Tests` — 201 tests at the time of writing.
 The suite avoids launching a WPF `Application`:
 
 - View models and services run against the `ImmediateDispatcher` fake and fake Core services
@@ -202,7 +206,7 @@ does exactly what `keyless chrome` does). The application icon is intentionally 
 ## Verification status
 
 - **Automated (verified):** whole-solution build with 0 errors (0 warnings in the WPF projects);
-  193 WPF tests + 539 Core/CLI tests green; the publish command and `publish-wpf.ps1` executed
+  201 WPF tests + 574 Core/CLI tests green; the publish command and `publish-wpf.ps1` executed
   successfully with the Playwright driver present in the output.
 - **Not verified (needs a human):** the app was never launched during development. Visual
   appearance, layout, animations, the Windows 11 backdrop and the folder/file dialogs still

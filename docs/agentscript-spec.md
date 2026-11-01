@@ -101,12 +101,35 @@ Use `@@runcommand on_error=continue` to override the mode for that command only.
 
 | Limit | Default | Behavior when exceeded |
 | --- | --- | --- |
-| `MaxCommandsPerResponse` | 5 | First N non-`say` commands execute; the rest are reported as `skipped` and resent by the model |
+| `MaxCommandsPerResponse` | 5 | First N non-`say` commands execute; the rest are reported as `skipped` and resent by the model. The EFFECTIVE limit is min(Agent.Pace limit, this value) — see Pacing below |
 | `MaxResponseChars` | 60000 | Reply rejected (`KA_LIMIT_RESPONSE_CHARS`); model told to split |
 | `MaxFileContentChars` | 40000 | Reply rejected (`KA_LIMIT_FILE_CONTENT_CHARS`) |
 | `MaxCommandOutputChars` | 8000 | Result output capped (head + tail kept, cut marked) |
 | `MaxFormatRetries` | 3 | After N invalid replies the turn stops and the user sees the raw last reply |
 | `MaxIterationsPerTurn` | 25 | Turn stops with a stop reason |
+
+## Pacing (Agent.Pace)
+
+`Agent.Pace` (keyless.json, or `--pace` on `run`/interactive) caps how many NON-`say` commands one response may carry: **Step** = 1, **Balanced** = 3 (default), **Batch** = `Limits.MaxCommandsPerResponse`. The effective limit is `min(Pace limit, Limits.MaxCommandsPerResponse)` and is injected into the system prompt.
+
+When a response carries more commands than the effective limit, the first N execute and the rest are reported as skipped with the reason:
+
+```text
+pace=<Pace>: only N command(s) per response; send the next one after reading this result
+```
+
+(The generic "batch limit … resend them next" note is used only in Batch mode.) In Step mode `MaxIterationsPerTurn` is raised to at least 60 for the turn, and the system prompt/reminder carry the Step rule: one command, then `@@next`, verify the result before continuing.
+
+## Verified line
+
+Successful `newfile`, `updatefile`, `editfile`, `movefile` and `mkdir` results carry one compact line the model can trust without re-reading the file:
+
+```text
+verified: path=<p> bytes=<n> lines=<n> sha=<8 hex> first="<first 60 chars>" last="<last 60 chars>"
+```
+
+`mkdir` results carry `verified: dir exists`. Newlines inside the snippets are shown as `
+` escapes; the line is capped at 300 characters and never contains the full file content. CRLF files count both bytes per line ending; lines are counted after CRLF/LF normalization.
 
 ## @@done ends the turn
 
