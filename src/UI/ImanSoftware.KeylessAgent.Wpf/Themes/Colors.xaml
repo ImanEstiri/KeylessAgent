@@ -13,7 +13,7 @@
 
     <Color x:Key="TextPrimaryColor">#F2F4FA</Color>
     <Color x:Key="TextSecondaryColor">#A9B1CC</Color>
-    <Color x:Key="TextMutedColor">#6F7898</Color>
+    <Color x:Key="TextMutedColor">#8F98B5</Color>
 
     <Color x:Key="GoldColor">#E3C07A</Color>
     <Color x:Key="GoldHoverColor">#F0D29A</Color>

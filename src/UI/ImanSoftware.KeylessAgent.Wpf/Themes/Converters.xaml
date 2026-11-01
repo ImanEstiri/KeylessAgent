@@ -5,6 +5,7 @@
     <!-- Shared value converters used by templates across views. -->
 
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <inf:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <inf:NullToCollapsedConverter x:Key="NullToCollapsed" />
 
 </ResourceDictionary>

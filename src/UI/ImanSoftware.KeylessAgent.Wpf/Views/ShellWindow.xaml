@@ -98,15 +98,18 @@
                     <Button x:Name="MinimizeButton"
                             Width="46" Height="32"
                             Style="{StaticResource GhostButton}"
-                            Content="▢" Click="OnMinimizeClick" />
+                            Content="▢" Click="OnMinimizeClick"
+                            ToolTip="Minimize" />
                     <Button x:Name="MaximizeButton"
                             Width="46" Height="32"
                             Style="{StaticResource GhostButton}"
-                            Content="▢" Click="OnMaximizeClick" />
+                            Content="▢" Click="OnMaximizeClick"
+                            ToolTip="Maximize / restore" />
                     <Button x:Name="CloseButton"
                             Width="46" Height="32"
                             Style="{StaticResource DangerButton}"
-                            Content="✕" Click="OnCloseClick" />
+                            Content="✕" Click="OnCloseClick"
+                            ToolTip="Close" />
                 </StackPanel>
             </Grid>
 

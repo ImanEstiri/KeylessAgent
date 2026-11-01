@@ -11,7 +11,7 @@
                 BorderThickness="1,0,0,0"
                 CornerRadius="6"
                 Padding="12,8"
-                Margin="0,2">
+                Margin="0,4">
             <StackPanel>
                 <TextBlock Text="You" Style="{StaticResource CaptionText}" Foreground="{StaticResource Gold}" />
                 <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,2,0,0" />
@@ -25,7 +25,7 @@
                 BorderThickness="1"
                 CornerRadius="6"
                 Padding="12,8"
-                Margin="0,2">
+                Margin="0,4">
             <StackPanel>
                 <TextBlock Text="◆ Model" Style="{StaticResource CaptionText}" Foreground="{StaticResource TextSecondary}" />
                 <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,2,0,0" />

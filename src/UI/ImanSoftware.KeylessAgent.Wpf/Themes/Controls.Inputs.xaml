@@ -80,6 +80,11 @@
                                           HorizontalAlignment="Left"
                                           VerticalAlignment="Center"
                                           Content="{TemplateBinding SelectionBoxItem}" />
+                        <Border x:Name="FocusRing"
+                                BorderBrush="Transparent"
+                                BorderThickness="2"
+                                CornerRadius="10"
+                                IsHitTestVisible="False" />
                         <Popup IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" StaysOpen="False">
                             <Border Background="{StaticResource GlassFillStrong}"
                                     BorderBrush="{StaticResource GlassBorder}"
@@ -92,6 +97,11 @@
                             </Border>
                         </Popup>
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="FocusRing" Property="BorderBrush" Value="{StaticResource Gold}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -123,6 +133,13 @@
                             <Setter TargetName="Track" Property="Background" Value="{StaticResource Gold}" />
                             <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
                             <Setter TargetName="Knob" Property="Fill" Value="{StaticResource BgDeep}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Gold}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Gold}" />
+                            <Setter TargetName="Track" Property="BorderThickness" Value="2" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />

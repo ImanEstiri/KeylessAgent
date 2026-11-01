@@ -79,11 +79,19 @@
             </StackPanel>
 
             <Border Grid.Row="1" Style="{DynamicResource GlassCard}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Feed.Items}"
-                                  Margin="8"
-                                  inf:FeedScrollBehavior.Enabled="True" />
-                </ScrollViewer>
+                <Grid>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Feed.Items}"
+                                      Margin="8"
+                                      inf:FeedScrollBehavior.Enabled="True" />
+                    </ScrollViewer>
+                    <TextBlock Text="Type a request to start"
+                               Style="{DynamicResource BodyText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasFeedItems, Converter={StaticResource InverseBoolToVisibility}}" />
+                </Grid>
             </Border>
 
             <Border Grid.Row="2"
@@ -150,6 +158,11 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="8">
                     <TextBlock Text="Changes" Style="{DynamicResource BodyText}" Foreground="{DynamicResource Gold}" />
+                    <TextBlock Text="No changes yet"
+                               Style="{DynamicResource CaptionText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding HasChangedFiles, Converter={StaticResource InverseBoolToVisibility}}" />
                     <ItemsControl ItemsSource="{Binding ChangedFiles}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

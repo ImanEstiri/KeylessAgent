@@ -66,7 +66,7 @@
                                    Style="{DynamicResource BodyText}"
                                    Foreground="{DynamicResource TextMuted}"
                                    Margin="0,2,0,0"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}, ConverterParameter=Inverse}" />
+                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
                     </StackPanel>
                     <Button Grid.Column="1"
                             Content="Browse…"
@@ -158,7 +158,7 @@
                                Style="{DynamicResource CaptionText}"
                                Foreground="{DynamicResource TextMuted}"
                                Margin="0,8,0,0"
-                               Visibility="{Binding HasEnvironmentRows, Converter={StaticResource BoolToVisibility}, ConverterParameter=Inverse}" />
+                               Visibility="{Binding HasEnvironmentRows, Converter={StaticResource InverseBoolToVisibility}}" />
                     <ItemsControl ItemsSource="{Binding EnvironmentRows}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

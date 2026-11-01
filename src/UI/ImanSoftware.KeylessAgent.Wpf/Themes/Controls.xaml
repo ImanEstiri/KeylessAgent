@@ -5,6 +5,7 @@
          Every interactive control has normal/hover/pressed/focused (gold 2 px ring)/disabled. -->
 
     <Style x:Key="GhostButton" TargetType="Button">
+        <Setter Property="MinHeight" Value="32" />
         <Setter Property="Background" Value="{StaticResource GlassFill}" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
         <Setter Property="BorderBrush" Value="{StaticResource GlassBorder}" />
@@ -147,6 +148,10 @@
                             <Setter TargetName="Chrome" Property="Background" Value="{StaticResource GlassFillHover}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Gold}" />
+                            <Setter TargetName="Chrome" Property="BorderThickness" Value="1" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Gold}" />
                             <Setter TargetName="Chrome" Property="BorderThickness" Value="1" />
                         </Trigger>

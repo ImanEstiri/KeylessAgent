@@ -43,7 +43,9 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
             IsRunning = running.IsRunning;
             StopCommand.NotifyCanExecuteChanged();
         };
+        _feed.Items.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasFeedItems));
         ChangedFiles = new ObservableCollection<ChangedPath>();
+        ChangedFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasChangedFiles));
     }
 
     /// <summary>Disposes the current turn's cancellation source. View models live for the app's lifetime.</summary>
@@ -60,6 +62,12 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
 
     /// <summary>The undo section of the Changes panel; assigned at composition time.</summary>
     public UndoViewModel? Undo { get; set; }
+
+    /// <summary>Whether the feed has entries (drives the feed empty state).</summary>
+    public bool HasFeedItems => _feed.Items.Count > 0;
+
+    /// <summary>Whether the changes panel has entries (drives the changes empty state).</summary>
+    public bool HasChangedFiles => ChangedFiles.Count > 0;
 
     /// <summary>The files changed by the last completed turn (right-hand panel).</summary>
     public ObservableCollection<ChangedPath> ChangedFiles { get; }
