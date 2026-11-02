@@ -28,7 +28,7 @@ public class PlaywrightChatSessionTests : IDisposable
         Directory.CreateDirectory(_root);
     }
 
-    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null, ITimingRecorder? timings = null)
+    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null, ITimingRecorder? timings = null, Func<string, object, Task>? logEvent = null)
     {
         var browserOptions = new BrowserOptions
         {
@@ -50,6 +50,7 @@ public class PlaywrightChatSessionTests : IDisposable
                 Browser = browserOptions,
                 ResumeChatUrl = resumeChatUrl,
                 Timings = timings,
+                LogEvent = logEvent,
             },
             new ReplyExtractor(),
             new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
@@ -329,6 +330,97 @@ public class PlaywrightChatSessionTests : IDisposable
         (await session.WaitForReplyAsync()).Data.Should().Be("dom reply");
 
         page.CopyButtonWaitCalls.Should().Be(0, "Dom mode never touches the copy path");
+    }
+
+    private const string TruncatedReply = "@@newfile hello.html\n<<<CONTENT\n<h1>hi</h1>\nCONTENT>>>\n@@end";
+    private const string CompleteReply = TruncatedReply + "\n@@eof";
+
+    [Fact]
+    public async Task TruncatedReply_IsRejected_ThenACompletedReplyIsAccepted()
+    {
+        // A minimized Chrome can throttle the stream: an AgentScript reply without @@eof is
+        // never accepted — the wait keeps polling until the stream completes, then returns.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, object Payload)>();
+        var firstTruncationSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2); // the throttled stream lands first
+            _ = Task.Run(async () =>
+            {
+                await firstTruncationSeen.Task; // the wait loop rejected the truncated text
+                await Task.Delay(100);          // then the stream completes
+                page.SimulateAssistantReply("442", CompleteReply, 2);
+            });
+        };
+        var session = CreateSession(page, logEvent: (type, payload) =>
+        {
+            if (type == "reply-truncated")
+            {
+                lock (events)
+                    events.Add((type, payload));
+                firstTruncationSeen.TrySetResult();
+            }
+            return Task.CompletedTask;
+        });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsSuccess.Should().BeTrue("the stream resumes and the completed reply must be accepted");
+        reply.Data.Should().Contain("@@newfile hello.html", "the AgentScript body survived extraction");
+        reply.Data.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase).Should().BeTrue(
+            "the COMPLETED reply is returned — never the truncated one (extraction collapses newlines)");
+        page.FocusedTabs.Should().BeEmpty("one truncation never triggers the un-minimize recovery");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated").ToList();
+            truncations.Should().NotBeEmpty("truncation events give the diagnostic trail");
+        }
+    }
+
+    [Fact]
+    public async Task FiveTruncations_FocusOnce_ThenFiveMore_FailTheWait()
+    {
+        // 5 truncated detections → ONE un-minimize recovery (FocusTabAsync); 5 MORE even with
+        // the window visible → KA_REPLY_TRUNCATED failure. The truncated text is never returned.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, System.Text.Json.JsonElement Payload)>();
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2); // the stream never completes
+        };
+        var session = CreateSession(page, logEvent: (type, payload) =>
+        {
+            lock (events)
+                events.Add((type, System.Text.Json.JsonSerializer.SerializeToElement(payload)));
+            return Task.CompletedTask;
+        });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsFailure.Should().BeTrue("a permanently truncated stream must fail, not return garbage");
+        reply.Error.Code.Should().Be("KA_REPLY_TRUNCATED");
+        reply.Error.Message.Should().Contain("cut off repeatedly even with the window visible");
+        page.FocusedTabs.Should().ContainSingle("exactly ONE un-minimize recovery, never routine");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated")
+                .Select(e => e.Payload).ToList();
+            truncations.Should().HaveCount(10, "5 detections before the recovery + 5 after");
+            truncations[0].GetProperty("Attempt").GetInt32().Should().Be(1);
+            truncations[0].GetProperty("FocusTriggered").GetBoolean().Should().BeFalse();
+            truncations[5].GetProperty("Attempt").GetInt32().Should().Be(1,
+                "the retry counter reset to zero after the recovery");
+            truncations[5].GetProperty("FocusTriggered").GetBoolean().Should().BeTrue(
+                "post-recovery events carry the focus-triggered flag");
+            truncations[9].GetProperty("Attempt").GetInt32().Should().Be(5);
+        }
     }
 
     [Fact]

@@ -312,4 +312,19 @@ public class BrowserConnectorTests
         parameters["background"].Should().Be(true,
             "without background Chrome ACTIVATES the new tab and restores a minimized window");
     }
+
+    [Fact]
+    public void ChromeArguments_DisableOcclusionThrottling_SoAMinimizedWindowKeepsStreaming()
+    {
+        // Windows 11 throttles minimized windows through native occlusion detection even
+        // with the classic flags — the DeepSeek stream then truncates mid-reply.
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "Minimized");
+
+        arguments.Should().Contain("--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
+            "exactly these two features are disabled, nothing else");
+        arguments.Should().Contain("--disable-ipc-flooding-protection");
+        arguments.Should().Contain("--disable-hang-monitor");
+        (arguments.Split("--disable-features").Length - 1).Should().Be(1,
+            "one --disable-features flag, comma-separated values");
+    }
 }

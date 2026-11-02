@@ -118,6 +118,9 @@ public static class ErrorCodes
     /// <summary>No reply arrived within the configured timeout.</summary>
     public const string ReplyTimeout = "KA_REPLY_TIMEOUT";
 
+    /// <summary>The reply stream stayed truncated (AgentScript without @@eof) even after the one-shot un-minimize recovery.</summary>
+    public const string ReplyTruncated = "KA_REPLY_TRUNCATED";
+
     /// <summary>The message could not be sent (not confirmed in the DOM, retry failed too).</summary>
     public const string SendNotConfirmed = "KA_SEND_NOT_CONFIRMED";
 

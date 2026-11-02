@@ -153,6 +153,11 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
             $"--remote-debugging-port={port} --remote-debugging-address=127.0.0.1 " +
             $"--user-data-dir=\"{userDataDir}\" --no-first-run --no-default-browser-check " +
             "--disable-renderer-backgrounding --disable-background-timer-throttling " +
-            "--disable-backgrounding-occluded-windows";
+            "--disable-backgrounding-occluded-windows " +
+            // Windows 11 throttles a MINIMIZED window through native occlusion detection
+            // even with the flags above, which truncates the DeepSeek stream mid-reply:
+            // skip occlusion detection and intensive wake-up throttling at the feature level.
+            "--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling " +
+            "--disable-ipc-flooding-protection --disable-hang-monitor";
     }
 }

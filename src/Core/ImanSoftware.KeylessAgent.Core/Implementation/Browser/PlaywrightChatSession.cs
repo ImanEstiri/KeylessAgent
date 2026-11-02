@@ -599,6 +599,11 @@ internal sealed class PlaywrightChatSession : IChatSession
         var stableReply = (string?)null;
         var firstTokenSeen = false;
 
+        // Truncation bookkeeping for THIS reply wait only: five detections trigger the
+        // one-shot un-minimize recovery; five more even with the window visible fail the wait.
+        var truncationRetries = 0;
+        var focusTriggered = false;
+
         if (await _page.IsChatLimitNoticeVisibleAsync(cancellationToken))
             return ChatExhausted();
 
@@ -648,6 +653,49 @@ internal sealed class PlaywrightChatSession : IChatSession
                     !string.IsNullOrWhiteSpace(reply) &&
                     reply == stableReply)
                 {
+                    // A minimized Chrome can throttle the DeepSeek stream mid-reply (the Stop
+                    // indicator blinks off between chunks), so a "complete" AgentScript reply
+                    // that lacks @@eof is TRUNCATED and must never be accepted: keep polling —
+                    // the streaming session stays alive on DeepSeek's side and further tokens
+                    // may still arrive.
+                    var looksLikeAgentScript = reply.Contains("@@", StringComparison.Ordinal);
+                    var endsWithEof = reply.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase);
+                    if (looksLikeAgentScript && !endsWithEof)
+                    {
+                        truncationRetries++;
+                        var tail = reply.Length <= 60 ? reply : reply[^60..];
+                        _log.LogWarning("Truncated reply detected (attempt {N}): length={Len} last60=\"{Tail}\"",
+                            truncationRetries, reply.Length, tail);
+                        if (_options.LogEvent is not null)
+                            await _options.LogEvent("reply-truncated", new
+                            {
+                                Length = reply.Length,
+                                Tail = tail,
+                                Attempt = truncationRetries,
+                                FocusTriggered = focusTriggered,
+                            });
+
+                        if (truncationRetries >= 5)
+                        {
+                            if (focusTriggered)
+                            {
+                                // Five MORE truncations with the window visible: the flags and
+                                // the recovery both failed. Never return the truncated text.
+                                return Outcome.Failure<string>(new OutcomeError(
+                                    "Reply stream was cut off repeatedly even with the window visible. The chat session stays valid. Resend the same request.",
+                                    ErrorCodes.ReplyTruncated, OutcomeErrorType.Failure));
+                            }
+
+                            focusTriggered = true; // one-shot recovery, never routine
+                            _log.LogWarning("Reply stream was throttled five times; un-minimizing the window once as recovery (Chrome flags did not prevent occlusion throttling).");
+                            await _page.FocusTabAsync(cancellationToken);
+                            truncationRetries = 0;
+                        }
+
+                        stableReply = null; // stability must re-accumulate before the next check
+                        continue;
+                    }
+
                     // Completion detected. The DOM text is the baseline; the reply SOURCE (raw
                     // Markdown from the Copy button vs DOM extraction) is decided per config.
                     var readOutcome = await ReadReplyTextAsync(reply, cancellationToken);
