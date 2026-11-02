@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
@@ -274,6 +275,60 @@ public class PlaywrightChatSessionTests : IDisposable
 
         recorder.Entries.Select(e => e.Phase).Should().Contain("copy",
             "the copy attempt is timed even when it ends in a Dom fallback");
+    }
+
+    [Fact]
+    public async Task CopyButtonMissOnce_DisablesTheCopyPathForTheSession()
+    {
+        // Auto mode, NO copy button ever matches: the FIRST miss may cost the (capped) wait,
+        // every LATER reply must skip the copy path entirely — one wait per session, not one
+        // per message. The wait itself is capped at 3 s even with a 10 s reply timeout.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = false;
+        var turn = 0;
+        page.OnSent = () =>
+        {
+            turn++;
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply($"44{turn + 1}", $"reply {turn}", turn + 1));
+        };
+        var session = CreateSession(page); // ReplyTimeoutSeconds = 10
+
+        (await session.SendMessageAsync("request one", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply 1");
+        (await session.SendMessageAsync("request two", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply 2");
+
+        page.CopyButtonWaitCalls.Should().Be(1,
+            "the first miss opens the circuit breaker; the second reply goes straight to the DOM");
+        page.CopyButtonWaitTimeouts.Single().Should().BeLessOrEqualTo(TimeSpan.FromSeconds(3),
+            "the copy-button wait is capped at 3 s regardless of the reply timeout");
+        session.LastReplyOrigin.Should().Contain("copy disabled",
+            "the second reply's origin says WHY the copy path was skipped");
+    }
+
+    [Fact]
+    public async Task ReplySourceDom_NeverWaitsForTheCopyButton()
+    {
+        // Browser.ReplySource=Dom short-circuits the copy path: zero copy-button waits even
+        // though the button is (pretend-)visible and would match.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "dom reply", 2));
+        };
+        var session = CreateSession(page, configureBrowser: b => b with { ReplySource = ReplySourceMode.Dom });
+
+        (await session.SendMessageAsync("request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("dom reply");
+
+        page.CopyButtonWaitCalls.Should().Be(0, "Dom mode never touches the copy path");
     }
 
     [Fact]

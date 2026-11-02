@@ -135,6 +135,23 @@ public class PlaywrightChatPageRoundTripTests
         visible.Should().BeFalse();
         _locator.Received(1).IsVisibleAsync();
     }
+
+    [Fact]
+    public async Task SendButtonAbsent_ReturnsNull_WithoutAnyElementResolution()
+    {
+        // The 60s-per-call bug: an absent selector made EvaluateAsync resolve the element on
+        // the 30s library default, twice per IsSendEnabledAsync call. Now an absent selector
+        // costs ONE instant CountAsync and NO EvaluateAsync at all.
+        _locator.CountAsync().Returns(0);
+        var page = CreatePage();
+
+        var state = await page.IsSendEnabledAsync(CancellationToken.None);
+
+        state.Should().BeNull("undetectable, not false — Enter is the caller's fallback");
+        _locator.Received(Catalog.SendButton.Length).CountAsync();
+        _locator.DidNotReceiveWithAnyArgs().EvaluateAsync(Arg.Any<string>(), Arg.Any<LocatorEvaluateOptions?>());
+        _locator.DidNotReceiveWithAnyArgs().WaitForAsync(Arg.Any<LocatorWaitForOptions>());
+    }
     [Fact]
     public async Task CopyClick_AbsentFirstFallback_ClicksTheLaterVisibleOne_AfterOneWait()
     {

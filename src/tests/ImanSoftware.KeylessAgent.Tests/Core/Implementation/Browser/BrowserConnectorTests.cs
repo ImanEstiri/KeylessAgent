@@ -300,4 +300,16 @@ public class BrowserConnectorTests
         BrowserConnector.ResolveUserDataDir(new BrowserOptions { UserDataDir = @"D:\profiles\ka" })
             .Should().Be(Path.GetFullPath(@"D:\profiles\ka"));
     }
+
+    [Fact]
+    public void CreateTargetParams_OpenTheTabInBackground_SoAMinimizedWindowStaysMinimized()
+    {
+        var parameters = BrowserConnector.ComposeCreateTargetParams(BrowserConnector.ChatBaseUrl);
+
+        parameters["url"].Should().Be(BrowserConnector.ChatBaseUrl);
+        parameters["newWindow"].Should().Be(false,
+            "the chat is a tab in the existing window, never a new foreground window");
+        parameters["background"].Should().Be(true,
+            "without background Chrome ACTIVATES the new tab and restores a minimized window");
+    }
 }

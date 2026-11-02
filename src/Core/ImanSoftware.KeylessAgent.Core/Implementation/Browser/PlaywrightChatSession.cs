@@ -48,6 +48,15 @@ internal sealed class PlaywrightChatSession : IChatSession
     /// </summary>
     private bool _composerSuspect;
 
+    /// <summary>
+    /// Copy-path circuit breaker: once the MessageCopyButton selectors missed within the
+    /// (shortened) wait, the copy attempt is skipped for the REST of this chat session —
+    /// every further wait would cost its whole budget and fall back to the DOM anyway.
+    /// A new session (a new run, or 'keyless doctor --capture') starts with the breaker open
+    /// again, which is how a fixed selector re-enables the copy path.
+    /// </summary>
+    private bool _copyButtonBroken;
+
     public PlaywrightChatSession(
         IChatPage page,
         Func<ValueTask> disposeAsync,
@@ -446,19 +455,35 @@ internal sealed class PlaywrightChatSession : IChatSession
             _capturePrepared = true;
         }
 
+        // Circuit breaker open: the copy selectors already missed once this session — every
+        // further wait would burn its whole budget and land on the DOM anyway. Straight to
+        // the DOM extraction, no waiting at all.
+        if (_copyButtonBroken)
+        {
+            LastReplyOriginValue = ReplyOrigin.Dom;
+            LastReplyReason = "copy disabled after the first miss this session";
+            return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));
+        }
+
         _options.Timings?.Start("copy");
         string? validationSummary = null;
         Outcome<ReplyReadResult> read;
         try
         {
-            // The message-level Copy control may appear on hover only; wait within the reply timeout.
+            // The message-level Copy control may appear on hover only; the wait is capped at
+            // 3 s — the selector either matches almost immediately or it does not match at
+            // all, and a longer wait only delays the DOM fallback.
             var buttonWait = await _page.WaitForMessageCopyButtonAsync(
-                TimeSpan.FromSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 10)), cancellationToken);
+                TimeSpan.FromSeconds(Math.Min(_options.Browser.ReplyTimeoutSeconds, 3)), cancellationToken);
             if (!buttonWait)
             {
+                _copyButtonBroken = true; // one miss is enough: skip the copy path for the session
                 LastReplyOriginValue = ReplyOrigin.Dom;
                 LastReplyReason = "copy button not matched";
-                _log.LogWarning("Copy attempt skipped: no MessageCopyButton fallback matched (reply text from the DOM).");
+                _log.LogWarning(
+                    "Copy attempt skipped: no MessageCopyButton fallback matched (reply text from the DOM)."
+                    + " The copy path is disabled for the rest of this chat session;"
+                    + " run 'keyless doctor --capture' to find the real selector.");
                 if (_options.LogEvent is not null)
                     await _options.LogEvent("reply-source", new { Source = "Dom", Reason = LastReplyReason });
                 return Outcome.Successful(new ReplyReadResult(domText, ReplyOrigin.Dom));

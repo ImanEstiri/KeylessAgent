@@ -343,6 +343,12 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
     /// <summary>Whether the message-level Copy control is present (hover simulated).</summary>
     public bool CopyButtonVisible { get; set; }
 
+    /// <summary>Round-trip counter for the copy-button wait (the circuit breaker test reads it).</summary>
+    public int CopyButtonWaitCalls { get; private set; }
+
+    /// <summary>The timeout budget of every copy-button wait, in order.</summary>
+    public List<TimeSpan> CopyButtonWaitTimeouts { get; } = new();
+
     /// <summary>What TryCaptureCopiedReplyAsync returns; null = both strategies fail.</summary>
     public string? CapturedReply { get; set; }
 
@@ -394,7 +400,11 @@ internal sealed class FakeChatPage : ImanSoftware.KeylessAgent.Core.Implementati
         => Task.FromResult(ReasoningText);
 
     public Task<bool> WaitForMessageCopyButtonAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-        => Task.FromResult(CopyButtonVisible);
+    {
+        CopyButtonWaitCalls++;
+        CopyButtonWaitTimeouts.Add(timeout);
+        return Task.FromResult(CopyButtonVisible);
+    }
 
     public Task PrepareReplyCaptureAsync(CancellationToken cancellationToken = default)
     {

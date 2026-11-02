@@ -117,6 +117,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                     UserDataDir = userDataDir,
                 };
                 var fallbackPage = fallback.Pages.Count > 0 ? fallback.Pages[0] : await fallback.NewPageAsync();
+                fallbackPage.SetDefaultTimeout(5_000);
                 return Outcome.Successful((attachment, (object)fallbackPage));
             }
 
@@ -263,8 +264,7 @@ internal sealed class BrowserConnector : IBrowserConnector
             // A browser-level CDP session opens a TAB in the existing window when one exists.
             var anchorPage = context.Pages.Count > 0 ? context.Pages[0] : await context.NewPageAsync();
             var openSession = await context.NewCDPSessionAsync(anchorPage);
-            await openSession.SendAsync("Target.createTarget",
-                new Dictionary<string, object> { ["url"] = ChatBaseUrl, ["newWindow"] = false });
+            await openSession.SendAsync("Target.createTarget", ComposeCreateTargetParams(ChatBaseUrl));
             await openSession.DetachAsync();
 
             page = await WaitForPageAsync(context, ChatBaseUrl, cancellationToken);
@@ -272,6 +272,11 @@ internal sealed class BrowserConnector : IBrowserConnector
             ui.ShowProgress(new AgentProgressEvent(
                 AgentEventType.OpeningChat, "Opened a new DeepSeek tab."));
         }
+
+        // Safety net: no Playwright call may ride the 30 s library default. Every hot call
+        // carries its own explicit timeout; this caps anything missed, on every connection
+        // path (attach, auto-launch, doctor).
+        page.SetDefaultTimeout(5_000);
 
         // Normal operation: no focus, no restore — the window stays minimized.
 
@@ -282,6 +287,18 @@ internal sealed class BrowserConnector : IBrowserConnector
             timings?.Stop("tab-open");
         }
     }
+
+    /// <summary>
+    /// The Target.createTarget parameters for the chat tab. <c>background: true</c> matters:
+    /// without it Chrome ACTIVATES the new tab, which restores a minimized window — the exact
+    /// "window pops up again" report. <c>newWindow: false</c> keeps it a tab in that window.
+    /// </summary>
+    internal static Dictionary<string, object> ComposeCreateTargetParams(string url) => new()
+    {
+        ["url"] = url,
+        ["newWindow"] = false,
+        ["background"] = true,
+    };
 
     private static async Task<IPage> WaitForPageAsync(IBrowserContext context, string urlPrefix, CancellationToken cancellationToken)
     {

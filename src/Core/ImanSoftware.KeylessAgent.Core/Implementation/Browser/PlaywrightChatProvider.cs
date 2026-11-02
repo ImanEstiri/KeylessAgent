@@ -53,6 +53,16 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             var (attachment, rawPage) = connected.Data;
             var page = (IPage)rawPage;
+            var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);
+
+            // Get the window out of the way IMMEDIATELY after the tab is open: Target.createTarget
+            // now opens the tab in the background, but Chrome can still restore a minimized
+            // window while the tab loads. The post-login minimize below stays.
+            if (options.Browser.MinimizeAfterLogin &&
+                string.Equals(options.Browser.WindowMode?.Trim(), "Minimized", StringComparison.OrdinalIgnoreCase))
+            {
+                await MinimizeWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
+            }
 
             // Resume: when a saved chat URL exists and the current tab is not already on it,
             // navigate the tab there so the conversation continues in the same chat.
@@ -98,9 +108,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                     "The post-StartSession composer reset failed best-effort: {Message}", ex.Message);
             }
 
-            // Logged in (or just logged in): get the window out of the user's way.
+            // Logged in (or just logged in): get the window out of the user's way again —
+            // the login probe or the user's own interaction may have restored it.
             if (options.Browser.MinimizeAfterLogin)
-                await MinimizeWindowAsync(page, attachment.LaunchedProcessId, cancellationToken);
+                await MinimizeWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
 
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
@@ -180,89 +191,20 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
-    /// Minimizes the browser window via CDP (Browser.setWindowBounds) so a successful launch
-    /// does not steal the user's focus. Best-effort.
-    /// </summary>
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    private const int SW_MINIMIZE = 6;
-
-    /// <summary>
-    /// Minimizes the chat window: CDP first (Browser.setWindowBounds), then a Win32
-    /// ShowWindow fallback through the launched Chrome process id. Chrome 136+ ignores
+    /// Minimizes the chat window so a successful launch does not steal the user's focus:
+    /// CDP with a read-back verification and a normal→minimized recovery, then a Win32
+    /// fallback that finds the real Chrome top-level windows of our chrome.exe processes
+    /// (the launched launcher PID often has MainWindowHandle == 0). Chrome 136+ ignores
     /// --start-minimized when a URL is passed, so the launched window needs this explicit
     /// minimize. Best-effort: every failure is swallowed.
     /// </summary>
-    internal static async Task MinimizeWindowAsync(IPage page, int launchedProcessId, CancellationToken cancellationToken = default)
+    internal static async Task MinimizeWindowAsync(
+        IPage page, BrowserOptions browserOptions, int launchedProcessId,
+        ILoggerAdapter<PlaywrightChatProvider>? log = null, CancellationToken cancellationToken = default)
     {
-        // The CDP block gets its own five-second window: a hung CDP call falls through to
-        // the Win32 fallback instead of running until the caller's cancellation.
-        using var cdpCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cdpCts.CancelAfter(TimeSpan.FromSeconds(5));
-        var cdpTimedOut = false;
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var session = await page.Context.NewCDPSessionAsync(page);
-            try
-            {
-                // ICDPSession.SendAsync has no CancellationToken overload, so the whole CDP
-                // exchange is raced against the five-second window; a hung call loses the
-                // race and the Win32 fallback takes over.
-                var cdpWork = Task.Run(async () =>
-                {
-                    var window = await session.SendAsync("Browser.getWindowForTarget");
-                    var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
-                    await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
-                    {
-                        ["windowId"] = windowId,
-                        ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
-                    });
-                }, cdpCts.Token);
-
-                var completed = await Task.WhenAny(cdpWork, Task.Delay(Timeout.Infinite, cdpCts.Token));
-                if (completed != cdpWork)
-                    throw new OperationCanceledException(cdpCts.Token);
-
-                await cdpWork;
-                return;
-            }
-            catch (OperationCanceledException) when (cdpCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                cdpTimedOut = true; // fall through to the Win32 fallback
-            }
-            finally
-            {
-                await session.DetachAsync();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"CDP minimize failed: {ex.Message}; falling back to Win32.");
-        }
-
-        if (cdpTimedOut)
-            System.Diagnostics.Debug.WriteLine("CDP minimize timed out after 5 s; falling back to Win32.");
-
-        try
-        {
-            if (launchedProcessId > 0 &&
-                System.Diagnostics.Process.GetProcessById(launchedProcessId) is { MainWindowHandle: var handle } &&
-                handle != IntPtr.Zero)
-            {
-                ShowWindow(handle, SW_MINIMIZE);
-            }
-        }
-        catch
-        {
-            // Minimize is best-effort; a failure here is never fatal.
-        }
+        await ChromeWindowMinimizer.MinimizeAsync(
+            page, launchedProcessId, BrowserConnector.ResolveUserDataDir(browserOptions),
+            browserOptions.ChromeDebugPort, log, cancellationToken);
     }
 
     /// <summary>

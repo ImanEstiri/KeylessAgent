@@ -165,11 +165,24 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<bool?> IsSendEnabledAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        foreach (var selector in _selectors.SendButton)
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var slowestIndex = -1;
+        double slowestMs = 0;
+        for (var index = 0; index < _selectors.SendButton.Length; index++)
         {
+            var selector = _selectors.SendButton[index];
             try
             {
                 var locator = _page.Locator(selector).First;
+
+                // A selector that matches nothing must cost ONE instant round trip, never a
+                // resolution wait: CountAsync never waits, EvaluateAsync would hold the probe
+                // open until its timeout when the element does not exist.
+                var count = await WithCancellationAsync(locator.CountAsync(), cancellationToken);
+                if (count == 0)
+                    continue; // selector matched nothing; try the next fallback.
+
+                var probe = System.Diagnostics.Stopwatch.StartNew();
 
                 // ONE round trip evaluates BOTH states: the disable state and the paperclip
                 // state (the iconLabelPrimary button next to the file input is the file-attach
@@ -178,6 +191,11 @@ internal sealed class PlaywrightChatPage : IChatPage
                 var stateJson = await EvaluateAsync(locator,
                     "element => JSON.stringify({ dis: element.getAttribute('aria-disabled') === 'true' || String(element.className).includes('ds-button--disabled'), paperclip: String(element.className).includes('ds-button--iconLabelPrimary') })",
                     cancellationToken);
+                if (probe.Elapsed.TotalMilliseconds > slowestMs)
+                {
+                    slowestMs = probe.Elapsed.TotalMilliseconds;
+                    slowestIndex = index;
+                }
                 if (stateJson is null)
                     continue; // selector matched nothing; try the next fallback.
 
@@ -202,6 +220,13 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 // Try the next fallback selector.
             }
+        }
+
+        if (watch.Elapsed.TotalSeconds > 2)
+        {
+            _log.LogWarning(
+                "IsSendEnabledAsync was slow: {Seconds:N1}s total (slowest selector #{Index}: {Ms:N0} ms).",
+                watch.Elapsed.TotalSeconds, slowestIndex, slowestMs);
         }
 
         // No send-control selector matched: undetectable. Callers must not block on it —
@@ -404,6 +429,7 @@ internal sealed class PlaywrightChatPage : IChatPage
     public async Task<ComposerResetResult> ResetComposerAsync(int replyTimeoutSeconds, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         // (1) Never touch the composer while a reply is still generating. The wait is capped
         // at 10 seconds: a broken StopIndicator selector that always matches would otherwise
@@ -462,6 +488,12 @@ internal sealed class PlaywrightChatPage : IChatPage
 
         // (5) Verify: text empty AND no chips remain.
         var clean = state.TextLength == 0 && state.ChipCount == 0 && state.FailedChipCount == 0;
+        if (watch.Elapsed.TotalSeconds > 2)
+        {
+            _log.LogWarning(
+                "ResetComposerAsync was slow: {Seconds:N1}s (result: {Result}, chips removed: {Chips}).",
+                watch.Elapsed.TotalSeconds, clean ? method : "not clean", chipsRemoved);
+        }
         return new ComposerResetResult(clean, clean ? method : "not clean", chipsRemoved);
     }
 
@@ -664,7 +696,10 @@ internal sealed class PlaywrightChatPage : IChatPage
             try
             {
                 var locator = _page.Locator(selector).First;
-                await locator.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray());
+                // An absent input must cost 5 s, never the 30 s library default — the upload
+                // loop tries every fallback selector in turn.
+                await locator.SetInputFilesAsync(filePaths.Select(p => p.Replace('\\', '/')).ToArray(),
+                    new LocatorSetInputFilesOptions { Timeout = 5_000 });
                 cancellationToken.ThrowIfCancellationRequested();
                 _log.LogDebug("FileInput matched selector: {Selector}", selector);
                 return true;
@@ -785,7 +820,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             {
                 if (attempt == 1)
                 {
-                    await WithCancellationAsync(newest.HoverAsync(), cancellationToken);
+                    await WithCancellationAsync(newest.HoverAsync(new LocatorHoverOptions { Timeout = 2_000 }), cancellationToken);
                     await Task.Delay(300, cancellationToken);
                 }
 
@@ -1065,7 +1100,12 @@ internal sealed class PlaywrightChatPage : IChatPage
     {
         try
         {
-            var result = await WithCancellationAsync(locator.EvaluateAsync(script), cancellationToken);
+            // HARD 1.5 s cap: when the locator matches nothing, Playwright resolves the
+            // element before evaluating and would otherwise hold every probe on the 30 s
+            // library default. Callers treat null as "matched nothing".
+            var result = await WithCancellationAsync(
+                locator.EvaluateAsync(script, new LocatorEvaluateOptions { Timeout = 1_500 }),
+                cancellationToken);
             return result?.ToString();
         }
         catch (OperationCanceledException)
