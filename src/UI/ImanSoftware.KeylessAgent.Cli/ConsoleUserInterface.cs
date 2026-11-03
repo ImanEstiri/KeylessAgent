@@ -214,6 +214,10 @@ internal sealed class ConsoleUserInterface : IAgentUserInterface, IDisposable
     {
         var result = WithGate(() =>
         {
+            // The BEL rings the terminal bell / flashes the taskbar icon — the user's eyes
+            // stay wherever they are; no window is raised or focused.
+            Console.Out.Write('\a');
+            Console.Out.Flush();
             var prompt = new ConfirmationPrompt(
                 $"[yellow]?[/] {request.Title.EscapeMarkup()}: {request.Details.EscapeMarkup()}");
             return prompt.Show(_console);

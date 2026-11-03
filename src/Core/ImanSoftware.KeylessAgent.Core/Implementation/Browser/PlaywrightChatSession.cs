@@ -599,8 +599,8 @@ internal sealed class PlaywrightChatSession : IChatSession
         var stableReply = (string?)null;
         var firstTokenSeen = false;
 
-        // Truncation bookkeeping for THIS reply wait only: five detections trigger the
-        // one-shot un-minimize recovery; five more even with the window visible fail the wait.
+        // Truncation bookkeeping for THIS reply wait only: twenty detections fail the wait;
+        // with Browser.AutoFocusOnTruncation the window is focused once at the fifth.
         var truncationRetries = 0;
         var focusTriggered = false;
 
@@ -675,21 +675,25 @@ internal sealed class PlaywrightChatSession : IChatSession
                                 FocusTriggered = focusTriggered,
                             });
 
-                        if (truncationRetries >= 5)
+                        if (truncationRetries >= 20)
                         {
-                            if (focusTriggered)
-                            {
-                                // Five MORE truncations with the window visible: the flags and
-                                // the recovery both failed. Never return the truncated text.
-                                return Outcome.Failure<string>(new OutcomeError(
-                                    "Reply stream was cut off repeatedly even with the window visible. The chat session stays valid. Resend the same request.",
-                                    ErrorCodes.ReplyTruncated, OutcomeErrorType.Failure));
-                            }
+                            // Twenty truncations in one wait: the Chrome flags did not prevent
+                            // the throttling on this machine. Never return the truncated text.
+                            return Outcome.Failure<string>(new OutcomeError(
+                                "Reply stream was cut off 20 times in this turn. The chat session stays valid. Resend the same request. If this repeats, set Browser.AutoFocusOnTruncation to true in keyless.json, or use WindowMode:Offscreen.",
+                                ErrorCodes.ReplyTruncated, OutcomeErrorType.Failure));
+                        }
 
-                            focusTriggered = true; // one-shot recovery, never routine
-                            _log.LogWarning("Reply stream was throttled five times; un-minimizing the window once as recovery (Chrome flags did not prevent occlusion throttling).");
+                        // Opt-in recovery only: most users want the window to STAY minimized
+                        // (focus would steal the terminal from them), so the default path
+                        // never focuses — it just keeps polling silently.
+                        if (_options.Browser.AutoFocusOnTruncation &&
+                            truncationRetries >= 5 &&
+                            !focusTriggered)
+                        {
+                            focusTriggered = true; // at most once per WaitForReplyAsync call
+                            _log.LogWarning("Reply stream was throttled five times; un-minimizing the window once as recovery (Browser.AutoFocusOnTruncation).");
                             await _page.FocusTabAsync(cancellationToken);
-                            truncationRetries = 0;
                         }
 
                         stableReply = null; // stability must re-accumulate before the next check

@@ -382,10 +382,10 @@ public class PlaywrightChatSessionTests : IDisposable
     }
 
     [Fact]
-    public async Task FiveTruncations_FocusOnce_ThenFiveMore_FailTheWait()
+    public async Task TwentyTruncations_Default_NeverFocus_AndFailWithTheResendHint()
     {
-        // 5 truncated detections → ONE un-minimize recovery (FocusTabAsync); 5 MORE even with
-        // the window visible → KA_REPLY_TRUNCATED failure. The truncated text is never returned.
+        // Default AutoFocusOnTruncation=false: the window STAYS minimized — the wait polls
+        // silently through every truncation and fails with the resend hint at the 20th.
         var page = new FakeChatPage();
         ArrangeFirstReplyDelivered(page);
         var events = new List<(string Type, System.Text.Json.JsonElement Payload)>();
@@ -406,20 +406,63 @@ public class PlaywrightChatSessionTests : IDisposable
 
         reply.IsFailure.Should().BeTrue("a permanently truncated stream must fail, not return garbage");
         reply.Error.Code.Should().Be("KA_REPLY_TRUNCATED");
-        reply.Error.Message.Should().Contain("cut off repeatedly even with the window visible");
-        page.FocusedTabs.Should().ContainSingle("exactly ONE un-minimize recovery, never routine");
+        reply.Error.Message.Should().Be(
+            "Reply stream was cut off 20 times in this turn. The chat session stays valid. Resend the same request. If this repeats, set Browser.AutoFocusOnTruncation to true in keyless.json, or use WindowMode:Offscreen.");
+        page.FocusedTabs.Should().BeEmpty("the default path never un-minimizes the window");
         lock (events)
         {
             var truncations = events.Where(e => e.Type == "reply-truncated")
                 .Select(e => e.Payload).ToList();
-            truncations.Should().HaveCount(10, "5 detections before the recovery + 5 after");
+            truncations.Should().HaveCount(20, "every rejected truncation is one event");
             truncations[0].GetProperty("Attempt").GetInt32().Should().Be(1);
-            truncations[0].GetProperty("FocusTriggered").GetBoolean().Should().BeFalse();
-            truncations[5].GetProperty("Attempt").GetInt32().Should().Be(1,
-                "the retry counter reset to zero after the recovery");
-            truncations[5].GetProperty("FocusTriggered").GetBoolean().Should().BeTrue(
-                "post-recovery events carry the focus-triggered flag");
-            truncations[9].GetProperty("Attempt").GetInt32().Should().Be(5);
+            truncations[19].GetProperty("Attempt").GetInt32().Should().Be(20);
+            truncations.Should().OnlyContain(e => e.GetProperty("FocusTriggered").GetBoolean() == false,
+                "focus never fires by default");
+        }
+    }
+
+    [Fact]
+    public async Task AutoFocusOnTruncationTrue_FocusesOnceAtTheFifth_ThenAcceptsCompletion()
+    {
+        // Opt-in recovery: exactly ONE FocusTabAsync when the counter reaches 5 (per wait);
+        // a completed reply after the recovery is still accepted. The completion swap runs
+        // INSIDE the 5th event's callback — the same iteration as the focus decision — so no
+        // further truncation can slip in between.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, System.Text.Json.JsonElement Payload)>();
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2);
+        };
+        var session = CreateSession(
+            page,
+            configureBrowser: b => b with { AutoFocusOnTruncation = true },
+            logEvent: (type, payload) =>
+            {
+                var element = System.Text.Json.JsonSerializer.SerializeToElement(payload);
+                lock (events)
+                    events.Add((type, element));
+                if (type == "reply-truncated" && element.GetProperty("Attempt").GetInt32() == 5)
+                    page.SimulateAssistantReply("442", CompleteReply, 2); // the recovered stream finishes
+                return Task.CompletedTask;
+            });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsSuccess.Should().BeTrue("the recovered stream completes and is accepted");
+        reply.Data.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase).Should().BeTrue();
+        page.FocusedTabs.Should().ContainSingle("at most ONE focus per WaitForReplyAsync call");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated")
+                .Select(e => e.Payload).ToList();
+            truncations.Should().HaveCount(5, "the completion lands in the recovery's iteration");
+            truncations.Last().GetProperty("Attempt").GetInt32().Should().Be(5);
+            truncations.Should().OnlyContain(e => e.GetProperty("FocusTriggered").GetBoolean() == false,
+                "each event is emitted before the focus decision flips the flag");
         }
     }
 

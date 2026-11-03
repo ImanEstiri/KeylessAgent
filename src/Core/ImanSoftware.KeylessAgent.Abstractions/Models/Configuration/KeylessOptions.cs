@@ -205,6 +205,13 @@ public sealed record BrowserOptions
     public bool MinimizeAfterLogin { get; init; } = true;
 
     /// <summary>
+    /// Un-minimize the chat window ONCE when a throttled reply stream was rejected five
+    /// times in a single reply wait. Default false: the window stays minimized for the
+    /// whole turn (focusing it steals the terminal from the user).
+    /// </summary>
+    public bool AutoFocusOnTruncation { get; init; }
+
+    /// <summary>
     /// Upper bound of the positive-first login probe: wait this long for EITHER the chat
     /// input (logged in) OR a login indicator, in one parallel wait. Default 15 seconds.
     /// </summary>

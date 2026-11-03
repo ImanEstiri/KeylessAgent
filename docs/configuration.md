@@ -26,6 +26,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
     "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
+    "AutoFocusOnTruncation": false,  // un-minimize once when a throttled stream was rejected 5x (default: stay minimized)
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
     "MaxTurnsPerChat": 20,           // turns per chat before a new chat starts automatically
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)

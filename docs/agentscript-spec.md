@@ -233,7 +233,7 @@ Every failure the agent reports carries a stable code.
 | `KA_BROWSER_CONNECTION_FAILED` | cannot attach to / launch Chrome |
 | `KA_SELECTOR_NOT_FOUND` | a required selector did not match |
 | `KA_REPLY_TIMEOUT` | no complete reply within the timeout |
-| `KA_REPLY_TRUNCATED` | reply stayed truncated (AgentScript without @@eof) even after the one-shot un-minimize recovery |
+| `KA_REPLY_TRUNCATED` | reply stream stayed truncated (AgentScript without @@eof) through 20 rejected attempts in one wait |
 | `KA_SEND_NOT_CONFIRMED` | the message could not be sent (not confirmed in the DOM, retry failed too) |
 | `KA_ATTACHMENT_UPLOAD_FAILED` | file upload failed (falls back to pasting) |
 | `KA_NETWORK_OFFLINE` | the machine is offline — nothing was uploaded or sent; the chat session stays valid, resend the same request |
