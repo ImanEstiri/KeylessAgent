@@ -296,6 +296,37 @@ public class BrowserConnectorTests
     }
 
     [Fact]
+    public void TinyCornerBounds_StaysInsideTheWorkArea_WhenATaskbarTakesSpace()
+    {
+        // Simulated taskbar: screen 1920x1080 with a 48px taskbar → work area 1920x1032.
+        // The square must fit entirely inside the WORK AREA — never overlap the taskbar
+        // region, where it would be invisible and indistinguishable.
+        const int workAreaWidth = 1920;
+        const int workAreaHeight = 1032;
+
+        var bounds = BrowserEnvironment.TinyCornerBounds((workAreaWidth, workAreaHeight));
+
+        (bounds.Left + bounds.Width).Should().BeLessThanOrEqualTo(workAreaWidth,
+            "the square's right edge must stay inside the work area");
+        (bounds.Top + bounds.Height).Should().BeLessThanOrEqualTo(workAreaHeight,
+            "the square's bottom edge must stay ABOVE the taskbar");
+        bounds.Left.Should().Be(workAreaWidth - 80);
+        bounds.Top.Should().Be(workAreaHeight - 80);
+    }
+
+    [Fact]
+    public void TinyCornerBounds_NoTaskbar_ReturnsTheBottomRightCorner()
+    {
+        // No taskbar offset (full-screen work area): the square's bottom-right corner sits
+        // exactly at the screen's corner.
+        var bounds = BrowserEnvironment.TinyCornerBounds((1920, 1080));
+
+        bounds.Should().Be((1840, 1000, 80, 80));
+        (bounds.Left + bounds.Width).Should().Be(1920);
+        (bounds.Top + bounds.Height).Should().Be(1080);
+    }
+
+    [Fact]
     public void ChromeArguments_NormalMode_NeverForcesTheWindow()
     {
         var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "Normal");

@@ -150,9 +150,11 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     }
 
     /// <summary>
-    /// The primary screen size in pixels — the same values as
-    /// System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width/Height, without pulling the
-    /// WinForms dependency into Core. Falls back to 1920x1080 when unavailable.
+    /// The primary screen's WORK AREA in pixels — the usable desktop excluding the taskbar
+    /// (the same width/height as System.Windows.Forms.Screen.PrimaryScreen.WorkingArea,
+    /// without pulling the WinForms dependency into Core). GetSystemMetrics(SM_CXSCREEN /
+    /// SM_CYSCREEN) would return the FULL monitor resolution and push the tiny corner
+    /// square UNDER the always-on-top taskbar. Falls back to 1920x1080 when unavailable.
     /// </summary>
     internal static (int Width, int Height) PrimaryScreenSize()
     {
@@ -160,11 +162,13 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         {
             try
             {
-                // SM_CXSCREEN / SM_CYSCREEN: primary screen width/height.
-                var width = GetSystemMetrics(0);
-                var height = GetSystemMetrics(1);
-                if (width > 0 && height > 0)
-                    return (width, height);
+                // SPI_GETWORKAREA: the primary monitor's work area RECT (excludes the taskbar).
+                var area = new WorkAreaRect();
+                if (SystemParametersInfo(SpiGetWorkArea, 0, ref area, 0) &&
+                    area.Right > area.Left && area.Bottom > area.Top)
+                {
+                    return (area.Right - area.Left, area.Bottom - area.Top);
+                }
             }
             catch
             {
@@ -175,15 +179,29 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         return (1920, 1080);
     }
 
+    private const uint SpiGetWorkArea = 0x0048;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct WorkAreaRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int nIndex);
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref WorkAreaRect pvParam, uint fWinIni);
 
     /// <summary>
     /// The hide bounds: a VISIBLE-but-imperceptible 80x80 window in the bottom-right corner
-    /// of the primary screen. The fully offscreen (-32000,-32000) position triggers Chrome's
-    /// occlusion throttling (turn-17 truncated 20 times with the occlusion flag present);
-    /// a tiny on-screen window does not. Used by every hide path and by WindowMode
-    /// TinyCorner, so show/hide and launch all agree on one geometry.
+    /// of the primary screen's WORK AREA (taskbar excluded), so the square is actually
+    /// visible and never hides behind the taskbar. The fully offscreen (-32000,-32000)
+    /// position triggers Chrome's occlusion throttling (turn-17 truncated 20 times with the
+    /// occlusion flag present); a tiny on-screen window does not. Used by every hide path
+    /// and by WindowMode TinyCorner, so show/hide and launch all agree on one geometry.
+    /// The optional argument injects a work-area size (tests); null uses the real one.
     /// </summary>
     internal static (int Left, int Top, int Width, int Height) TinyCornerBounds((int Width, int Height)? screen = null)
     {
@@ -194,24 +212,28 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     /// <summary>
     /// Maps the window mode to its Chrome flags. Minimized and Offscreen place the window
     /// fully offscreen; TinyCorner and EdgePeek keep a VISIBLE-but-tiny window in the
-    /// screen's bottom-right corner — Chrome treats fully offscreen windows as occluded and
+    /// bottom-right corner of the WORK AREA (taskbar excluded — the square must be visible,
+    /// not behind the taskbar) — Chrome treats fully offscreen windows as occluded and
     /// throttles the renderer regardless of the flags (turn-17/18), so a tiny on-screen
     /// window is the reliable anti-throttling shape. "Minimized" is kept for backward
     /// compatibility with existing keyless.json files but now means offscreen. Normal → no
     /// flag (never forced focus). Unknown or empty modes default to offscreen.
     /// </summary>
-    internal static string WindowModeFlag(string windowMode, int screenWidth, int screenHeight)
+    internal static string WindowModeFlag(string windowMode, int workAreaWidth, int workAreaHeight)
         => windowMode.Trim().ToLowerInvariant() switch
         {
             "normal" => "",
-            "tinycorner" => $"--window-position={screenWidth - 80},{screenHeight - 80} --window-size=80,80",
-            "edgepeek" => $"--window-position={screenWidth - 10},{screenHeight - 10} --window-size=10,10",
+            "tinycorner" => $"--window-position={workAreaWidth - 80},{workAreaHeight - 80} --window-size=80,80",
+            "edgepeek" => $"--window-position={workAreaWidth - 10},{workAreaHeight - 10} --window-size=10,10",
             // Minimized is kept for backward compatibility: it means offscreen as well.
             _ => "--window-position=-32000,-32000 --window-size=1280,900",
         };
 
     internal static string ComposeChromeArguments(int port, string userDataDir, string windowMode, (int Width, int Height)? screen = null)
     {
+        // `screen` is the WORK AREA (tests inject a fabricated one); null uses the real
+        // work area, so the launch flags and the CDP hide/show geometry always agree and
+        // both stay inside the visible desktop, clear of the taskbar.
         var (screenWidth, screenHeight) = screen ?? PrimaryScreenSize();
         var windowFlag = WindowModeFlag(windowMode, screenWidth, screenHeight);
         var windowPrefix = windowFlag.Length > 0 ? windowFlag + " " : string.Empty;
