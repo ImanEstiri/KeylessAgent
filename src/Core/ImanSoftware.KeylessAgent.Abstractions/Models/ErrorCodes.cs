@@ -118,7 +118,7 @@ public static class ErrorCodes
     /// <summary>No reply arrived within the configured timeout.</summary>
     public const string ReplyTimeout = "KA_REPLY_TIMEOUT";
 
-    /// <summary>The reply stream stayed truncated (AgentScript without @@eof) through 20 rejected attempts in one reply wait.</summary>
+    /// <summary>The reply stream stayed truncated (AgentScript without @@eof) longer than Browser.TruncationBudgetSeconds in one reply wait.</summary>
     public const string ReplyTruncated = "KA_REPLY_TRUNCATED";
 
     /// <summary>The message could not be sent (not confirmed in the DOM, retry failed too).</summary>

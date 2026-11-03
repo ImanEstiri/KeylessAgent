@@ -599,10 +599,14 @@ internal sealed class PlaywrightChatSession : IChatSession
         var stableReply = (string?)null;
         var firstTokenSeen = false;
 
-        // Truncation bookkeeping for THIS reply wait only: twenty detections fail the wait;
-        // with Browser.AutoFocusOnTruncation the window is focused once at the fifth.
+        // Truncation bookkeeping for THIS reply wait only. The budget is WALL-CLOCK time
+        // since the FIRST truncation detection - not an attempt count - so a stream that
+        // resumes after a few real seconds survives, while a permanently stuck one fails
+        // once Browser.TruncationBudgetSeconds is spent. With AutoFocusOnTruncation the
+        // window is focused once, after a quarter of the budget has elapsed.
         var truncationRetries = 0;
         var focusTriggered = false;
+        var truncationStartedAt = (DateTime?)null;
 
         if (await _page.IsChatLimitNoticeVisibleAsync(cancellationToken))
             return ChatExhausted();
@@ -662,7 +666,15 @@ internal sealed class PlaywrightChatSession : IChatSession
                     var endsWithEof = reply.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase);
                     if (looksLikeAgentScript && !endsWithEof)
                     {
+                        // Wall-clock budget: time since the FIRST detection, not a count of
+                        // detections - detections are spaced by the normal poll delay, so a
+                        // stream that resumes after a few real seconds still completes.
+                        var now = DateTime.UtcNow;
+                        truncationStartedAt ??= now;
+                        var elapsed = (now - truncationStartedAt.Value).TotalSeconds;
+                        var budget = _options.Browser.TruncationBudgetSeconds;
                         truncationRetries++;
+
                         var tail = reply.Length <= 60 ? reply : reply[^60..];
                         _log.LogWarning("Truncated reply detected (attempt {N}): length={Len} last60=\"{Tail}\"",
                             truncationRetries, reply.Length, tail);
@@ -673,30 +685,33 @@ internal sealed class PlaywrightChatSession : IChatSession
                                 Tail = tail,
                                 Attempt = truncationRetries,
                                 FocusTriggered = focusTriggered,
+                                ElapsedSeconds = Math.Round(elapsed, 1),
                             });
 
-                        if (truncationRetries >= 20)
+                        if (elapsed >= budget)
                         {
-                            // Twenty truncations in one wait: the Chrome flags did not prevent
-                            // the throttling on this machine. Never return the truncated text.
+                            // The budget is spent: the Chrome flags did not prevent the
+                            // throttling on this machine. Never return the truncated text.
                             return Outcome.Failure<string>(new OutcomeError(
-                                "Reply stream was cut off 20 times in this turn. The chat session stays valid. Resend the same request. If this repeats, set Browser.AutoFocusOnTruncation to true in keyless.json, or use WindowMode:Offscreen.",
+                                $"Reply stream was cut off repeatedly for {elapsed:F0}s in this turn. The chat session stays valid. Resend the same request. If this repeats, set Browser.AutoFocusOnTruncation to true in keyless.json, or use WindowMode:Offscreen.",
                                 ErrorCodes.ReplyTruncated, OutcomeErrorType.Failure));
                         }
 
-                        // Opt-in recovery only: most users want the window to STAY minimized
-                        // (focus would steal the terminal from them), so the default path
-                        // never focuses — it just keeps polling silently.
+                        // Opt-in recovery only: most users want the window to STAY hidden
+                        // (focusing steals the terminal from them), so the default path never
+                        // focuses. When opted in, fire once after a quarter of the budget.
                         if (_options.Browser.AutoFocusOnTruncation &&
-                            truncationRetries >= 5 &&
+                            elapsed >= budget * 0.25 &&
                             !focusTriggered)
                         {
                             focusTriggered = true; // at most once per WaitForReplyAsync call
-                            _log.LogWarning("Reply stream was throttled five times; un-minimizing the window once as recovery (Browser.AutoFocusOnTruncation).");
+                            _log.LogWarning("Reply stream was throttled for {Elapsed:F1}s ({Attempts} detections); un-minimizing the window once as recovery (Browser.AutoFocusOnTruncation).",
+                                elapsed, truncationRetries);
                             await _page.FocusTabAsync(cancellationToken);
                         }
 
                         stableReply = null; // stability must re-accumulate before the next check
+                        await Task.Delay(_pollDelayMs, cancellationToken); // space detections out like the normal poll, never busy-loop
                         continue;
                     }
 

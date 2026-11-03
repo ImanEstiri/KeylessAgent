@@ -212,11 +212,19 @@ public sealed record BrowserOptions
     public bool MinimizeAfterLogin { get; init; } = true;
 
     /// <summary>
-    /// Un-minimize the chat window ONCE when a throttled reply stream was rejected five
-    /// times in a single reply wait. Default false: the window stays minimized for the
-    /// whole turn (focusing it steals the terminal from the user).
+    /// Un-minimize the chat window ONCE when a throttled reply stream has been rejected for
+    /// a quarter of TruncationBudgetSeconds in a single reply wait. Default false: the
+    /// window stays hidden for the whole turn (focusing it steals the terminal from the user).
     /// </summary>
     public bool AutoFocusOnTruncation { get; init; }
+
+    /// <summary>
+    /// Wall-clock budget for a THROTTLED reply stream: when truncation detections span
+    /// longer than this (time since the FIRST detection, not an attempt count), the reply
+    /// wait fails with KA_REPLY_TRUNCATED. Default 20 seconds - enough for a stream that
+    /// resumes after a few real seconds, quick enough to fail a permanently stuck one.
+    /// </summary>
+    public int TruncationBudgetSeconds { get; init; } = 20;
 
     /// <summary>
     /// Upper bound of the positive-first login probe: wait this long for EITHER the chat

@@ -1,4 +1,4 @@
-# Configuration
+ Fires after a quarter of **TruncationBudgetSeconds** has elapsed, not after a fixed attempt count.# Configuration
 
 KeylessAgent reads `keyless.json` from the workspace root. The first run writes the full default file so you can edit it. Parsing is **tolerant**: comments (`//`), case-insensitive keys, trailing commas, and string enums (`"Ask"`, `"AutoSafe"`, …) all work. Invalid JSON or out-of-range values fail with a precise message instead of an exception.
 
@@ -27,6 +27,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "WindowMode": "TinyCorner",      // TinyCorner (default) | EdgePeek | Offscreen | Minimized | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
     "AutoFocusOnTruncation": false,  // un-minimize once when a throttled stream was rejected 5x (default: stay minimized)
+    "TruncationBudgetSeconds": 20,   // wall-clock budget for a throttled stream before the wait fails (KA_REPLY_TRUNCATED)
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
     "MaxTurnsPerChat": 20,           // turns per chat before a new chat starts automatically
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
@@ -118,6 +119,7 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 ### Browser window
 
 - **WindowMode**: `TinyCorner` (default), `EdgePeek`, `Offscreen`, `Minimized` (backward-compatibility alias of offscreen), or `Normal`. Affects auto-launched Chrome only and the hide geometry. The window must be visible-on-screen (at least 80x80 pixels) to prevent Chrome's occlusion throttling: fully offscreen positions do NOT work on Chrome 130+ / Windows 11 24H2 even with `--disable-features=CalculateNativeWinOcclusion` — the renderer throttles and truncates the DeepSeek stream (turn-17/18 evidence). TinyCorner keeps an 80x80 square in the bottom-right corner (primary screen bounds, not hardcoded); EdgePeek uses a 10x10 sliver in the corner (may still be throttled if Chrome's heuristic rejects it). Anti-throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling`) are always passed; verify the running Chrome with `keyless diagnostics chrome`.
+- **TruncationBudgetSeconds** (default 20): wall-clock budget for a throttled reply stream - the wait keeps polling (spaced by the normal poll delay) while the stream may still resume, and fails with KA_REPLY_TRUNCATED only when the time since the FIRST truncation detection exceeds this. The reply-truncated turn event carries ElapsedSeconds so the logs show real timing.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
 
 ### Snapshot — sensitive content never reaches the chat
