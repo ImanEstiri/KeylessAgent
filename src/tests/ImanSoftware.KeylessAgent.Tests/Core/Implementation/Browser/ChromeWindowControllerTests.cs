@@ -34,32 +34,55 @@ public class ChromeWindowControllerTests
 
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
 
-    private static (ChromeWindowController Controller, List<(string Method, object? Args)> Calls) CreateController(int pageCount = 1)
+    /// <summary>Behavior switches for the CDP fake.</summary>
+    private sealed class FakeCdp
     {
-        var calls = new List<(string Method, object? Args)>();
+        public bool SetWindowBoundsThrows;
+        public bool ReadBackAlwaysMismatches;
+        public readonly List<(string Method, object? Args)> Calls = new();
+
+        public JsonElement Handle(string method, Dictionary<string, object>? args)
+        {
+            switch (method)
+            {
+                case "Browser.getWindowForTarget":
+                    return Json(new { windowId = 42L });
+                case "Target.getTargetInfo":
+                    return Json(new { targetInfo = new { targetId = "T-1" } });
+                case "Browser.setWindowBounds":
+                    Calls.Add((method, args));
+                    if (SetWindowBoundsThrows)
+                        throw new InvalidOperationException("cdp refused");
+                    _lastBounds = args is not null && args.TryGetValue("bounds", out var b) ? b : null;
+                    return Json(new { });
+                case "Browser.getWindowBounds":
+                    // A real Chrome echoes what it actually applied; the verification compares
+                    // this against the target. A mismatch simulates a move that never took.
+                    if (ReadBackAlwaysMismatches || _lastBounds is null)
+                        return Json(new { bounds = new { left = 1, top = 2, width = 3, height = 4, windowState = "minimized" } });
+                    return Json(new { bounds = _lastBounds });
+                default:
+                    Calls.Add((method, args));
+                    return Json(new { });
+            }
+        }
+
+        private object? _lastBounds;
+    }
+
+    private static (ChromeWindowController Controller, FakeCdp Cdp) CreateController(int pageCount = 1)
+    {
+        var cdp = new FakeCdp();
         var session = Substitute.For<ICDPSession>();
 
         // ONE handler for every CDP call (the controller calls SendAsync with the optional
-        // args filled, so a one-argument setup would never match): the no-argument queries
-        // answer their fixtures, everything else is recorded and answered with {}.
+        // args filled, so a one-argument setup would never match).
         session
             .SendAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>())
-            .Returns(ci =>
-            {
-                var method = ci.ArgAt<string>(0);
-                return method switch
-                {
-                    "Browser.getWindowForTarget" => Json(new { windowId = 42L }),
-                    "Target.getTargetInfo" => Json(new { targetInfo = new { targetId = "T-1" } }),
-                    _ => TrackAndAnswer(),
-                };
-
-                System.Text.Json.JsonElement TrackAndAnswer()
-                {
-                    calls.Add((method, ci.ArgAt<Dictionary<string, object>?>(1)));
-                    return Json(new { });
-                }
-            });
+            .Returns(ci => cdp.Handle(ci.ArgAt<string>(0), ci.ArgAt<Dictionary<string, object>?>(1)));
+        session
+            .SendAsync(Arg.Any<string>())
+            .Returns(ci => cdp.Handle(ci.ArgAt<string>(0), null));
 
         var page = Substitute.For<IPage>();
         page.Context.Returns(Substitute.For<IBrowserContext>());
@@ -84,7 +107,7 @@ public class ChromeWindowControllerTests
         {
             PlaywrightFactory = _ => Task.FromResult(playwright),
         };
-        return (controller, calls);
+        return (controller, cdp);
     }
 
     [Fact]
@@ -104,12 +127,12 @@ public class ChromeWindowControllerTests
     [Fact]
     public async Task Show_NormalizesTheWindowAt100x100_AndActivatesTheTarget()
     {
-        var (controller, calls) = CreateController();
+        var (controller, cdp) = CreateController();
 
         var outcome = await controller.ShowAsync(new BrowserOptions { ChromeDebugPort = 9222 }, 0);
 
         outcome.IsSuccess.Should().BeTrue("but failed: {0}", outcome.Error?.Message ?? "-");
-        var bounds = calls.Should().ContainSingle(c => c.Method == "Browser.setWindowBounds").Which.Args!
+        var bounds = cdp.Calls.Should().ContainSingle(c => c.Method == "Browser.setWindowBounds").Which.Args!
             .Should().BeOfType<Dictionary<string, object>>().Which;
         bounds["windowId"].Should().Be(42L);
         var shape = bounds["bounds"].Should().BeOfType<Dictionary<string, object>>().Which;
@@ -119,7 +142,7 @@ public class ChromeWindowControllerTests
         shape["height"].Should().Be(900);
         shape["windowState"].Should().Be("normal");
 
-        var activate = calls.Should().ContainSingle(c => c.Method == "Target.activateTarget").Which.Args!
+        var activate = cdp.Calls.Should().ContainSingle(c => c.Method == "Target.activateTarget").Which.Args!
             .Should().BeOfType<Dictionary<string, object>>().Which;
         activate["targetId"].Should().Be("T-1");
     }
@@ -129,13 +152,13 @@ public class ChromeWindowControllerTests
     {
         // Fully offscreen (-32000,-32000) is treated as OCCLUDED by Chrome and throttles the
         // renderer (turn-17/18): the hide geometry is a VISIBLE 80x80 bottom-right square.
-        var (controller, calls) = CreateController();
+        var (controller, cdp) = CreateController();
         var (screenWidth, screenHeight) = BrowserEnvironment.PrimaryScreenSize();
 
         var outcome = await controller.HideAsync(new BrowserOptions { ChromeDebugPort = 9222 });
 
         outcome.IsSuccess.Should().BeTrue();
-        var shape = calls.Should().ContainSingle(c => c.Method == "Browser.setWindowBounds").Which.Args!
+        var shape = cdp.Calls.Should().ContainSingle(c => c.Method == "Browser.setWindowBounds").Which.Args!
             .Should().BeOfType<Dictionary<string, object>>().Which["bounds"]
             .Should().BeOfType<Dictionary<string, object>>().Which;
         shape["left"].Should().Be(screenWidth - 80);
@@ -157,31 +180,63 @@ public class ChromeWindowControllerTests
     }
 
     [Fact]
-    public async Task CdpFailure_FailsInsteadOfThrowing()
+    public async Task CdpFailure_FallsBackToWin32_AndFailsHonest_WhenTheFallbackCannotVerify()
     {
-        var (controller, _) = CreateController();
-        // Re-wire the fake so the first setWindowBounds throws: rebuild with a throwing session.
-        var session = Substitute.For<ICDPSession>();
-        session.SendAsync("Browser.getWindowForTarget").Returns(Json(new { windowId = 42L }));
-        session.SendAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>())
-            .ThrowsAsync(new InvalidOperationException("cdp refused"));
-        var page = Substitute.For<IPage>();
-        page.Context.Returns(Substitute.For<IBrowserContext>());
-        page.Context.NewCDPSessionAsync(page).Returns(session);
+        var (controller, cdp) = CreateController();
+        cdp.SetWindowBoundsThrows = true;
+        ChromeWindowMover.Win32ShowWindowsOverride = (_, _, _, _, _, _) => false;
+        try
+        {
+            var outcome = await controller.ShowAsync(new BrowserOptions { ChromeDebugPort = 9222 }, 0);
+
+            outcome.IsFailure.Should().BeTrue("a move that could not be verified must not be reported as success");
+            outcome.Error.Message.Should().Be("Chrome window could not be located or moved - it may have been closed.");
+        }
+        finally
+        {
+            ChromeWindowMover.Win32ShowWindowsOverride = null;
+        }
+    }
+
+    [Fact]
+    public async Task UnverifiedReadBack_FallsBackToWin32_AndSucceedsWhenTheFallbackVerifies()
+    {
+        // The bounds were commanded but Chrome never applied them (read-back always
+        // mismatched): the Win32 pass saves the day and the outcome is an honest success.
+        var (controller, cdp) = CreateController();
+        cdp.ReadBackAlwaysMismatches = true;
+        ChromeWindowMover.Win32ShowWindowsOverride = (_, _, _, _, _, _) => true;
+        try
+        {
+            var outcome = await controller.ShowAsync(new BrowserOptions { ChromeDebugPort = 9222 }, 0);
+
+            outcome.IsSuccess.Should().BeTrue("the Win32 fallback verified the show");
+        }
+        finally
+        {
+            ChromeWindowMover.Win32ShowWindowsOverride = null;
+        }
+    }
+
+    [Fact]
+    public void PickChatPage_PrefersTheChatUrl_AndFallsBackToTheFirstPage()
+    {
+        var other = Substitute.For<IPage>();
+        other.Url.Returns("https://example.com/some-tab");
+        var chat = Substitute.For<IPage>();
+        chat.Url.Returns("https://chat.deepseek.com/a/chat");
         var context = Substitute.For<IBrowserContext>();
-        context.Pages.Returns([page]);
-        var browser = Substitute.For<IBrowser>();
-        browser.Contexts.Returns([context]);
-        var chromium = Substitute.For<IBrowserType>();
-        chromium.ConnectOverCDPAsync(Arg.Any<string>(), Arg.Any<BrowserTypeConnectOverCDPOptions>())
-            .Returns(browser);
-        var playwright = Substitute.For<IPlaywright>();
-        playwright.Chromium.Returns(chromium);
-        controller.PlaywrightFactory = _ => Task.FromResult(playwright);
 
-        var outcome = await controller.ShowAsync(new BrowserOptions { ChromeDebugPort = 9222 }, 0);
+        context.Pages.Returns([other, chat]);
+        ChromeWindowMover.PickChatPage(context).Should().BeSameAs(chat,
+            "with several tabs open the CHAT window is the one that must be moved");
 
-        outcome.IsFailure.Should().BeTrue();
-        outcome.Error.Message.Should().Contain("cdp refused");
+        context.Pages.Returns([other]);
+        ChromeWindowMover.PickChatPage(context).Should().BeSameAs(other,
+            "no chat match falls back to the first page");
+
+        context.Pages.Returns([]);
+        ChromeWindowMover.PickChatPage(context).Should().BeNull(
+            "an empty context lets the caller create a page");
     }
 }

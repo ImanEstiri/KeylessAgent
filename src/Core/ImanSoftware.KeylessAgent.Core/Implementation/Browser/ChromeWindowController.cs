@@ -47,42 +47,38 @@ internal sealed class ChromeWindowController : IChromeWindowController
     public async Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default)
     {
         // Same geometry as HideAsync: the peek's return-to-hidden lands in the tiny corner.
-        var bounds = BrowserEnvironment.TinyCornerBounds();
-        if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
-            return PortClosed(options);
+        var hideBounds = BrowserEnvironment.TinyCornerBounds();
+        var showBounds = (Left: 100, Top: 100, Width: 1280, Height: 900);
+        var info = (Action<string>)(message => _log.LogInformation("{Message}", message));
+        var debug = (Action<string>)(message => _log.LogDebug("{Message}", message));
 
+        var cdpVerified = false;
         try
         {
+            if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
+                return PortClosed(options);
+
             var playwright = await PlaywrightFactory(ct);
             var browser = await ConnectAsync(playwright, options);
             var context = browser.Contexts.FirstOrDefault()
                 ?? throw new InvalidOperationException(
                     "The Chrome on the debug port exposes no browser context (is it still starting?).");
-            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
+            // With several tabs open the FIRST page is often not the chat: prefer the page
+            // whose URL is the chat host so the CHAT window is the one that gets moved.
+            var page = ChromeWindowMover.PickChatPage(context) ?? await context.NewPageAsync();
+            debug($"Chat window picked from page: {page.Url}");
 
             var session = await page.Context.NewCDPSessionAsync(page);
             try
             {
-                var windowId = await ResolveWindowIdAsync(session, page, ct);
-
-                _log.LogInformation(
-                    "CDP Show: Browser.setWindowBounds(windowId {WindowId}, bounds {{left: 100, top: 100, width: 1280, height: 900, windowState: normal}})",
-                    windowId);
-                await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
-                {
-                    ["windowId"] = windowId,
-                    ["bounds"] = new Dictionary<string, object>
-                    {
-                        ["left"] = 100,
-                        ["top"] = 100,
-                        ["width"] = 1280,
-                        ["height"] = 900,
-                        ["windowState"] = "normal",
-                    },
-                });
+                var windowId = await ResolveWindowIdAsync(session, ct);
+                info($"CDP Show: Browser.setWindowBounds(windowId {windowId}, bounds {{left: {showBounds.Left}, top: {showBounds.Top}, width: {showBounds.Width}, height: {showBounds.Height}, windowState: normal}})");
+                cdpVerified = await ChromeWindowMover.TryMoveViaCdpAsync(session, windowId, showBounds, "Show", info, debug);
+                if (!cdpVerified)
+                    return await RecoverViaWin32OrFailAsync(options, showBounds, "Show", debug);
 
                 var targetId = await ResolveTargetIdAsync(session, ct);
-                _log.LogInformation("CDP Show: Target.activateTarget(targetId {TargetId})", targetId);
+                info($"CDP Show: Target.activateTarget(targetId {targetId})");
                 await session.SendAsync("Target.activateTarget", new Dictionary<string, object>
                 {
                     ["targetId"] = targetId,
@@ -91,7 +87,9 @@ internal sealed class ChromeWindowController : IChromeWindowController
                 if (peekSeconds > 0)
                 {
                     await Task.Delay(peekSeconds * 1000, ct);
-                    await HideWindowAsync(session, windowId, bounds);
+                    info($"CDP Hide: Browser.setWindowBounds(windowId {windowId}, bounds {{left: {hideBounds.Left}, top: {hideBounds.Top}, width: {hideBounds.Width}, height: {hideBounds.Height}, windowState: normal}})");
+                    // The peek's return is best-effort: the SHOW already succeeded.
+                    await ChromeWindowMover.TryMoveViaCdpAsync(session, windowId, hideBounds, "Hide", info, debug);
                 }
 
                 return Outcome.Successful();
@@ -107,34 +105,44 @@ internal sealed class ChromeWindowController : IChromeWindowController
         }
         catch (Exception ex)
         {
-            return Outcome.Failure(new OutcomeError(ex));
+            debug($"CDP show failed: {ex.Message}; falling back to Win32.");
         }
+
+        if (!cdpVerified)
+            return await RecoverViaWin32OrFailAsync(options, showBounds, "Show", debug);
+        return Outcome.Successful();
     }
 
     /// <inheritdoc />
     public async Task<Outcome> HideAsync(BrowserOptions options, CancellationToken ct = default)
     {
-        // The hide geometry: a tiny 80x80 square in the screen's bottom-right corner —
-        // NOT fully offscreen, which Chrome treats as occluded and throttles (turn-17/18).
-        var bounds = BrowserEnvironment.TinyCornerBounds();
-        if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
-            return PortClosed(options);
+        // The hide geometry: a tiny 80x80 square in the screen's WORK AREA bottom-right
+        // corner - NOT fully offscreen, which Chrome treats as occluded and throttles
+        // (turn-17/18). Not hidden behind the taskbar either (SPI_GETWORKAREA).
+        var hideBounds = BrowserEnvironment.TinyCornerBounds();
+        var info = (Action<string>)(message => _log.LogInformation("{Message}", message));
+        var debug = (Action<string>)(message => _log.LogDebug("{Message}", message));
 
+        var cdpVerified = false;
         try
         {
+            if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
+                return PortClosed(options);
+
             var playwright = await PlaywrightFactory(ct);
             var browser = await ConnectAsync(playwright, options);
             var context = browser.Contexts.FirstOrDefault()
                 ?? throw new InvalidOperationException(
                     "The Chrome on the debug port exposes no browser context (is it still starting?).");
-            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
+            var page = ChromeWindowMover.PickChatPage(context) ?? await context.NewPageAsync();
+            debug($"Chat window picked from page: {page.Url}");
 
             var session = await page.Context.NewCDPSessionAsync(page);
             try
             {
-                var windowId = await ResolveWindowIdAsync(session, page, ct);
-                await HideWindowAsync(session, windowId, bounds);
-                return Outcome.Successful();
+                var windowId = await ResolveWindowIdAsync(session, ct);
+                info($"CDP Hide: Browser.setWindowBounds(windowId {windowId}, bounds {{left: {hideBounds.Left}, top: {hideBounds.Top}, width: {hideBounds.Width}, height: {hideBounds.Height}, windowState: normal}})");
+                cdpVerified = await ChromeWindowMover.TryMoveViaCdpAsync(session, windowId, hideBounds, "Hide", info, debug);
             }
             finally
             {
@@ -147,28 +155,40 @@ internal sealed class ChromeWindowController : IChromeWindowController
         }
         catch (Exception ex)
         {
-            return Outcome.Failure(new OutcomeError(ex));
+            debug($"CDP hide failed: {ex.Message}; falling back to Win32.");
         }
+
+        if (!cdpVerified)
+            return await RecoverViaWin32OrFailAsync(options, hideBounds, "Hide", debug);
+        return Outcome.Successful();
     }
 
-    /// <summary>The hide move: tiny on-screen corner square, still "normal" — imperceptible, not occluded.</summary>
-    private async Task HideWindowAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
+    /// <summary>
+    /// The shared tail of both directions: when CDP could not verify the move, try the Win32
+    /// fallback (show: SW_SHOWNOACTIVATE + visible/not-minimized read-back; hide: SW_HIDE +
+    /// invisible read-back) - our processes are matched by profile directory and debug port.
+    /// When even the fallback cannot verify anything, FAIL honestly instead of reporting a
+    /// move that never happened.
+    /// </summary>
+    private async Task<Outcome> RecoverViaWin32OrFailAsync(
+        BrowserOptions options, (int Left, int Top, int Width, int Height) bounds, string label, Action<string> debug)
     {
-        _log.LogInformation(
-            "CDP Hide: Browser.setWindowBounds(windowId {WindowId}, bounds {{left: {Left}, top: {Top}, width: {Width}, height: {Height}, windowState: normal}})",
-            windowId, bounds.Left, bounds.Top, bounds.Width, bounds.Height);
-        await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
-        {
-            ["windowId"] = windowId,
-            ["bounds"] = new Dictionary<string, object>
-            {
-                ["left"] = bounds.Left,
-                ["top"] = bounds.Top,
-                ["width"] = bounds.Width,
-                ["height"] = bounds.Height,
-                ["windowState"] = "normal",
-            },
-        });
+        debug($"CDP {label} was not verified; falling back to Win32.");
+        var win32Verified = ChromeWindowMover.ShowWindowsViaWin32(
+            launchedProcessId: 0,
+            BrowserConnector.ResolveUserDataDir(options),
+            options.ChromeDebugPort,
+            label == "Show" ? ChromeWindowMover.SwShownoactivate : ChromeWindowMover.SwHide,
+            hwnd => label == "Show"
+                ? ChromeWindowMover.IsWindowVisibleWin32(hwnd) && !ChromeWindowMover.IsIconicWin32(hwnd)
+                : !ChromeWindowMover.IsWindowVisibleWin32(hwnd),
+            label,
+            debug);
+        return win32Verified
+            ? Outcome.Successful()
+            : Outcome.Failure(new OutcomeError(
+                "Chrome window could not be located or moved - it may have been closed.",
+                ErrorCodes.BrowserConnectionFailed, OutcomeErrorType.Problem));
     }
 
     private async Task<IBrowser> ConnectAsync(IPlaywright playwright, BrowserOptions options)
@@ -176,8 +196,8 @@ internal sealed class ChromeWindowController : IChromeWindowController
             $"http://127.0.0.1:{options.ChromeDebugPort}",
             new BrowserTypeConnectOverCDPOptions { Timeout = 10_000 });
 
-    /// <summary>The window that owns the chat tab (the first page); one CDP round trip.</summary>
-    private static async Task<long> ResolveWindowIdAsync(ICDPSession session, IPage page, CancellationToken ct)
+    /// <summary>The window that owns the resolved chat page; one CDP round trip.</summary>
+    private static async Task<long> ResolveWindowIdAsync(ICDPSession session, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var response = await session.SendAsync("Browser.getWindowForTarget");
