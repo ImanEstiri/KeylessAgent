@@ -147,6 +147,10 @@
                                             Style="{DynamicResource PrimaryButton}"
                                             Command="{Binding StartCommand}"
                                             MinWidth="130" />
+                                    <Button Content="Show Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding ShowChromeCommand}"
+                                            MinWidth="130" Margin="8,0,0,0" />
                                     <TextBlock Text="{Binding StatusText}" Style="{DynamicResource BodyText}"
                                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
                                 </StackPanel>

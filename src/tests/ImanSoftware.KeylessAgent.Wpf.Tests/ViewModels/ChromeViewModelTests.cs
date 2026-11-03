@@ -30,10 +30,13 @@ public sealed class ChromeViewModelTests
             _feed);
     }
 
+    private readonly FakeChromeWindowController _windowController = new();
+
     private ChromeViewModel CreateViewModel(Func<IAgentUserInterface>? uiFactory = null)
         => new(
             _connector,
             _configuration,
+            _windowController,
             _agent,
             uiFactory ?? (() => null!),
             _dispatcher);
@@ -74,7 +77,7 @@ public sealed class ChromeViewModelTests
     {
         _agent.WorkspaceRoot = @"G:\demo";
         var configuration = new FakeConfigurationService(fail: true);
-        var viewModel = new ChromeViewModel(_connector, configuration, _agent, () => throw new NotSupportedException(), _dispatcher);
+        var viewModel = new ChromeViewModel(_connector, configuration, new FakeChromeWindowController(), _agent, () => throw new NotSupportedException(), _dispatcher);
 
         viewModel.StartCommand.Execute(null);
         await WaitUntilAsync(() => viewModel.Note.Length > 0);
@@ -100,7 +103,7 @@ public sealed class ChromeViewModelTests
         _agent.WorkspaceRoot = @"G:\demo";
         var gate = new TaskCompletionSource();
         var connector = new GateConnector(gate);
-        var viewModel = new ChromeViewModel(connector, _configuration, _agent, () => null!, _dispatcher);
+        var viewModel = new ChromeViewModel(connector, _configuration, new FakeChromeWindowController(), _agent, () => null!, _dispatcher);
 
         viewModel.StartCommand.Execute(null);
         viewModel.StartCommand.CanExecute(null).Should().BeFalse();
@@ -139,5 +142,42 @@ public sealed class ChromeViewModelTests
         }
 
         throw new TimeoutException("Condition was not met within 5 seconds.");
+    }
+
+    [Fact]
+    public async Task ShowChrome_CallsTheController_AndReportsVisibility()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsShowing);
+
+        _windowController.ShowCalls.Should().Be(1);
+        _windowController.LastPeekSeconds.Should().Be(0, "the button keeps the window visible");
+        viewModel.StatusText.Should().Be("Chrome visible");
+    }
+
+    [Fact]
+    public void ShowChrome_IsDisabled_WithoutAWorkspace()
+    {
+        var viewModel = CreateViewModel();
+        _agent.WorkspaceRoot = string.Empty;
+
+        viewModel.ShowChromeCommand.CanExecute(null).Should().BeFalse("no workspace selected");
+    }
+
+    [Fact]
+    public async Task ShowChrome_Failure_SurfacesTheErrorInTheNote()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.Fail = true;
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsShowing);
+
+        viewModel.StatusText.Should().Be("Ready");
+        viewModel.Note.Should().Contain("show failed");
     }
 }

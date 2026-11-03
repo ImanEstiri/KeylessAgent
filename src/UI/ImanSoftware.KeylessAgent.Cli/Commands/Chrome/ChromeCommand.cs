@@ -47,7 +47,17 @@ internal sealed class ChromeCommand : AsyncCommand<ChromeSettings>
         }
 
         var kind = connection.Data.Attachment.Kind;
+
+        // A hidden window (minimized/offscreen) would make the login page invisible: bring it
+        // into view BEFORE the ready message. Pure CDP window move — no automation, no navigation.
+        var windowOutcome = await KeylessAgentServiceFactory.CreateChromeWindowController(
+            KeylessAgentServiceFactory.CreateFileLoggerFactory(workspace)).ShowAsync(browser, 0, cancellationToken);
+        if (windowOutcome.IsFailure)
+            ConsoleWriter.Shared.Warning($"The Chrome window could not be shown: {windowOutcome.Error.Message}");
+
         ConsoleWriter.Shared.Success($"Chrome is ready ({kind}). Log in to DeepSeek in that window once — the login persists in the dedicated profile.");
+        if (windowOutcome.IsSuccess)
+            ConsoleWriter.Shared.Info("Chrome window shown. 'keyless hide <workspace>' moves it offscreen again.");
         ConsoleWriter.Shared.Info($"Profile: {connection.Data.Attachment.UserDataDir}");
         ConsoleWriter.Shared.Info("You can now run 'keyless run <workspace> <request>'. This command does not automate the page.");
         return 0;

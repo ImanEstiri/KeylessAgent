@@ -2,6 +2,7 @@ using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
@@ -56,6 +57,33 @@ public sealed class FakeConfigurationService : IConfigurationService
 }
 
 /// <summary>Fake IBrowserConnector; never launches a real Chrome.</summary>
+/// <summary>Records Show/Hide calls of the Chrome window controller.</summary>
+public sealed class FakeChromeWindowController : IChromeWindowController
+{
+    public int ShowCalls;
+    public int HideCalls;
+    public int LastPeekSeconds = -1;
+    public bool Fail;
+
+    public Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default)
+    {
+        ShowCalls++;
+        LastPeekSeconds = peekSeconds;
+        return Task.FromResult(Fail
+            ? Outcome.Failure(new OutcomeError("show failed", "KA_BROWSER_CONNECTION_FAILED", OutcomeErrorType.Failure))
+            : Outcome.Successful());
+    }
+
+    public Task<Outcome> HideAsync(BrowserOptions options, CancellationToken ct = default)
+    {
+        HideCalls++;
+        return Task.FromResult(Fail
+            ? Outcome.Failure(new OutcomeError("hide failed", "KA_BROWSER_CONNECTION_FAILED", OutcomeErrorType.Failure))
+            : Outcome.Successful());
+    }
+
+}
+
 public sealed class FakeBrowserConnector : IBrowserConnector
 {
     public BrowserConnectionKind Kind = BrowserConnectionKind.AutoLaunchedChrome;

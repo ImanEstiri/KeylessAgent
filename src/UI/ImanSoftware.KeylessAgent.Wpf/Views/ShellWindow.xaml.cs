@@ -56,7 +56,8 @@ public partial class ShellWindow : Window
             KeylessAgentServiceFactory.CreateEnvironmentTools());
 
         var chromeViewModel = new ChromeViewModel(
-            KeylessAgentServiceFactory.CreateBrowserConnector(), configuration, agentViewModel, uiFactory, _dispatcher);
+            KeylessAgentServiceFactory.CreateBrowserConnector(), configuration,
+            KeylessAgentServiceFactory.CreateChromeWindowController(), agentViewModel, uiFactory, _dispatcher);
         var doctorViewModel = new DoctorViewModel(
             KeylessAgentServiceFactory.CreateChatDiagnostics(), configuration, agentViewModel, _dispatcher, chromeViewModel);
         var settingsViewModel = new SettingsViewModel(

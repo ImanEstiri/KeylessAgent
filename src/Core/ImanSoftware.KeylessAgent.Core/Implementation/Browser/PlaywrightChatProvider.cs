@@ -138,10 +138,17 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
+    /// Test seam: replaces the login window controller (the login flow shows the hidden
+    /// window once so the user can log in — pure CDP window move).
+    /// </summary>
+    internal Func<BrowserOptions, IChromeWindowController> WindowControllerFactory { get; set; } =
+        options => new ChromeWindowController();
+
+    /// <summary>
     /// Positive-first login detection: ONE parallel wait races the chat InputBox against the
     /// LoginIndicator. If the input appears first the user is logged in — no login wait ever
     /// runs, and absent elements never consume a per-fallback timeout. Only a winning login
-    /// indicator focuses the tab and waits for the manual login (LoginWaitSeconds).
+    /// indicator SHOWS the window and waits for the manual login (LoginWaitSeconds).
     /// </summary>
     internal async Task WaitForLoginIfNeeded(
         IChatPage page, SelectorsCatalog selectors, ChatSessionOptions options,
@@ -165,7 +172,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
         var logger = new LoggerAdapter<PlaywrightChatProvider>(NullLoggerFactory.Instance);
         logger.LogWarning("Login page detected; waiting up to {Seconds}s for a manual login…", LoginWaitSeconds);
-        await page.FocusTabAsync(cancellationToken);
+
+        // The login page would be INVISIBLE in a hidden window (minimized/offscreen): show it
+        // once, explicitly (pure CDP window move — no BringToFront focus steal of the terminal).
+        await WindowControllerFactory(options.Browser).ShowAsync(options.Browser, 0, cancellationToken);
 
         var deadline = DateTime.UtcNow.AddSeconds(LoginWaitSeconds);
         while (DateTime.UtcNow < deadline)

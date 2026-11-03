@@ -1,6 +1,8 @@
 using ImanSoftware.KeylessAgent.Cli.Commands.Chrome;
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
 using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
+using ImanSoftware.KeylessAgent.Cli.Commands.Hide;
+using ImanSoftware.KeylessAgent.Cli.Commands.Show;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 using ImanSoftware.KeylessAgent.Cli.Commands.Resume;
 using ImanSoftware.KeylessAgent.Cli.Commands.Run;
@@ -51,6 +53,15 @@ app.Configure(config =>
         .WithExample("doctor", @"G:\Projects\MyApp")
         .WithExample("doctor", @"G:\Projects\MyApp", "--capture", @".\doctor-capture")
         .WithExample("doctor", @"G:\Projects\MyApp", "--watch");
+
+    config.AddCommand<ShowCommand>("show")
+        .WithDescription("Bring the offscreen/minimized Chrome window into view (pure CDP window move; never disturbs a running turn).")
+        .WithExample("show", @"G:\Projects\MyApp")
+        .WithExample("show", @"G:\Projects\MyApp", "--peek", "3");
+
+    config.AddCommand<HideCommand>("hide")
+        .WithDescription("Move the Chrome window back offscreen after a manual show.")
+        .WithExample("hide", @"G:\Projects\MyApp");
 
     config.AddCommand<ConfigCommand>("config")
         .WithDescription("Show the effective configuration of a workspace (keyless.json is created with defaults when missing).")

@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Mvvm;
 using ImanSoftware.Outcomes;
@@ -14,6 +15,7 @@ public sealed class ChromeViewModel : ObservableObject
 {
     private readonly IBrowserConnector _connector;
     private readonly IConfigurationService _configuration;
+    private readonly IChromeWindowController _windowController;
     private readonly AgentViewModel _agent;
     private readonly Func<IAgentUserInterface> _uiFactory;
     private readonly IUiDispatcher _ui;
@@ -26,13 +28,15 @@ public sealed class ChromeViewModel : ObservableObject
     /// <summary>Creates the Chrome section view model.</summary>
     /// <param name="connector">The Core browser connector.</param>
     /// <param name="configuration">The per-workspace configuration service.</param>
+    /// <param name="windowController">Brings the Chrome window into view on demand.</param>
     /// <param name="agent">Provides the selected workspace.</param>
     /// <param name="uiFactory">Creates the IAgentUserInterface that receives the connector's progress.</param>
     /// <param name="ui">Dispatcher for safe UI-thread updates.</param>
-    public ChromeViewModel(IBrowserConnector connector, IConfigurationService configuration, AgentViewModel agent, Func<IAgentUserInterface> uiFactory, IUiDispatcher ui)
+    public ChromeViewModel(IBrowserConnector connector, IConfigurationService configuration, IChromeWindowController windowController, AgentViewModel agent, Func<IAgentUserInterface> uiFactory, IUiDispatcher ui)
     {
         _connector = connector ?? throw new ArgumentNullException(nameof(connector));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _windowController = windowController ?? throw new ArgumentNullException(nameof(windowController));
         _agent = agent ?? throw new ArgumentNullException(nameof(agent));
         _uiFactory = uiFactory ?? throw new ArgumentNullException(nameof(uiFactory));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
@@ -43,10 +47,29 @@ public sealed class ChromeViewModel : ObservableObject
             IsConnecting = running.IsRunning;
             StartCommand.NotifyCanExecuteChanged();
         };
+
+        ShowChromeCommand = new AsyncRelayCommand(ShowChromeAsync, () => !IsShowing && _agent.HasWorkspace);
+        ShowChromeCommand.IsRunningChanged += (_, running) =>
+        {
+            IsShowing = running.IsRunning;
+            ShowChromeCommand.NotifyCanExecuteChanged();
+        };
     }
 
     /// <summary>Starts or attaches to the dedicated Chrome (disabled while connecting or without a workspace).</summary>
     public AsyncRelayCommand StartCommand { get; }
+
+    /// <summary>Brings the offscreen/minimized Chrome window into view (disabled while showing or without a workspace).</summary>
+    public AsyncRelayCommand ShowChromeCommand { get; }
+
+    /// <summary>Whether a show attempt is running.</summary>
+    public bool IsShowing
+    {
+        get => _isShowing;
+        private set => SetProperty(ref _isShowing, value);
+    }
+
+    private bool _isShowing;
 
     /// <summary>Whether a connection attempt is running.</summary>
     public bool IsConnecting
@@ -127,6 +150,60 @@ public sealed class ChromeViewModel : ObservableObject
             _ui.Post(() =>
             {
                 IsConnecting = false;
+                StatusText = "Ready";
+                Note = $"{ex.GetType().Name}: {ex.Message}";
+            });
+        }
+    }
+
+    private async Task ShowChromeAsync()
+    {
+        if (!_agent.HasWorkspace)
+        {
+            Note = "Select a workspace first (Workspace page).";
+            return;
+        }
+
+        Note = string.Empty;
+        var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
+        if (options.IsFailure || options.Data is null)
+        {
+            Note = options.Error?.Message ?? "Could not load keyless.json.";
+            return;
+        }
+
+        StatusText = "Showing Chrome…";
+        try
+        {
+            var outcome = await _windowController.ShowAsync(options.Data.Browser, 0);
+            _ui.Post(() =>
+            {
+                IsShowing = false;
+                if (outcome.IsFailure)
+                {
+                    StatusText = "Ready";
+                    Note = outcome.Error?.Message ?? "The window could not be shown.";
+                    return;
+                }
+
+                StatusText = "Chrome visible";
+                Note = "Chrome window shown. Run 'keyless hide' or move it offscreen again when done.";
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _ui.Post(() =>
+            {
+                IsShowing = false;
+                StatusText = "Ready";
+                Note = "Cancelled.";
+            });
+        }
+        catch (Exception ex)
+        {
+            _ui.Post(() =>
+            {
+                IsShowing = false;
                 StatusText = "Ready";
                 Note = $"{ex.GetType().Name}: {ex.Message}";
             });
