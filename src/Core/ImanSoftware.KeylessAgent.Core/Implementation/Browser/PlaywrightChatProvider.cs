@@ -84,7 +84,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                 });
             }
 
-            var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken);
+            var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken, loggerFactory: _loggerFactory);
             if (selectors.IsFailure)
                 return Outcome.Failure<IChatSession>(selectors.Error);
 

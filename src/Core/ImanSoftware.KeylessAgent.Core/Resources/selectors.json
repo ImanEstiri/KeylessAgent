@@ -1,4 +1,9 @@
 {
+  // Bump whenever the embedded default selectors change: older workspace files are
+  // merged (never-customized keys refreshed, user customizations preserved) and backed
+  // up as selectors.json.v<old>.bak. See SelectorsCatalog.ShippedValues.
+  "CatalogVersion": 2,
+
   "InputBox": [
     "textarea[placeholder=\"Message DeepSeek\"]",
     "textarea#chat-input",

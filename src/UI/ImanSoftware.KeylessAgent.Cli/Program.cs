@@ -6,6 +6,7 @@ using ImanSoftware.KeylessAgent.Cli.Commands.Hide;
 using ImanSoftware.KeylessAgent.Cli.Commands.Show;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 using ImanSoftware.KeylessAgent.Cli.Commands.Resume;
+using ImanSoftware.KeylessAgent.Cli.Commands.Selectors;
 using ImanSoftware.KeylessAgent.Cli.Commands.Run;
 using ImanSoftware.KeylessAgent.Cli.Commands.Undo;
 using Spectre.Console;
@@ -69,6 +70,13 @@ app.Configure(config =>
         branch.AddCommand<DiagnosticsChromeCommand>("chrome")
             .WithDescription("Print the running Chrome's command line and verify the anti-occlusion flags.")
             .WithExample("diagnostics", "chrome", @"G:\Projects\MyApp");
+    });
+
+    config.AddBranch<Spectre.Console.Cli.CommandSettings>("selectors", branch =>
+    {
+        branch.AddCommand<SelectorsRefreshCommand>("refresh")
+            .WithDescription("Force-merge the workspace selectors.json with the current embedded defaults (never-customized keys refreshed, customizations preserved, backup written).")
+            .WithExample("selectors", "refresh", @"G:\Projects\MyApp");
     });
 
     config.AddCommand<ConfigCommand>("config")

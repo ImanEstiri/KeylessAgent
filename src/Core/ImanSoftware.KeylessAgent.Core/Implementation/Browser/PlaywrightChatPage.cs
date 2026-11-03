@@ -765,7 +765,7 @@ internal sealed class PlaywrightChatPage : IChatPage
             // The reply source degrades to Dom here, which loses the raw Markdown; make the
             // failure diagnosable instead of silent.
             _log.LogWarning(
-                "MessageCopyButton did not match: tried {Count} selector(s) ({Selectors}) within {Timeout:F0}s. Run 'keyless doctor --capture' and inspect newest-message.html to find the real aria-label.",
+                "MessageCopyButton did not match: tried {Count} selector(s) ({Selectors}) within {Timeout:F0}s. Run 'keyless selectors refresh' to pick up the latest copy-button selectors, or 'keyless doctor --capture' and inspect newest-message.html to find the real aria-label.",
                 _selectors.MessageCopyButton.Length, string.Join(" | ", _selectors.MessageCopyButton), timeout.TotalSeconds);
             return false;
         }
