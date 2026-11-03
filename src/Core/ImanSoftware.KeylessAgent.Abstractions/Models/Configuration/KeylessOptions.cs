@@ -194,14 +194,17 @@ public sealed record BrowserOptions
     public bool HumanDelay { get; init; }
 
     /// <summary>
-    /// Browser window behavior. Offscreen (default) positions the window at (-32000,-32000)
-    /// 1280x900 so it is invisible on every monitor, but Chrome's layout engine considers it
-    /// visible — no renderer throttling, so streaming replies arrive complete. Minimized
-    /// triggers renderer throttling that truncates the stream, so "Minimized" is kept only
-    /// for backward compatibility and now means offscreen too. Normal = never forced.
-    /// Only affects auto-launched Chrome.
+    /// Browser window behavior. Accepted values: "Offscreen", "Minimized", "TinyCorner",
+    /// "EdgePeek", "Normal". Default "TinyCorner": a visible-but-imperceptible 80x80 window
+    /// in the bottom-right corner of the primary screen. The window MUST be visible-on-screen
+    /// (at least 80x80 pixels) to prevent Chrome's occlusion throttling — fully offscreen
+    /// positions (-32000,-32000, "Offscreen"/"Minimized") and truly minimized windows are
+    /// treated as occluded by Chrome 130+ on Windows 11 24H2 regardless of the
+    /// --disable-features=CalculateNativeWinOcclusion flag, and the renderer throttle
+    /// truncates DeepSeek streaming replies (turn-17/18 evidence). Normal = never forced.
+    /// Only affects auto-launched Chrome; every hide path uses the same tiny-corner geometry.
     /// </summary>
-    public string WindowMode { get; init; } = "Offscreen";
+    public string WindowMode { get; init; } = "TinyCorner";
 
     /// <summary>
     /// Minimize the window again after the login completes. Default true.

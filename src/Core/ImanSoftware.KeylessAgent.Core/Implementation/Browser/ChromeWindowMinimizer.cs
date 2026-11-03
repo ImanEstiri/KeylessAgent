@@ -7,11 +7,13 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 
 /// <summary>
 /// Keeps the chat window out of the user's way WITHOUT throttling Chrome:
-/// the window is MOVED offscreen (-32000,-32000, 1280x900) with windowState "normal" —
-/// invisible on every monitor, but Chrome's layout engine still considers it visible, so
-/// the renderer keeps running at full speed and streaming replies arrive complete. A truly
-/// minimized window (windowState "minimized") is throttled by the renderer and truncates
-/// the DeepSeek stream — never used anymore.
+/// the window is MOVED to a VISIBLE-but-imperceptible 80x80 square in the bottom-right
+/// corner of the primary screen (windowState "normal"). The fully offscreen (-32000,-32000)
+/// position turned out to be OCCLUDED in Chrome's eyes — the renderer throttled and the
+/// DeepSeek stream truncated even with the occlusion feature disabled (turn-17: 20
+/// truncations; turn-18: visible window succeeded, hidden again truncated) — so the hide
+/// geometry is now tiny-but-on-screen. A truly minimized window is equally throttled and
+/// never used.
 /// 1. CDP: Browser.setWindowBounds(offscreen, normal), then the state is READ BACK via
 ///    Browser.getWindowBounds — Chrome occasionally ignores the first move, so a
 ///    normal→offscreen recovery runs, up to 3 attempts.
@@ -46,21 +48,22 @@ internal static class ChromeWindowMinimizer
                 // ICDPSession.SendAsync has no CancellationToken overload, so the whole CDP
                 // exchange is raced against the five-second window; a hung call loses the
                 // race and the Win32 fallback takes over.
+                var bounds = BrowserEnvironment.TinyCornerBounds();
                 var cdpWork = Task.Run(async () =>
                 {
                     var window = await session.SendAsync("Browser.getWindowForTarget");
                     var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
                     for (var attempt = 1; attempt <= 3; attempt++)
                     {
-                        await MoveOffscreenAsync(session, windowId);
-                        if (await IsOffscreenAsync(session, windowId))
+                        await MoveHiddenAsync(session, windowId, bounds);
+                        if (await IsHiddenAsync(session, windowId, bounds))
                             return true;
 
                         // Not verified: force NORMAL first (clears the bounds transition),
-                        // then offscreen again, and read back once more on the next attempt.
+                        // then hide again, and read back once more on the next attempt.
                         await SetWindowStateAsync(session, windowId, "normal");
-                        await MoveOffscreenAsync(session, windowId);
-                        if (await IsOffscreenAsync(session, windowId))
+                        await MoveHiddenAsync(session, windowId, bounds);
+                        if (await IsHiddenAsync(session, windowId, bounds))
                             return true;
                         await Task.Delay(300);
                     }
@@ -100,18 +103,19 @@ internal static class ChromeWindowMinimizer
         HideWindowsWin32(launchedProcessId, userDataDir, debugPort, log);
     }
 
-    /// <summary>The hide move: offscreen, still "normal" — user cannot see it, Chrome does not throttle it.</summary>
-    private static async Task MoveOffscreenAsync(ICDPSession session, long windowId)
+    /// <summary>The hide move: a tiny on-screen corner square, still "normal" — imperceptible to the
+    /// user, but Chrome's layout engine sees a visible window and does not throttle it.</summary>
+    private static async Task MoveHiddenAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
     {
         await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
         {
             ["windowId"] = windowId,
             ["bounds"] = new Dictionary<string, object>
             {
-                ["left"] = -32000,
-                ["top"] = -32000,
-                ["width"] = 1280,
-                ["height"] = 900,
+                ["left"] = bounds.Left,
+                ["top"] = bounds.Top,
+                ["width"] = bounds.Width,
+                ["height"] = bounds.Height,
                 ["windowState"] = "normal",
             },
         });
@@ -124,18 +128,20 @@ internal static class ChromeWindowMinimizer
             ["bounds"] = new Dictionary<string, object> { ["windowState"] = windowState },
         });
 
-    /// <summary>True when the read-back bounds say offscreen (left/top -32000) and "normal".</summary>
-    private static async Task<bool> IsOffscreenAsync(ICDPSession session, long windowId)
+    /// <summary>True when the read-back bounds match the tiny corner square and "normal".</summary>
+    private static async Task<bool> IsHiddenAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
     {
         var response = await session.SendAsync("Browser.getWindowBounds",
             new Dictionary<string, object> { ["windowId"] = windowId });
-        var bounds = ((System.Text.Json.JsonElement)response);
-        if (!bounds.TryGetProperty("bounds", out var shape))
+        var element = ((System.Text.Json.JsonElement)response);
+        if (!element.TryGetProperty("bounds", out var shape))
             return false;
         return shape.TryGetProperty("windowState", out var state) &&
                string.Equals(state.GetString(), "normal", StringComparison.OrdinalIgnoreCase) &&
-               shape.TryGetProperty("left", out var left) && left.GetInt32() == -32000 &&
-               shape.TryGetProperty("top", out var top) && top.GetInt32() == -32000;
+               shape.TryGetProperty("left", out var left) && left.GetInt32() == bounds.Left &&
+               shape.TryGetProperty("top", out var top) && top.GetInt32() == bounds.Top &&
+               shape.TryGetProperty("width", out var width) && width.GetInt32() == bounds.Width &&
+               shape.TryGetProperty("height", out var height) && height.GetInt32() == bounds.Height;
     }
 
     private static void HideWindowsWin32(int launchedProcessId, string userDataDir, int debugPort, ILoggerAdapter<PlaywrightChatProvider>? log)

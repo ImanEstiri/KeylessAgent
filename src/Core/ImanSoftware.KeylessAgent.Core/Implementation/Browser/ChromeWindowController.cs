@@ -46,6 +46,8 @@ internal sealed class ChromeWindowController : IChromeWindowController
     /// <inheritdoc />
     public async Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default)
     {
+        // Same geometry as HideAsync: the peek's return-to-hidden lands in the tiny corner.
+        var bounds = BrowserEnvironment.TinyCornerBounds();
         if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
             return PortClosed(options);
 
@@ -89,7 +91,7 @@ internal sealed class ChromeWindowController : IChromeWindowController
                 if (peekSeconds > 0)
                 {
                     await Task.Delay(peekSeconds * 1000, ct);
-                    await HideWindowAsync(session, windowId);
+                    await HideWindowAsync(session, windowId, bounds);
                 }
 
                 return Outcome.Successful();
@@ -112,6 +114,9 @@ internal sealed class ChromeWindowController : IChromeWindowController
     /// <inheritdoc />
     public async Task<Outcome> HideAsync(BrowserOptions options, CancellationToken ct = default)
     {
+        // The hide geometry: a tiny 80x80 square in the screen's bottom-right corner —
+        // NOT fully offscreen, which Chrome treats as occluded and throttles (turn-17/18).
+        var bounds = BrowserEnvironment.TinyCornerBounds();
         if (!await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct))
             return PortClosed(options);
 
@@ -128,7 +133,7 @@ internal sealed class ChromeWindowController : IChromeWindowController
             try
             {
                 var windowId = await ResolveWindowIdAsync(session, page, ct);
-                await HideWindowAsync(session, windowId);
+                await HideWindowAsync(session, windowId, bounds);
                 return Outcome.Successful();
             }
             finally
@@ -146,21 +151,21 @@ internal sealed class ChromeWindowController : IChromeWindowController
         }
     }
 
-    /// <summary>The hide move: offscreen, still "normal" — minimized windows can be throttled, moved ones do not.</summary>
-    private async Task HideWindowAsync(ICDPSession session, long windowId)
+    /// <summary>The hide move: tiny on-screen corner square, still "normal" — imperceptible, not occluded.</summary>
+    private async Task HideWindowAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
     {
         _log.LogInformation(
-            "CDP Hide: Browser.setWindowBounds(windowId {WindowId}, bounds {{left: -32000, top: -32000, width: 1280, height: 900, windowState: normal}})",
-            windowId);
+            "CDP Hide: Browser.setWindowBounds(windowId {WindowId}, bounds {{left: {Left}, top: {Top}, width: {Width}, height: {Height}, windowState: normal}})",
+            windowId, bounds.Left, bounds.Top, bounds.Width, bounds.Height);
         await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
         {
             ["windowId"] = windowId,
             ["bounds"] = new Dictionary<string, object>
             {
-                ["left"] = -32000,
-                ["top"] = -32000,
-                ["width"] = 1280,
-                ["height"] = 900,
+                ["left"] = bounds.Left,
+                ["top"] = bounds.Top,
+                ["width"] = bounds.Width,
+                ["height"] = bounds.Height,
                 ["windowState"] = "normal",
             },
         });

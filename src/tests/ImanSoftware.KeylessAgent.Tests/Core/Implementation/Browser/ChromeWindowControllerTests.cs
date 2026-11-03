@@ -28,7 +28,7 @@ public class ChromeWindowControllerTests
         public Task<(object? Browser, object Context)> AttachCdpAsync(IPlaywright playwright, int port, CancellationToken cancellationToken = default)
             => Task.FromResult<(object? Browser, object Context)>((null, new object()));
 
-        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default)
+        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default, Action<string>? onCommandLine = null)
             => Task.FromResult(0);
     }
 
@@ -125,22 +125,25 @@ public class ChromeWindowControllerTests
     }
 
     [Fact]
-    public async Task Hide_MovesTheWindowOffscreen_StillNormal()
+    public async Task Hide_MovesTheWindowToTheTinyCorner_StillNormal()
     {
+        // Fully offscreen (-32000,-32000) is treated as OCCLUDED by Chrome and throttles the
+        // renderer (turn-17/18): the hide geometry is a VISIBLE 80x80 bottom-right square.
         var (controller, calls) = CreateController();
+        var (screenWidth, screenHeight) = BrowserEnvironment.PrimaryScreenSize();
 
         var outcome = await controller.HideAsync(new BrowserOptions { ChromeDebugPort = 9222 });
 
-        outcome.IsSuccess.Should().BeTrue("but failed: {0}", outcome.Error?.Message ?? "-");
+        outcome.IsSuccess.Should().BeTrue();
         var shape = calls.Should().ContainSingle(c => c.Method == "Browser.setWindowBounds").Which.Args!
             .Should().BeOfType<Dictionary<string, object>>().Which["bounds"]
             .Should().BeOfType<Dictionary<string, object>>().Which;
-        shape["left"].Should().Be(-32000);
-        shape["top"].Should().Be(-32000);
-        shape["width"].Should().Be(1280);
-        shape["height"].Should().Be(900);
+        shape["left"].Should().Be(screenWidth - 80);
+        shape["top"].Should().Be(screenHeight - 80);
+        shape["width"].Should().Be(80);
+        shape["height"].Should().Be(80);
         shape["windowState"].Should().Be("normal",
-            "a MOVED window keeps rendering — minimized windows get throttled");
+            "visible on-screen so Chrome does not occlude-throttle, unlike minimized windows");
     }
 
     [Fact]

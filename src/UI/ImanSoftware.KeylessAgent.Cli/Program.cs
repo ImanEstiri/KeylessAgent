@@ -1,5 +1,6 @@
 using ImanSoftware.KeylessAgent.Cli.Commands.Chrome;
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
+using ImanSoftware.KeylessAgent.Cli.Commands.Diagnostics;
 using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
 using ImanSoftware.KeylessAgent.Cli.Commands.Hide;
 using ImanSoftware.KeylessAgent.Cli.Commands.Show;
@@ -62,6 +63,13 @@ app.Configure(config =>
     config.AddCommand<HideCommand>("hide")
         .WithDescription("Move the Chrome window back offscreen after a manual show.")
         .WithExample("hide", @"G:\Projects\MyApp");
+
+    config.AddBranch<Spectre.Console.Cli.CommandSettings>("diagnostics", branch =>
+    {
+        branch.AddCommand<DiagnosticsChromeCommand>("chrome")
+            .WithDescription("Print the running Chrome's command line and verify the anti-occlusion flags.")
+            .WithExample("diagnostics", "chrome", @"G:\Projects\MyApp");
+    });
 
     config.AddCommand<ConfigCommand>("config")
         .WithDescription("Show the effective configuration of a workspace (keyless.json is created with defaults when missing).")

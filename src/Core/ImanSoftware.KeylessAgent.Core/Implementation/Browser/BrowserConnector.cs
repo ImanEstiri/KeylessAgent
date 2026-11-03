@@ -29,6 +29,12 @@ internal sealed class BrowserConnector : IBrowserConnector
     /// </summary>
     internal Func<BrowserAttachment, CancellationToken, Task<Outcome<object>>>? OpenTabOverride { get; set; }
 
+    /// <summary>
+    /// When set (by the provider, from ChatSessionOptions.LogEvent), the launch command line
+    /// is forwarded here as a "chrome-launched" event with the full arguments payload.
+    /// </summary>
+    internal Func<string, object, Task>? LogEventSink { get; set; }
+
     public BrowserConnector()
         : this(new BrowserEnvironment(), null)
     {
@@ -190,7 +196,12 @@ internal sealed class BrowserConnector : IBrowserConnector
         ui.ShowProgress(new AgentProgressEvent(
             AgentEventType.ConnectingToBrowser,
             $"Starting Chrome with the KeylessAgent profile ({userDataDir})…"));
-        var processId = await _environment.StartChromeAsync(chromePath, options.ChromeDebugPort, userDataDir, options.WindowMode, cancellationToken);
+        var processId = await _environment.StartChromeAsync(chromePath, options.ChromeDebugPort, userDataDir, options.WindowMode, cancellationToken,
+            onCommandLine: arguments =>
+            {
+                _log.LogInformation("Chrome launched with command line: {Arguments}", arguments);
+                _ = LogEventSink?.Invoke("chrome-launched", new { Arguments = arguments });
+            });
 
         // Wait until /json/version answers (30s), then attach.
         var deadline = DateTime.UtcNow.AddSeconds(30);

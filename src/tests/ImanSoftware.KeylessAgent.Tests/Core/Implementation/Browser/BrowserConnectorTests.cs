@@ -92,11 +92,14 @@ public class BrowserConnectorTests
             return Task.FromResult<(object? Browser, object Context)>((new object(), new object()));
         }
 
-        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default)
+        public Action<string>? LastOnCommandLine { get; private set; }
+
+        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default, Action<string>? onCommandLine = null)
         {
             StartedChrome = true;
             LastWindowMode = windowMode;
             LastArguments = $"--remote-debugging-port={port} --user-data-dir=\"{userDataDir}\"";
+            LastOnCommandLine = onCommandLine;
             PortOpen = true;
             return Task.FromResult(4242);
         }
@@ -202,10 +205,42 @@ public class BrowserConnectorTests
                 Outcome.Successful<object>("page-stub")),
         };
 
-        var outcome = await connector.ConnectAsync(Options() with { WindowMode = "Offscreen" }, Ui());
+        var outcome = await connector.ConnectAsync(Options() with { WindowMode = "TinyCorner" }, Ui());
 
         outcome.IsSuccess.Should().BeTrue();
-        environment.LastWindowMode.Should().Be("Offscreen");
+        environment.LastWindowMode.Should().Be("TinyCorner");
+    }
+
+    [Fact]
+    public async Task ChromeLaunch_ForwardsTheCommandLineAsChromeLaunchedEvent()
+    {
+        // The launch command line must reach the turn log ("chrome-launched") so a turn can
+        // prove which anti-occlusion flags the launched Chrome actually received.
+        var environment = new FakeEnvironment { PortOpen = false };
+        var connector = new BrowserConnector(environment, null)
+        {
+            OpenTabOverride = (_, _) => Task.FromResult(
+                Outcome.Successful<object>("page-stub")),
+        };
+        var events = new List<(string Type, object Payload)>();
+        connector.LogEventSink = (type, payload) =>
+        {
+            lock (events)
+                events.Add((type, payload));
+            return Task.CompletedTask;
+        };
+
+        (await connector.ConnectAsync(Options(), Ui())).IsSuccess.Should().BeTrue();
+
+        environment.LastOnCommandLine.Should().NotBeNull("the connector wires the launch diagnostics");
+        environment.LastOnCommandLine!("--disable-features=CalculateNativeWinOcclusion ...");
+        lock (events)
+        {
+            var launched = events.Where(e => e.Type == "chrome-launched")
+                .Select(e => System.Text.Json.JsonSerializer.SerializeToElement(e.Payload)).ToList();
+            launched.Should().HaveCount(1);
+            launched[0].GetProperty("Arguments").GetString().Should().Be("--disable-features=CalculateNativeWinOcclusion ...");
+        }
     }
 
     [Theory]
@@ -228,6 +263,36 @@ public class BrowserConnectorTests
         arguments.Should().Contain("--disable-renderer-backgrounding", "the throttling flags are kept");
         arguments.Should().NotContain("chat.deepseek.com",
             "Chrome 136+ ignores --start-minimized when a URL is present — the tab is opened via CDP");
+    }
+
+    [Fact]
+    public void ChromeArguments_TinyCorner_KeepsAVisible80x80SquareInTheCorner()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "TinyCorner", (1920, 1080));
+
+        arguments.Should().Contain("--window-position=1840,1000", "the primary screen's bottom-right corner");
+        arguments.Should().Contain("--window-size=80,80",
+            "visible-on-screen so Chrome does not occlude-throttle; 80x80 is the recommended minimum");
+        arguments.Should().NotContain("-32000");
+    }
+
+    [Fact]
+    public void ChromeArguments_EdgePeek_KeepsA10x10SliverInTheCorner()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "EdgePeek", (1920, 1080));
+
+        arguments.Should().Contain("--window-position=1910,1070");
+        arguments.Should().Contain("--window-size=10,10");
+    }
+
+    [Fact]
+    public void PrimaryScreenSize_UsesTheRealPrimaryScreen_NotAHardcodedValue()
+    {
+        var (width, height) = BrowserEnvironment.PrimaryScreenSize();
+
+        width.Should().BeGreaterThan(0);
+        height.Should().BeGreaterThan(0);
+        (width, height).Should().NotBe((0, 0), "the primary screen bounds must come from the OS, never hardcoded");
     }
 
     [Fact]

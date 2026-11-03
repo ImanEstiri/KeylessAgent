@@ -24,7 +24,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 {
     private const int LoginWaitSeconds = 300;
 
-    private readonly IBrowserConnector _connector;
+    private readonly BrowserConnector _connector;
     private readonly IDateTimeProvider _time;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IReplyExtractor _replyExtractor;
@@ -47,6 +47,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     {
         try
         {
+            // The launch command line travels into the turn log as a "chrome-launched" event,
+            // so every turn can prove which anti-occlusion flags Chrome received.
+            _connector.LogEventSink = options.LogEvent;
+
             var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken, options.Timings);
             if (connected.IsFailure)
                 return Outcome.Failure<IChatSession>(connected.Error);

@@ -24,7 +24,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "SelectorsFile": "selectors.json",
     "ReplyTimeoutSeconds": 180,
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
-    "WindowMode": "Offscreen",       // Offscreen | Minimized (both offscreen) | Normal (auto-launched Chrome only)
+    "WindowMode": "TinyCorner",      // TinyCorner (default) | EdgePeek | Offscreen | Minimized | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
     "AutoFocusOnTruncation": false,  // un-minimize once when a throttled stream was rejected 5x (default: stay minimized)
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
@@ -117,7 +117,7 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 
 ### Browser window
 
-- **WindowMode**: `Offscreen` (default), `Minimized` (kept for backward compatibility — now means offscreen too), or `Normal`. Affects auto-launched Chrome only. Offscreen positions the window at (-32000,-32000) 1280x900: invisible on every monitor, but Chrome's layout engine still considers it visible, so no renderer throttling and streaming replies arrive complete (a truly minimized window is throttled and truncates the stream). Throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) are always passed.
+- **WindowMode**: `TinyCorner` (default), `EdgePeek`, `Offscreen`, `Minimized` (backward-compatibility alias of offscreen), or `Normal`. Affects auto-launched Chrome only and the hide geometry. The window must be visible-on-screen (at least 80x80 pixels) to prevent Chrome's occlusion throttling: fully offscreen positions do NOT work on Chrome 130+ / Windows 11 24H2 even with `--disable-features=CalculateNativeWinOcclusion` — the renderer throttles and truncates the DeepSeek stream (turn-17/18 evidence). TinyCorner keeps an 80x80 square in the bottom-right corner (primary screen bounds, not hardcoded); EdgePeek uses a 10x10 sliver in the corner (may still be throttled if Chrome's heuristic rejects it). Anti-throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling`) are always passed; verify the running Chrome with `keyless diagnostics chrome`.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
 
 ### Snapshot — sensitive content never reaches the chat
