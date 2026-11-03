@@ -19,15 +19,19 @@ internal sealed class ConfigurationService : IConfigurationService
     private const string ConfigFileName = "keyless.json";
 
     private readonly IFileStorage _storage;
+    private readonly ImanSoftware.Logging.ILoggerAdapter<ConfigurationService>? _log;
 
     public ConfigurationService()
         : this(ImanFileStorageFactory.CreateStorage())
     {
     }
 
-    internal ConfigurationService(IFileStorage storage)
+    internal ConfigurationService(IFileStorage? storage = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
-        _storage = storage;
+        _storage = storage ?? ImanFileStorageFactory.CreateStorage();
+        _log = loggerFactory is null
+            ? null
+            : new ImanSoftware.Logging.LoggerAdapter<ConfigurationService>(loggerFactory);
     }
 
     /// <summary>
@@ -96,11 +100,96 @@ internal sealed class ConfigurationService : IConfigurationService
 
         var (migratedOptions, migrated) = await MigrateIfStaleAsync(path, read.Data, options);
         LastLoadMigratedSchema = migrated;
-        return Outcome.Successful(migratedOptions);
+
+        var (upgradedOptions, upgradedFields) = await UpgradeKnownStaleDefaultsAsync(path, read.Data, migratedOptions);
+        LastLoadUpgradedFields = upgradedFields;
+        return Outcome.Successful(upgradedOptions);
     }
 
     /// <inheritdoc />
     public bool LastLoadMigratedSchema { get; private set; }
+
+    /// <summary>
+    /// The known-stale-default upgrades applied during the LAST load ("Field: old -> new"),
+    /// empty when none ran. A full schema migration already rewrites every value, so this
+    /// only ever fires for files that are already at the current SchemaVersion.
+    /// </summary>
+    public IReadOnlyList<string> LastLoadUpgradedFields { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// One entry per field whose SHIPPED default changed after users already wrote their
+    /// keyless.json: since CreateDefault() serializes every field explicitly, the old
+    /// default literal sits in existing files forever and silently overrides the new code
+    /// default. An entry upgrades the loaded value ONLY when it exactly matches a known old
+    /// default — anything else means the user deliberately set it and is left alone.
+    /// PATTERN for future default changes: when you change a default in KeylessOptions,
+    /// add ONE line here (old value(s) -> new default) so existing workspaces pick it up.
+    /// Run on EVERY load, orthogonal to the SchemaVersion-gated migration above. String
+    /// comparison is OrdinalIgnoreCase — case variants of a shipped default (the tolerant
+    /// parser accepts them) are still that default, not a user customization.
+    /// </summary>
+    private sealed record KnownStaleDefault(
+        string FieldPath,
+        object? OldDefault,
+        object? NewDefault,
+        Func<KeylessOptions, object?> Read,
+        Func<KeylessOptions, object?, KeylessOptions> With);
+
+    private static readonly KnownStaleDefault[] KnownStaleDefaults =
+    [
+        // The window default changed twice (Minimized -> Offscreen -> TinyCorner); both old
+        // literals throttle Chrome's renderer and truncate replies (turn-17/18 evidence).
+        new("Browser.WindowMode", "Minimized", "TinyCorner",
+            o => o.Browser.WindowMode,
+            (o, v) => o with { Browser = o.Browser with { WindowMode = (string)v! } }),
+        new("Browser.WindowMode", "Offscreen", "TinyCorner",
+            o => o.Browser.WindowMode,
+            (o, v) => o with { Browser = o.Browser with { WindowMode = (string)v! } }),
+    ];
+
+    private static bool MatchesOldDefault(object? current, object? oldDefault)
+        => oldDefault is string oldString
+            ? current is string currentString && string.Equals(currentString, oldString, StringComparison.OrdinalIgnoreCase)
+            : Equals(current, oldDefault);
+
+    /// <summary>
+    /// Upgrades known-stale default literals (see <see cref="KnownStaleDefaults"/>) on every
+    /// load. Backs up the raw file as keyless.json.pre-defaults-upgrade.bak (a suffix that
+    /// cannot collide with the real schema-version backups) and rewrites the file with the
+    /// upgraded options — every OTHER loaded value (user customizations included) survives,
+    /// because the options object came from the user's file.
+    /// </summary>
+    private async Task<(KeylessOptions Options, IReadOnlyList<string> Upgraded)> UpgradeKnownStaleDefaultsAsync(
+        string path, string rawContents, KeylessOptions loaded)
+    {
+        var upgrades = new List<string>();
+        foreach (var entry in KnownStaleDefaults)
+        {
+            var current = entry.Read(loaded);
+            if (!MatchesOldDefault(current, entry.OldDefault) || Equals(current, entry.NewDefault))
+                continue;
+
+            loaded = entry.With(loaded, entry.NewDefault);
+            upgrades.Add($"{entry.FieldPath}: {current} -> {entry.NewDefault}");
+        }
+
+        if (upgrades.Count == 0)
+            return (loaded, Array.Empty<string>());
+
+        var backupWrite = await _storage.WriteAllTextAsync($"{path}.pre-defaults-upgrade.bak", rawContents);
+        if (backupWrite.IsFailure)
+            return (loaded, Array.Empty<string>()); // never fail a load over the upgrade
+
+        var write = await _storage.WriteAllTextAsync(path, CreateSerializer().Serialize(loaded));
+        if (write.IsFailure)
+            return (loaded, Array.Empty<string>());
+
+        // One informational line per upgraded field, naming exactly what changed and why.
+        foreach (var upgrade in upgrades)
+            _log?.LogInformation("keyless.json defaults upgrade: {Upgrade} (old shipped default)", upgrade);
+
+        return (loaded, upgrades);
+    }
 
     /// <summary>
     /// Migrates a pre-schema-version keyless.json to the current defaults: backs up the raw

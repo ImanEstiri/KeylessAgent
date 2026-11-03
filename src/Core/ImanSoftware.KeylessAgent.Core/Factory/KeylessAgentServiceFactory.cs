@@ -42,8 +42,8 @@ public static class KeylessAgentServiceFactory
     /// Creates the configuration service.
     /// </summary>
     /// <returns>The configuration service.</returns>
-    public static IConfigurationService CreateConfigurationService()
-        => new ConfigurationService();
+    public static IConfigurationService CreateConfigurationService(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        => new ConfigurationService(loggerFactory: loggerFactory);
 
     /// <summary>
     /// Creates the git service.
