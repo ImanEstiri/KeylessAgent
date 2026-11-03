@@ -55,13 +55,14 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             var page = (IPage)rawPage;
             var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);
 
-            // Get the window out of the way IMMEDIATELY after the tab is open: Target.createTarget
-            // now opens the tab in the background, but Chrome can still restore a minimized
-            // window while the tab loads. The post-login minimize below stays.
+            // Hide the window IMMEDIATELY after the tab is open: Target.createTarget now opens
+            // the tab in the background, but Chrome can still move the window while the tab
+            // loads. The post-login hide below stays. Both Minimized and Offscreen mean
+            // offscreen; Normal is never forced.
             if (options.Browser.MinimizeAfterLogin &&
-                string.Equals(options.Browser.WindowMode?.Trim(), "Minimized", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(options.Browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase))
             {
-                await MinimizeWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
+                await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
             }
 
             // Resume: when a saved chat URL exists and the current tab is not already on it,
@@ -108,10 +109,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                     "The post-StartSession composer reset failed best-effort: {Message}", ex.Message);
             }
 
-            // Logged in (or just logged in): get the window out of the user's way again —
-            // the login probe or the user's own interaction may have restored it.
+            // Logged in (or just logged in): hide the window again — the login probe or the
+            // user's own interaction may have moved it back into view.
             if (options.Browser.MinimizeAfterLogin)
-                await MinimizeWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
+                await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
 
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
@@ -201,18 +202,22 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
-    /// Minimizes the chat window so a successful launch does not steal the user's focus:
-    /// CDP with a read-back verification and a normal→minimized recovery, then a Win32
-    /// fallback that finds the real Chrome top-level windows of our chrome.exe processes
-    /// (the launched launcher PID often has MainWindowHandle == 0). Chrome 136+ ignores
-    /// --start-minimized when a URL is passed, so the launched window needs this explicit
-    /// minimize. Best-effort: every failure is swallowed.
+    /// Hides the chat window OFFSCREEN so a successful launch does not steal the user's
+    /// focus: CDP Browser.setWindowBounds {left:-32000, top:-32000, width:1280, height:900,
+    /// windowState:normal} with a read-back verification and a normal→offscreen recovery,
+    /// then a Win32 fallback that finds the real Chrome top-level windows of our chrome.exe
+    /// processes and ShowWindow(SW_HIDE)s them (the launched launcher PID often has
+    /// MainWindowHandle == 0). Previously this used windowState:minimized, which throttles
+    /// Chrome's renderer and truncates DeepSeek streaming replies; the window is now MOVED
+    /// offscreen with normal state — the user cannot see it, Chrome does not throttle it.
+    /// Recover with 'keyless show' or the WPF Show Chrome button. Best-effort: every
+    /// failure is swallowed.
     /// </summary>
-    internal static async Task MinimizeWindowAsync(
+    internal static async Task HideWindowAsync(
         IPage page, BrowserOptions browserOptions, int launchedProcessId,
         ILoggerAdapter<PlaywrightChatProvider>? log = null, CancellationToken cancellationToken = default)
     {
-        await ChromeWindowMinimizer.MinimizeAsync(
+        await ChromeWindowMinimizer.HideAsync(
             page, launchedProcessId, BrowserConnector.ResolveUserDataDir(browserOptions),
             browserOptions.ChromeDebugPort, log, cancellationToken);
     }

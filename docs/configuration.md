@@ -24,7 +24,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "SelectorsFile": "selectors.json",
     "ReplyTimeoutSeconds": 180,
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
-    "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
+    "WindowMode": "Offscreen",       // Offscreen | Minimized (both offscreen) | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
     "AutoFocusOnTruncation": false,  // un-minimize once when a throttled stream was rejected 5x (default: stay minimized)
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
@@ -117,7 +117,7 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 
 ### Browser window
 
-- **WindowMode**: `Minimized` (default), `Offscreen`, or `Normal`. Affects auto-launched Chrome only. When minimized, throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) prevent slow-downs.
+- **WindowMode**: `Offscreen` (default), `Minimized` (kept for backward compatibility — now means offscreen too), or `Normal`. Affects auto-launched Chrome only. Offscreen positions the window at (-32000,-32000) 1280x900: invisible on every monitor, but Chrome's layout engine still considers it visible, so no renderer throttling and streaming replies arrive complete (a truly minimized window is throttled and truncates the stream). Throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) are always passed.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
 
 ### Snapshot — sensitive content never reaches the chat

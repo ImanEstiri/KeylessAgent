@@ -6,23 +6,29 @@ using Microsoft.Playwright;
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 
 /// <summary>
-/// Gets the chat window out of the user's way, and KEEPS it there:
-/// 1. CDP: Browser.setWindowBounds(minimized), then the state is READ BACK via
-///    Browser.getWindowBounds — Chrome occasionally reports a non-minimized state right
-///    after the set, so a normal→minimized recovery runs, up to 3 attempts.
+/// Keeps the chat window out of the user's way WITHOUT throttling Chrome:
+/// the window is MOVED offscreen (-32000,-32000, 1280x900) with windowState "normal" —
+/// invisible on every monitor, but Chrome's layout engine still considers it visible, so
+/// the renderer keeps running at full speed and streaming replies arrive complete. A truly
+/// minimized window (windowState "minimized") is throttled by the renderer and truncates
+/// the DeepSeek stream — never used anymore.
+/// 1. CDP: Browser.setWindowBounds(offscreen, normal), then the state is READ BACK via
+///    Browser.getWindowBounds — Chrome occasionally ignores the first move, so a
+///    normal→offscreen recovery runs, up to 3 attempts.
 /// 2. Win32 fallback (CDP failed, timed out, or never verified): enumerate the top-level
 ///    windows of OUR chrome.exe processes — the launched PID's descendant tree, or (when
 ///    attached to an already-running Chrome) the processes whose command line carries our
-///    --user-data-dir / --remote-debugging-port — and ShowWindow(SW_MINIMIZE) each. The
-///    launcher PID often has MainWindowHandle == 0, which is why the naive fallback missed.
+///    --user-data-dir / --remote-debugging-port — and ShowWindow(SW_HIDE) each (hiding,
+///    not minimizing: SW_MINIMIZE would throttle the renderer). The launcher PID often has
+///    MainWindowHandle == 0, which is why the naive fallback missed.
 /// Best-effort everywhere: a failure is logged and never fatal. Windows-only guards guard
-/// every native call.
+/// every native call. Recover the window with 'keyless show' or the WPF Show Chrome button.
 /// </summary>
 internal static class ChromeWindowMinimizer
 {
-    private const int SwMinimize = 6;
+    private const int SwHide = 0;
 
-    internal static async Task MinimizeAsync(
+    internal static async Task HideAsync(
         IPage page, int launchedProcessId, string userDataDir, int debugPort,
         ILoggerAdapter<PlaywrightChatProvider>? log, CancellationToken cancellationToken)
     {
@@ -46,17 +52,15 @@ internal static class ChromeWindowMinimizer
                     var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
                     for (var attempt = 1; attempt <= 3; attempt++)
                     {
-                        await SetWindowStateAsync(session, windowId, "minimized");
-                        var state = await ReadWindowStateAsync(session, windowId);
-                        if (string.Equals(state, "minimized", StringComparison.OrdinalIgnoreCase))
+                        await MoveOffscreenAsync(session, windowId);
+                        if (await IsOffscreenAsync(session, windowId))
                             return true;
 
                         // Not verified: force NORMAL first (clears the bounds transition),
-                        // then minimized again, and read back once more on the next attempt.
+                        // then offscreen again, and read back once more on the next attempt.
                         await SetWindowStateAsync(session, windowId, "normal");
-                        await SetWindowStateAsync(session, windowId, "minimized");
-                        state = await ReadWindowStateAsync(session, windowId);
-                        if (string.Equals(state, "minimized", StringComparison.OrdinalIgnoreCase))
+                        await MoveOffscreenAsync(session, windowId);
+                        if (await IsOffscreenAsync(session, windowId))
                             return true;
                         await Task.Delay(300);
                     }
@@ -70,7 +74,7 @@ internal static class ChromeWindowMinimizer
 
                 verified = await cdpWork;
                 if (verified)
-                    return; // CDP confirmed the window is minimized.
+                    return; // CDP confirmed the window is offscreen.
             }
             catch (OperationCanceledException) when (cdpCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -87,13 +91,30 @@ internal static class ChromeWindowMinimizer
         }
         catch (Exception ex)
         {
-            log?.LogDebug("CDP minimize failed: {Message}; falling back to Win32.", ex.Message);
+            log?.LogDebug("CDP hide failed: {Message}; falling back to Win32.", ex.Message);
         }
 
         if (!verified)
-            log?.LogDebug("CDP minimize was not verified; falling back to Win32.");
+            log?.LogDebug("CDP hide was not verified; falling back to Win32.");
 
-        MinimizeWindowsWin32(launchedProcessId, userDataDir, debugPort, log);
+        HideWindowsWin32(launchedProcessId, userDataDir, debugPort, log);
+    }
+
+    /// <summary>The hide move: offscreen, still "normal" — user cannot see it, Chrome does not throttle it.</summary>
+    private static async Task MoveOffscreenAsync(ICDPSession session, long windowId)
+    {
+        await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+        {
+            ["windowId"] = windowId,
+            ["bounds"] = new Dictionary<string, object>
+            {
+                ["left"] = -32000,
+                ["top"] = -32000,
+                ["width"] = 1280,
+                ["height"] = 900,
+                ["windowState"] = "normal",
+            },
+        });
     }
 
     private static async Task SetWindowStateAsync(ICDPSession session, long windowId, string windowState)
@@ -103,18 +124,21 @@ internal static class ChromeWindowMinimizer
             ["bounds"] = new Dictionary<string, object> { ["windowState"] = windowState },
         });
 
-    private static async Task<string> ReadWindowStateAsync(ICDPSession session, long windowId)
+    /// <summary>True when the read-back bounds say offscreen (left/top -32000) and "normal".</summary>
+    private static async Task<bool> IsOffscreenAsync(ICDPSession session, long windowId)
     {
         var response = await session.SendAsync("Browser.getWindowBounds",
             new Dictionary<string, object> { ["windowId"] = windowId });
-        var element = (System.Text.Json.JsonElement)response;
-        return element.TryGetProperty("bounds", out var bounds) &&
-               bounds.TryGetProperty("windowState", out var state)
-            ? state.GetString() ?? string.Empty
-            : string.Empty;
+        var bounds = ((System.Text.Json.JsonElement)response);
+        if (!bounds.TryGetProperty("bounds", out var shape))
+            return false;
+        return shape.TryGetProperty("windowState", out var state) &&
+               string.Equals(state.GetString(), "normal", StringComparison.OrdinalIgnoreCase) &&
+               shape.TryGetProperty("left", out var left) && left.GetInt32() == -32000 &&
+               shape.TryGetProperty("top", out var top) && top.GetInt32() == -32000;
     }
 
-    private static void MinimizeWindowsWin32(int launchedProcessId, string userDataDir, int debugPort, ILoggerAdapter<PlaywrightChatProvider>? log)
+    private static void HideWindowsWin32(int launchedProcessId, string userDataDir, int debugPort, ILoggerAdapter<PlaywrightChatProvider>? log)
     {
         if (!OperatingSystem.IsWindows())
             return;
@@ -124,18 +148,18 @@ internal static class ChromeWindowMinimizer
             var handles = FindChromeWindowHandles(launchedProcessId, userDataDir, debugPort);
             if (handles.Count == 0)
             {
-                log?.LogDebug("Win32 minimize: no Chrome window of our chrome.exe processes was found.");
+                log?.LogDebug("Win32 hide: no Chrome window of our chrome.exe processes was found.");
                 return;
             }
 
             foreach (var handle in handles)
-                ShowWindow(handle, SwMinimize);
-            log?.LogDebug("Win32 minimize: ShowWindow(SW_MINIMIZE) sent to {Count} Chrome window(s).", handles.Count);
+                ShowWindow(handle, SwHide);
+            log?.LogDebug("Win32 hide: ShowWindow(SW_HIDE) sent to {Count} Chrome window(s).", handles.Count);
         }
         catch (Exception ex)
         {
-            // Minimize is best-effort; a failure here is never fatal.
-            log?.LogDebug("Win32 minimize failed: {Message}", ex.Message);
+            // Hide is best-effort; a failure here is never fatal.
+            log?.LogDebug("Win32 hide failed: {Message}", ex.Message);
         }
     }
 

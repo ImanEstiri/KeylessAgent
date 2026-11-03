@@ -41,41 +41,82 @@ public sealed class ChromeViewModel : ObservableObject
         _uiFactory = uiFactory ?? throw new ArgumentNullException(nameof(uiFactory));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
 
-        StartCommand = new AsyncRelayCommand(StartAsync, () => !IsConnecting && _agent.HasWorkspace);
+        StartCommand = new AsyncRelayCommand(StartAsync, () => !IsBusy && _agent.HasWorkspace);
         StartCommand.IsRunningChanged += (_, running) =>
         {
             IsConnecting = running.IsRunning;
             StartCommand.NotifyCanExecuteChanged();
         };
 
-        ShowChromeCommand = new AsyncRelayCommand(ShowChromeAsync, () => !IsShowing && _agent.HasWorkspace);
+        ShowChromeCommand = new AsyncRelayCommand(ShowChromeAsync, () => !IsBusy && _agent.HasWorkspace);
         ShowChromeCommand.IsRunningChanged += (_, running) =>
         {
             IsShowing = running.IsRunning;
             ShowChromeCommand.NotifyCanExecuteChanged();
         };
+
+        HideChromeCommand = new AsyncRelayCommand(HideChromeAsync, () => !IsBusy && _agent.HasWorkspace);
+        HideChromeCommand.IsRunningChanged += (_, running) =>
+        {
+            IsHiding = running.IsRunning;
+            HideChromeCommand.NotifyCanExecuteChanged();
+        };
     }
 
-    /// <summary>Starts or attaches to the dedicated Chrome (disabled while connecting or without a workspace).</summary>
+    /// <summary>Whether ANY window/connect action is running (all three commands cross-disable).</summary>
+    private bool IsBusy => IsConnecting || IsShowing || IsHiding;
+
+    /// <summary>Starts or attaches to the dedicated Chrome (disabled while busy or without a workspace).</summary>
     public AsyncRelayCommand StartCommand { get; }
 
-    /// <summary>Brings the offscreen/minimized Chrome window into view (disabled while showing or without a workspace).</summary>
+    /// <summary>Brings the offscreen Chrome window into view (disabled while busy or without a workspace).</summary>
     public AsyncRelayCommand ShowChromeCommand { get; }
+
+    /// <summary>Moves the Chrome window back offscreen (disabled while busy or without a workspace).</summary>
+    public AsyncRelayCommand HideChromeCommand { get; }
 
     /// <summary>Whether a show attempt is running.</summary>
     public bool IsShowing
     {
         get => _isShowing;
-        private set => SetProperty(ref _isShowing, value);
+        private set
+        {
+            if (SetProperty(ref _isShowing, value))
+                NotifyAllCommands();
+        }
     }
 
     private bool _isShowing;
+
+    /// <summary>Whether a hide attempt is running.</summary>
+    public bool IsHiding
+    {
+        get => _isHiding;
+        private set
+        {
+            if (SetProperty(ref _isHiding, value))
+                NotifyAllCommands();
+        }
+    }
+
+    private bool _isHiding;
 
     /// <summary>Whether a connection attempt is running.</summary>
     public bool IsConnecting
     {
         get => _isConnecting;
-        private set => SetProperty(ref _isConnecting, value);
+        private set
+        {
+            if (SetProperty(ref _isConnecting, value))
+                NotifyAllCommands();
+        }
+    }
+
+    private void NotifyAllCommands()
+    {
+        StartCommand.NotifyCanExecuteChanged();
+        ShowChromeCommand.NotifyCanExecuteChanged();
+        HideChromeCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>The status text also shown in the shell status bar ("Ready", "Starting Chrome…", "Chrome ready (…)").</summary>
@@ -204,6 +245,60 @@ public sealed class ChromeViewModel : ObservableObject
             _ui.Post(() =>
             {
                 IsShowing = false;
+                StatusText = "Ready";
+                Note = $"{ex.GetType().Name}: {ex.Message}";
+            });
+        }
+    }
+
+    private async Task HideChromeAsync()
+    {
+        if (!_agent.HasWorkspace)
+        {
+            Note = "Select a workspace first (Workspace page).";
+            return;
+        }
+
+        Note = string.Empty;
+        var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
+        if (options.IsFailure || options.Data is null)
+        {
+            Note = options.Error?.Message ?? "Could not load keyless.json.";
+            return;
+        }
+
+        StatusText = "Hiding Chrome…";
+        try
+        {
+            var outcome = await _windowController.HideAsync(options.Data.Browser);
+            _ui.Post(() =>
+            {
+                IsHiding = false;
+                if (outcome.IsFailure)
+                {
+                    StatusText = "Ready";
+                    Note = outcome.Error?.Message ?? "The window could not be hidden.";
+                    return;
+                }
+
+                StatusText = "Chrome offscreen";
+                Note = "Chrome window moved offscreen. The Show Chrome button brings it back.";
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _ui.Post(() =>
+            {
+                IsHiding = false;
+                StatusText = "Ready";
+                Note = "Cancelled.";
+            });
+        }
+        catch (Exception ex)
+        {
+            _ui.Post(() =>
+            {
+                IsHiding = false;
                 StatusText = "Ready";
                 Note = $"{ex.GetType().Name}: {ex.Message}";
             });

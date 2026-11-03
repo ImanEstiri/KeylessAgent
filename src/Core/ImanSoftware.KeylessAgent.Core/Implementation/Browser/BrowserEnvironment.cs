@@ -130,15 +130,18 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     }
 
     /// <summary>
-    /// Maps the window mode to its Chrome flag: Minimized → --start-minimized, Offscreen → a
-    /// window position far off-screen, Normal → no flag (never forced focus). Unknown or empty
-    /// modes default to Minimized, matching the configuration default.
+    /// Maps the window mode to its Chrome flags. Minimized and Offscreen BOTH place the
+    /// window offscreen at startup — a truly minimized window is throttled by the renderer
+    /// and truncates DeepSeek streaming replies, so "Minimized" is kept for backward
+    /// compatibility with existing keyless.json files but now means offscreen. Normal → no
+    /// flag (never forced focus). Unknown or empty modes default to offscreen, matching the
+    /// configuration default.
     /// </summary>
     internal static string WindowModeFlag(string windowMode) => windowMode.Trim().ToLowerInvariant() switch
     {
         "normal" => "",
-        "offscreen" => "--window-position=-32000,-32000",
-        _ => "--start-minimized",
+        // Minimized is kept for backward compatibility: it now means offscreen as well.
+        _ => "--window-position=-32000,-32000 --window-size=1280,900",
     };
 
     internal static string ComposeChromeArguments(int port, string userDataDir, string windowMode)

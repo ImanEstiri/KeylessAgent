@@ -65,13 +65,21 @@ public sealed class FakeChromeWindowController : IChromeWindowController
     public int LastPeekSeconds = -1;
     public bool Fail;
 
-    public Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default)
+    /// <summary>When true, ShowAsync blocks until ReleaseShow() — for the busy-state tests.</summary>
+    public bool SlowShow;
+    private TaskCompletionSource? _showGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public void ReleaseShow() => _showGate?.TrySetResult();
+
+    public async Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default)
     {
         ShowCalls++;
         LastPeekSeconds = peekSeconds;
-        return Task.FromResult(Fail
+        if (SlowShow && _showGate is not null)
+            await _showGate.Task;
+        return Fail
             ? Outcome.Failure(new OutcomeError("show failed", "KA_BROWSER_CONNECTION_FAILED", OutcomeErrorType.Failure))
-            : Outcome.Successful());
+            : Outcome.Successful();
     }
 
     public Task<Outcome> HideAsync(BrowserOptions options, CancellationToken ct = default)

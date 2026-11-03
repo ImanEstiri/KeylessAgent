@@ -180,4 +180,59 @@ public sealed class ChromeViewModelTests
         viewModel.StatusText.Should().Be("Ready");
         viewModel.Note.Should().Contain("show failed");
     }
+
+    [Fact]
+    public async Task HideChrome_CallsTheController_AndReportsOffscreen()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        var viewModel = CreateViewModel();
+
+        viewModel.HideChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsHiding);
+
+        _windowController.HideCalls.Should().Be(1);
+        viewModel.StatusText.Should().Be("Chrome offscreen");
+        viewModel.Note.Should().Contain("moved offscreen");
+    }
+
+    [Fact]
+    public async Task HideChrome_Failure_SurfacesTheErrorInTheNote()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.Fail = true;
+        var viewModel = CreateViewModel();
+
+        viewModel.HideChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsHiding);
+
+        viewModel.StatusText.Should().Be("Ready");
+        viewModel.Note.Should().Contain("hide failed");
+    }
+
+    [Fact]
+    public void HideChrome_IsDisabled_WithoutAWorkspace()
+    {
+        var viewModel = CreateViewModel();
+        _agent.WorkspaceRoot = string.Empty;
+
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeFalse("no workspace selected");
+    }
+
+    [Fact]
+    public void ShowAndHide_CrossDisable_WhileAnotherWindowActionRuns()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.SlowShow = true; // the show call blocks until released
+        var viewModel = CreateViewModel();
+
+        viewModel.ShowChromeCommand.Execute(null);
+        WaitUntil(() => viewModel.IsShowing);
+
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeFalse("a show action is running");
+        viewModel.StartCommand.CanExecute(null).Should().BeFalse("a show action is running");
+
+        _windowController.ReleaseShow();
+        WaitUntil(() => !viewModel.IsShowing);
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeTrue("the show action finished");
+    }
 }

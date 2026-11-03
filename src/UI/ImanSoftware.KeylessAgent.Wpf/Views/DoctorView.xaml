@@ -150,7 +150,15 @@
                                     <Button Content="Show Chrome"
                                             Style="{DynamicResource GhostButton}"
                                             Command="{Binding ShowChromeCommand}"
-                                            MinWidth="130" Margin="8,0,0,0" />
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Bring the offscreen Chrome window into view" />
+                                    <Button Content="Hide Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding HideChromeCommand}"
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Send the Chrome window back offscreen" />
                                     <TextBlock Text="{Binding StatusText}" Style="{DynamicResource BodyText}"
                                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
                                 </StackPanel>

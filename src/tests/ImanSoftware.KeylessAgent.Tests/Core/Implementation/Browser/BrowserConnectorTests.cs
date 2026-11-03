@@ -209,30 +209,35 @@ public class BrowserConnectorTests
     }
 
     [Theory]
-    [InlineData("Minimized", "--start-minimized", "--window-position=-32000,-32000")]
-    [InlineData("Offscreen", "--window-position=-32000,-32000", "--start-minimized")]
-    [InlineData("Normal", "", "--start-minimized")]
-    [InlineData("Nonsense", "--start-minimized", "--window-position=-32000,-32000")]
-    [InlineData("", "--start-minimized", "--window-position=-32000,-32000")]
-    public void ChromeArguments_MapWindowModeToItsFlag(string windowMode, string expectedFlag, string forbiddenFlag)
+    [InlineData("Minimized")]
+    [InlineData("Offscreen")]
+    [InlineData("Nonsense")]
+    [InlineData("")]
+    public void ChromeArguments_MinimizedAndOffscreenBothPlaceTheWindowOffscreen(string windowMode)
     {
+        // A truly minimized window is throttled by the renderer and truncates the DeepSeek
+        // stream, so every non-Normal mode now means OFFSCREEN (Minimized = backward compat).
         var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", windowMode);
 
-        if (expectedFlag.Length == 0)
-        {
-            arguments.Should().NotContain("--start-minimized", "Normal never forces the window");
-            arguments.Should().NotContain("--window-position");
-        }
-        else
-        {
-            arguments.Should().Contain(expectedFlag);
-        }
-
-        arguments.Should().NotContain(forbiddenFlag);
+        arguments.Should().Contain("--window-position=-32000,-32000",
+            "offscreen on every monitor: invisible, but Chrome still renders it");
+        arguments.Should().Contain("--window-size=1280,900");
+        arguments.Should().NotContain("--start-minimized",
+            "--start-minimized truly minimizes, which throttles the renderer");
         arguments.Should().Contain("--remote-debugging-port=9222");
         arguments.Should().Contain("--disable-renderer-backgrounding", "the throttling flags are kept");
         arguments.Should().NotContain("chat.deepseek.com",
             "Chrome 136+ ignores --start-minimized when a URL is present — the tab is opened via CDP");
+    }
+
+    [Fact]
+    public void ChromeArguments_NormalMode_NeverForcesTheWindow()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "Normal");
+
+        arguments.Should().NotContain("--start-minimized", "Normal never forces the window");
+        arguments.Should().NotContain("--window-position");
+        arguments.Should().Contain("--remote-debugging-port=9222");
     }
 
     [Fact]

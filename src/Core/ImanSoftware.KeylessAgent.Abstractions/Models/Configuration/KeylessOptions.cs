@@ -194,10 +194,14 @@ public sealed record BrowserOptions
     public bool HumanDelay { get; init; }
 
     /// <summary>
-    /// Browser window behavior: Minimized (default, with throttling flags), Offscreen
-    /// (--window-position=-32000,-32000), Normal. Only affects auto-launched Chrome.
+    /// Browser window behavior. Offscreen (default) positions the window at (-32000,-32000)
+    /// 1280x900 so it is invisible on every monitor, but Chrome's layout engine considers it
+    /// visible — no renderer throttling, so streaming replies arrive complete. Minimized
+    /// triggers renderer throttling that truncates the stream, so "Minimized" is kept only
+    /// for backward compatibility and now means offscreen too. Normal = never forced.
+    /// Only affects auto-launched Chrome.
     /// </summary>
-    public string WindowMode { get; init; } = "Minimized";
+    public string WindowMode { get; init; } = "Offscreen";
 
     /// <summary>
     /// Minimize the window again after the login completes. Default true.
