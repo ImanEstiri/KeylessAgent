@@ -179,7 +179,36 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         return (1920, 1080);
     }
 
+    /// <summary>
+    /// The RAW primary screen size (SM_CXSCREEN/SM_CYSCREEN - the full monitor resolution,
+    /// taskbar included). Logged NEXT to the work area on every Chrome launch so a future
+    /// discrepancy (DPI virtualization, taskbar handling) is visible in turn logs instead of
+    /// requiring manual reproduction.
+    /// </summary>
+    internal static (int Width, int Height) RawScreenSize()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var width = GetSystemMetrics(0);  // SM_CXSCREEN
+                var height = GetSystemMetrics(1); // SM_CYSCREEN
+                if (width > 0 && height > 0)
+                    return (width, height);
+            }
+            catch
+            {
+                // Fall through to the default.
+            }
+        }
+
+        return (1920, 1080);
+    }
+
     private const uint SpiGetWorkArea = 0x0048;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct WorkAreaRect
@@ -219,6 +248,22 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     /// compatibility with existing keyless.json files but now means offscreen. Normal → no
     /// flag (never forced focus). Unknown or empty modes default to offscreen.
     /// </summary>
+    /// <summary>
+    /// The window bounds a WindowMode ASKS Chrome for at launch (null = Normal, never
+    /// forced). Used by the post-launch verification that compares the requested
+    /// position/size against the real GetWindowRect of the launched window.
+    /// </summary>
+    internal static (int Left, int Top, int Width, int Height)? RequestedWindowBounds(string windowMode, (int Width, int Height)? screen = null)
+        => windowMode.Trim().ToLowerInvariant() switch
+        {
+            "normal" => null,
+            "tinycorner" => TinyCornerBounds(screen),
+            "edgepeek" => screen is { } s
+                ? ((int Left, int Top, int Width, int Height)?)(s.Width - 10, s.Height - 10, 10, 10)
+                : null,
+            _ => (-32000, -32000, 1280, 900),
+        };
+
     internal static string WindowModeFlag(string windowMode, int workAreaWidth, int workAreaHeight)
         => windowMode.Trim().ToLowerInvariant() switch
         {

@@ -6,6 +6,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.Logging;
 using ImanSoftware.Outcomes;
+using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
@@ -196,11 +197,27 @@ internal sealed class BrowserConnector : IBrowserConnector
         ui.ShowProgress(new AgentProgressEvent(
             AgentEventType.ConnectingToBrowser,
             $"Starting Chrome with the KeylessAgent profile ({userDataDir})…"));
+
+        // Screen diagnostics logged WITH the launch: raw monitor size vs work area (the
+        // difference is the taskbar). If the two ever stop differing by the taskbar's real
+        // height - DPI virtualization, auto-hide taskbar - it is visible in the turn log
+        // without reproducing anything manually.
+        var rawScreen = BrowserEnvironment.RawScreenSize();
+        var workArea = BrowserEnvironment.PrimaryScreenSize();
+        _log.LogInformation(
+            "Screen diagnostics: raw screen {RawWidth}x{RawHeight}, work area {WorkWidth}x{WorkHeight} (difference = taskbar).",
+            rawScreen.Width, rawScreen.Height, workArea.Width, workArea.Height);
+
         var processId = await _environment.StartChromeAsync(chromePath, options.ChromeDebugPort, userDataDir, options.WindowMode, cancellationToken,
             onCommandLine: arguments =>
             {
                 _log.LogInformation("Chrome launched with command line: {Arguments}", arguments);
-                _ = LogEventSink?.Invoke("chrome-launched", new { Arguments = arguments });
+                _ = LogEventSink?.Invoke("chrome-launched", new
+                {
+                    Arguments = arguments,
+                    RawScreenSize = $"{rawScreen.Width}x{rawScreen.Height}",
+                    WorkAreaSize = $"{workArea.Width}x{workArea.Height}",
+                });
             });
 
         // Wait until /json/version answers (30s), then attach.
@@ -213,6 +230,8 @@ internal sealed class BrowserConnector : IBrowserConnector
                 var attach = await AttachOverCdpAsync(playwright, options, ui, cancellationToken);
                 if (attach.IsSuccess)
                 {
+                    VerifyLaunchedWindowBounds(processId, userDataDir, options, workArea);
+
                     ui.ShowProgress(new AgentProgressEvent(
                         AgentEventType.ConnectingToBrowser,
                         "Started Chrome with the KeylessAgent profile. Log in to DeepSeek in that window once."));
@@ -296,6 +315,78 @@ internal sealed class BrowserConnector : IBrowserConnector
         finally
         {
             timings?.Stop("tab-open");
+        }
+    }
+
+    /// <summary>
+    /// Follow-up verification right after the launch attach: locate the launched Chrome's
+    /// real HWND and GetWindowRect it, logging the ACTUAL bounds next to the REQUESTED
+    /// --window-position/--window-size. Chrome can silently clamp or reposition a window
+    /// (e.g. enforce a minimum size) - a root cause distinct from work-area/DPI issues that
+    /// previously had zero visibility. Read-only: never moves or closes anything.
+    /// </summary>
+    private void VerifyLaunchedWindowBounds(
+        int launchedProcessId, string userDataDir, BrowserOptions options, (int Width, int Height) workArea)
+    {
+        if (OpenTabOverride is not null)
+            return; // test seam: no real Chrome exists to verify.
+
+        try
+        {
+            var requested = BrowserEnvironment.RequestedWindowBounds(options.WindowMode, workArea);
+            if (requested is null)
+                return; // Normal never forces the window - nothing to verify.
+
+            // The debug port can open before the window exists: poll briefly for the HWND.
+            IReadOnlyList<IntPtr> handles = [];
+            for (var attempt = 0; attempt < 6 && handles.Count == 0; attempt++)
+            {
+                if (attempt > 0)
+                    Thread.Sleep(500);
+                handles = ChromeWindowMover.FindOurChromeWindows(launchedProcessId, userDataDir, options.ChromeDebugPort);
+            }
+
+            if (handles.Count == 0)
+            {
+                _log.LogWarning(
+                    "Launched-window verification: no Chrome window of our chrome.exe processes was found (pid tree of {ProcessId}) within 3s of the launch.",
+                    launchedProcessId);
+                return;
+            }
+
+            // Multiple windows can exist (restored session): verify the LARGEST one - that is
+            // the main window the geometry request targeted.
+            var actual = handles
+                .Select(ChromeWindowMover.GetWindowBoundsWin32)
+                .OfType<(int Left, int Top, int Width, int Height)>()
+                .OrderByDescending(b => (long)b.Width * b.Height)
+                .FirstOrDefault();
+
+            var matches = Math.Abs(actual.Left - requested.Value.Left) <= 8 &&
+                Math.Abs(actual.Top - requested.Value.Top) <= 8 &&
+                Math.Abs(actual.Width - requested.Value.Width) <= 8 &&
+                Math.Abs(actual.Height - requested.Value.Height) <= 8;
+
+            var level = matches ? LogLevel.Information : LogLevel.Warning;
+            _log.Log(level,
+                "Launched-window verification ({Result}): requested {Requested}, actual {Actual} (mode {Mode}, tolerance 8px).",
+                matches ? "matches" : "MISMATCH",
+                $"{requested.Value.Left},{requested.Value.Top} {requested.Value.Width}x{requested.Value.Height}",
+                $"{actual.Left},{actual.Top} {actual.Width}x{actual.Height}",
+                options.WindowMode);
+
+            _ = LogEventSink?.Invoke("chrome-window-bounds", new
+            {
+                Requested = $"{requested.Value.Left},{requested.Value.Top} {requested.Value.Width}x{requested.Value.Height}",
+                Actual = $"{actual.Left},{actual.Top} {actual.Width}x{actual.Height}",
+                Matches = matches,
+                Mode = options.WindowMode,
+            });
+        }
+        catch (Exception ex)
+        {
+            // Verification is diagnostics, never a connection failure.
+            _log.LogWarning("Launched-window verification failed best-effort: {Message}", ex.Message);
         }
     }
 

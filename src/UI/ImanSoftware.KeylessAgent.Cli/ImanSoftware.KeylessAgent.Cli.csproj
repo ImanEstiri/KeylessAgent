@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>
+    <!-- Physical-pixel screen metrics for the Chrome window geometry (see app.manifest). -->Exe</OutputType>
     <!-- Commands and settings are instantiated by Spectre.Console.Cli through reflection. -->
     <NoWarn>$(NoWarn);CA1812;S6966</NoWarn>
-  </PropertyGroup>
+      <ApplicationManifest>app.manifest</ApplicationManifest>
+</PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />

@@ -162,6 +162,14 @@ internal static class ChromeWindowMover
         => context.Pages.FirstOrDefault(p => p.Url.Contains("chat.deepseek.com", StringComparison.OrdinalIgnoreCase))
            ?? context.Pages.FirstOrDefault();
 
+    /// <summary>
+    /// Internal wrapper over the enumeration, for post-launch verification: the real HWNDs of
+    /// our chrome.exe windows, so the caller can GetWindowRect them and compare against the
+    /// requested launch geometry.
+    /// </summary>
+    internal static IReadOnlyList<IntPtr> FindOurChromeWindows(int launchedProcessId, string userDataDir, int debugPort)
+        => FindChromeWindowHandles(launchedProcessId, userDataDir, debugPort);
+
     /// <summary>All visible top-level Chrome windows (class Chrome_WidgetWin_1) of our processes.</summary>
     private static IReadOnlyList<IntPtr> FindChromeWindowHandles(int launchedProcessId, string userDataDir, int debugPort)
     {
@@ -285,6 +293,36 @@ internal static class ChromeWindowMover
 
     /// <summary>Minimized-state read-back for the Win32 show verification.</summary>
     internal static bool IsIconicWin32(IntPtr hwnd) => IsIconic(hwnd);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out WindowRect rect);
+
+    /// <summary>
+    /// The REAL on-screen bounds of a window (GetWindowRect) - the ground truth for the
+    /// post-launch verification: Chrome can silently clamp or reposition a launched window
+    /// (e.g. enforce a minimum size), and without this read-back that has zero visibility.
+    /// Null when the read fails (window gone).
+    /// </summary>
+    internal static (int Left, int Top, int Width, int Height)? GetWindowBoundsWin32(IntPtr hwnd)
+    {
+        if (!GetWindowRect(hwnd, out var rect))
+            return null;
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0)
+            return null;
+        return (rect.Left, rect.Top, width, height);
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, [Out] char[] className, int maxCount);

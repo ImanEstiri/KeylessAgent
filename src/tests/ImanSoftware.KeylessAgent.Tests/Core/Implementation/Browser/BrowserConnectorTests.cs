@@ -240,6 +240,10 @@ public class BrowserConnectorTests
                 .Select(e => System.Text.Json.JsonSerializer.SerializeToElement(e.Payload)).ToList();
             launched.Should().HaveCount(1);
             launched[0].GetProperty("Arguments").GetString().Should().Be("--disable-features=CalculateNativeWinOcclusion ...");
+            launched[0].GetProperty("RawScreenSize").GetString().Should().Match("*x*",
+                "the raw monitor size rides along for the discrepancy diagnosis");
+            launched[0].GetProperty("WorkAreaSize").GetString().Should().Match("*x*",
+                "the work-area size (what the geometry is computed from) rides along too");
         }
     }
 
@@ -324,6 +328,34 @@ public class BrowserConnectorTests
         bounds.Should().Be((1840, 1000, 80, 80));
         (bounds.Left + bounds.Width).Should().Be(1920);
         (bounds.Top + bounds.Height).Should().Be(1080);
+    }
+
+    [Theory]
+    [InlineData("TinyCorner", 1840, 952, 80, 80)]
+    [InlineData("EdgePeek", 1910, 1022, 10, 10)]
+    [InlineData("Offscreen", -32000, -32000, 1280, 900)]
+    [InlineData("Minimized", -32000, -32000, 1280, 900)]
+    public void RequestedWindowBounds_MapsEveryForcedMode(string mode, int left, int top, int width, int height)
+    {
+        // What the launch ASKS for, against which the real GetWindowRect is compared later.
+        var bounds = BrowserEnvironment.RequestedWindowBounds(mode, (1920, 1032));
+
+        bounds.Should().Be(((left, top, width, height)));
+    }
+
+    [Fact]
+    public void RequestedWindowBounds_Normal_IsNull_NeverForced()
+    {
+        BrowserEnvironment.RequestedWindowBounds("Normal").Should().BeNull();
+    }
+
+    [Fact]
+    public void RawScreenSize_IsPositive_AndIndependentlyQueryable()
+    {
+        var (width, height) = BrowserEnvironment.RawScreenSize();
+
+        width.Should().BeGreaterThan(0);
+        height.Should().BeGreaterThan(0);
     }
 
     [Fact]
