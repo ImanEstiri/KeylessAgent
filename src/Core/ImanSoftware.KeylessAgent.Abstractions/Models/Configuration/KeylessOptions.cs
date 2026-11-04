@@ -275,9 +275,29 @@ public sealed record LimitsOptions
 public sealed record SnapshotOptions
 {
     /// <summary>
-    /// What gets attached to a user request. Default <see cref="SnapshotMode.Full"/>.
+    /// What gets attached to a user request. Default <see cref="SnapshotMode.TreeAndChanged"/>:
+    /// the tree plus only files changed since the last baseline. Full remains fully supported
+    /// for anyone who explicitly wants it. When TreeAndChanged has no usable baseline (first
+    /// turn), the attachment falls back to the tree plus a BUDGET-LIMITED relevant-file dump
+    /// (see <see cref="MaxTotalAttachmentChars"/>), never an unlimited full dump.
     /// </summary>
-    public SnapshotMode Mode { get; init; } = SnapshotMode.Full;
+    public SnapshotMode Mode { get; init; } = SnapshotMode.TreeAndChanged;
+
+    /// <summary>
+    /// Total character ceiling for everything attached to ONE turn (tree + dump + notes
+    /// combined; chars/4 is a rough token estimate for DeepSeek). When exceeded: the tree is
+    /// always kept, the dump keeps only files referenced by the turn's request (plus the
+    /// TreeAndChanged diff when active), and everything else becomes a one-line omission
+    /// note pointing at the file-read tool. Default 400,000.
+    /// </summary>
+    public int MaxTotalAttachmentChars { get; init; } = 400_000;
+
+    /// <summary>
+    /// Per-file cap for the attached code dump: a file whose fenced content exceeds this is
+    /// replaced by its heading plus a "[file too large to attach: N KB …]" placeholder line,
+    /// keeping the file's existence visible without its full content. Default 50,000.
+    /// </summary>
+    public int MaxDumpedFileChars { get; init; } = 50_000;
 
     /// <summary>
     /// Whether the snapshot is also attached to result messages. Default false.
@@ -309,6 +329,17 @@ public sealed record SnapshotFilterOptions
     /// Code-dump section filters: sections whose <c>###</c> heading matches any of these are dropped.
     /// </summary>
     public IReadOnlyList<string> ExcludeDumpHeadings { get; init; } = ["tree-view-result", "code-dump-result"];
+
+    /// <summary>
+    /// Generated/vendored files excluded from the ATTACHED dump by file-name wildcard
+    /// (case-insensitive <c>*</c>, like SensitiveFilePatterns): minified bundles, lock files
+    /// and generated designer/migration snapshots are huge and rarely useful to attach.
+    /// </summary>
+    public IReadOnlyList<string> ExcludeFilePatterns { get; init; } =
+    [
+        "*.min.js", "*.min.css", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "*.designer.cs", "*.g.cs", "*.g.i.cs", "*ModelSnapshot.cs",
+    ];
 
     /// <summary>
     /// Files whose sections are dropped from the ATTACHED copy entirely (never from disk):

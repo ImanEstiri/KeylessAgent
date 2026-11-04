@@ -50,12 +50,15 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   },
 
   "Snapshot": {
-    "Mode": "Full",                 // Full | TreeAndChanged
+    "Mode": "TreeAndChanged",       // TreeAndChanged (default) | Full
+    "MaxTotalAttachmentChars": 400000, // total ceiling for ONE turn's attachments (tree + dump)
+    "MaxDumpedFileChars": 50000,    // per-file cap in the attached dump (placeholder beyond it)
     "AttachOnFeedback": false,      // also attach the snapshot to result messages
     "RefreshAfterEachBatch": false,
     "Filter": {
       "ExcludeTreePatterns": [ "bin", "obj", ".git", "node_modules", ".agent", "artifacts" ],
       "ExcludeDumpHeadings": [ "tree-view-result", "code-dump-result" ],
+      "ExcludeFilePatterns": [ "*.min.js", "*.min.css", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.designer.cs", "*.g.cs", "*.g.i.cs", "*ModelSnapshot.cs" ],
       "SensitiveFilePatterns": [ ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", "*.keystore", "secrets.json", "*secret*", "*password*", "*credential*", "appsettings.Production.json", "appsettings.*.Production.json" ],
       "MaskSensitiveLines": true
     }
@@ -134,6 +137,11 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - The snapshots are **generated natively in C#** — no `.bat` files need to exist in the workspace. `tree-view-result.txt` and `code-dump-result.md` are written into the workspace root (and excluded from git via `.git/info/exclude`).
 - Filtering applies to the **attached copy only** — `tree-view-result.txt` and `code-dump-result.md` on disk are never modified.
 - Oversized dumps are split at `### heading` boundaries into `code-dump-result-part1.md`, `-part2.md`, … and uploaded as consecutive files.
+- **Snapshot.Mode** is `TreeAndChanged` by default: the tree plus the files changed since the previous refresh (the diff is stashed BEFORE the baseline is overwritten, so it really contains the agent's changes). `Full` attaches everything, for anyone who explicitly wants it.
+- **First turn / no usable baseline / empty diff**: the attachment falls back to the tree plus a BUDGET-LIMITED dump — never an unlimited full dump. The next turn has a real baseline and diffs normally.
+- **Snapshot.MaxTotalAttachmentChars** (default 400,000 ≈ chars/4 tokens) caps EVERYTHING attached to one turn. When exceeded: the tree stays complete, the dump keeps only files referenced by the turn's request text, and every other file becomes a per-folder note (`[omitted: N files under …/ (N KB) — use the file-read tool …]`). A `snapshot-budget-exceeded` turn event records the original total, the ceiling and the omissions.
+- **Snapshot.MaxDumpedFileChars** (default 50,000) caps each file's fenced content in the dump: oversized files keep their `###` heading plus `[file too large to attach: N KB — use the file-read tool …]`.
+- **Snapshot.Filter.ExcludeFilePatterns** (case-insensitive `*` wildcards against the file name) drop generated/vendored files from the attached dump entirely: `*.min.js`, `*.min.css`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `*.designer.cs`, `*.g.cs`, `*.g.i.cs`, `*ModelSnapshot.cs` by default. Disk copies are never touched.
 
 ### Git
 

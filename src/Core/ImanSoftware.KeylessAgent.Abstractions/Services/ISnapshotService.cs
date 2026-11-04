@@ -26,7 +26,15 @@ public interface ISnapshotService : IService
     /// <param name="workspaceRoot">The workspace directory.</param>
     /// <param name="options">The effective configuration.</param>
     /// <returns>One tree attachment plus one or more code-dump parts.</returns>
-    Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options);
+    /// <summary>
+    /// Builds the attachments for one turn. <paramref name="requestText"/> (the turn's
+    /// request) drives the size-budget selection: referenced files keep full content,
+    /// everything else becomes an omission note. <paramref name="logEvent"/> receives the
+    /// snapshot-budget-exceeded event.
+    /// </summary>
+    Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(
+        string workspaceRoot, KeylessOptions options,
+        string? requestText = null, Func<string, object, Task>? logEvent = null);
 
     /// <summary>
     /// Whether the outputs are missing or older than the newest workspace source file

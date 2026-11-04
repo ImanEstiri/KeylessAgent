@@ -67,8 +67,15 @@ internal sealed class SnapshotService : ISnapshotService
             }
         }
 
-        // The baseline powers TreeAndChanged mode; a failed capture only means the next
-        // BuildAttachments falls back to the full dump, so it must never fail the refresh.
+        // The change STASH is what TreeAndChanged attaches: it must be computed BEFORE the
+        // baseline is overwritten, comparing the CURRENT state against the PREVIOUS refresh's
+        // baseline - that is the only diff that can ever contain the agent's real changes
+        // (the refresh runs right before the attachments are built). A failed stash only
+        // means the next BuildAttachments falls back to the budget-limited dump.
+        await StashChangesAsync(workspaceRoot);
+
+        // The baseline powers the NEXT stash; a failed capture only means the next stash is
+        // empty, so it must never fail the refresh.
         await UpdateSnapshotBaselineAsync(workspaceRoot);
 
         return Outcome.Successful();
@@ -124,7 +131,9 @@ internal sealed class SnapshotService : ISnapshotService
     }
 
     /// <inheritdoc />
-    public async Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options)
+    public async Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(
+        string workspaceRoot, KeylessOptions options,
+        string? requestText = null, Func<string, object, Task>? logEvent = null)
     {
         var treePath = Path.Combine(workspaceRoot, TreeResultName);
         var dumpPath = Path.Combine(workspaceRoot, CodeDumpResultName);
@@ -157,47 +166,169 @@ internal sealed class SnapshotService : ISnapshotService
         if (filesDropped + valuesMasked > 0)
             tree = $"[{filesDropped} files filtered and {valuesMasked} values masked as sensitive]\n" + tree;
 
+        // Per-file cap + generated/vendored denylist (attachment copy only).
+        sanitizedDump = SnapshotFilter.CapDumpSectionSizes(sanitizedDump, options.Snapshot.MaxDumpedFileChars);
+        sanitizedDump = SnapshotFilter.FilterDumpSectionsByFileName(sanitizedDump, filter.ExcludeFilePatterns);
+
         var attachments = new List<SnapshotAttachment>
         {
             new(TreeResultName, SnapshotAttachmentKind.TreeView, tree),
         };
 
         // TreeAndChanged: the tree plus what changed since the last refresh — the full dump is
-        // replaced; anything unchanged is one readfile away. Without a usable baseline (first
-        // run, unreadable file, failed diff) the full dump keeps the model operational.
+        // replaced; anything unchanged is one readfile away. WITHOUT a usable baseline (first
+        // run, unreadable file, failed diff) the attachment falls back to the same
+        // BUDGET-LIMITED dump as Full mode (never an unlimited full dump) — and because
+        // RefreshAsync captures the baseline on every refresh regardless of mode, the very
+        // next turn diffs normally.
+        string? changedFiles = null;
         if (options.Snapshot.Mode == SnapshotMode.TreeAndChanged)
+            changedFiles = await BuildChangedFilesContentAsync(workspaceRoot);
+
+        if (changedFiles is not null)
         {
-            var changedFiles = await BuildChangedFilesContentAsync(workspaceRoot);
-            if (changedFiles is not null)
-            {
-                attachments.Add(new SnapshotAttachment("changed-files.txt", SnapshotAttachmentKind.ChangedFiles, changedFiles));
-                return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
-            }
+            attachments.Add(new SnapshotAttachment("changed-files.txt", SnapshotAttachmentKind.ChangedFiles, changedFiles));
+            return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
         }
 
-        var parts = SnapshotFilter.ChunkDump(sanitizedDump, MaxAttachmentChars);
+        // --- Total-size budget across EVERYTHING attached to this one turn ---
+        var total = tree.Length + sanitizedDump.Length;
+        if (total <= options.Snapshot.MaxTotalAttachmentChars)
+        {
+            AttachDumpParts(attachments, sanitizedDump);
+            return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
+        }
+
+        var reducedDump = BuildBudgetLimitedDump(sanitizedDump, requestText, out var omittedFiles, out var omittedChars);
+        if (logEvent is not null)
+            await logEvent("snapshot-budget-exceeded", new
+            {
+                OriginalTotalChars = total,
+                Ceiling = options.Snapshot.MaxTotalAttachmentChars,
+                OmittedFiles = omittedFiles,
+                OmittedChars = omittedChars,
+            });
+
+        AttachDumpParts(attachments, reducedDump);
+        return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
+    }
+
+    private void AttachDumpParts(List<SnapshotAttachment> attachments, string dump)
+    {
+        var parts = SnapshotFilter.ChunkDump(dump, MaxAttachmentChars);
         for (var i = 0; i < parts.Count; i++)
         {
             var name = parts.Count == 1 ? CodeDumpResultName : $"code-dump-result-part{i + 1}.md";
             attachments.Add(new SnapshotAttachment(name, SnapshotAttachmentKind.CodeDump, parts[i]));
         }
-
-        return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
     }
 
     /// <summary>
-    /// Diffs the workspace against the persisted baseline and renders "<kind> <path>" lines;
-    /// null when there is no usable baseline or the diff failed (fall back to the full dump).
+    /// The size-budget dump: files REFERENCED by the turn's request text (file name or path,
+    /// case-insensitive) keep their full content; everything else becomes one omission note
+    /// PER FOLDER ("[omitted: 3 files under src/Core/ (182 KB total) … use the file-read
+    /// tool …]"). The tree stays attached regardless — it is cheap and essential for
+    /// navigation, which is why the dump alone is reduced here.
     /// </summary>
-    private async Task<string?> BuildChangedFilesContentAsync(string workspaceRoot)
+    internal static string BuildBudgetLimitedDump(
+        string dump, string? requestText, out int omittedFiles, out long omittedChars)
+    {
+        omittedFiles = 0;
+        omittedChars = 0;
+
+        var sections = new List<(string Heading, string FileName, string Folder, string Section, bool Referenced)>();
+        foreach (var section in SplitSections(dump))
+        {
+            var headingLine = section.Split('\n').FirstOrDefault(l => l.StartsWith("### ", StringComparison.Ordinal));
+            var heading = headingLine is null ? string.Empty : headingLine["### ".Length..].Trim();
+            var fileName = HeadingFileName(heading);
+            var folderSegments = heading.Split(" > ", StringSplitOptions.RemoveEmptyEntries);
+            var folder = folderSegments.Length > 1
+                ? string.Join('/', folderSegments.Take(folderSegments.Length - 1))
+                : "(workspace root)";
+
+            var referenced = requestText is not null && IsReferencedByRequest(requestText, heading, fileName);
+            sections.Add((heading, fileName, folder, section, referenced));
+        }
+
+        var kept = new System.Text.StringBuilder();
+        var omittedByFolder = new List<(string Folder, int Count, long Chars)>();
+        foreach (var group in sections.GroupBy(s => s.Folder))
+        {
+            foreach (var entry in group.Where(s => s.Referenced))
+                kept.Append(entry.Section);
+
+            var omitted = group.Where(s => !s.Referenced).ToList();
+            if (omitted.Count == 0)
+                continue;
+
+            omittedFiles += omitted.Count;
+            omittedChars += omitted.Sum(o => (long)o.Section.Length);
+            omittedByFolder.Add((group.Key, omitted.Count, omitted.Sum(o => (long)o.Section.Length)));
+        }
+
+        foreach (var (folder, count, chars) in omittedByFolder.OrderBy(o => o.Folder, StringComparer.OrdinalIgnoreCase))
+        {
+            var sizeKb = Math.Max(1, (int)(chars / 1024));
+            kept.AppendLine(count == 1
+                ? $"[omitted: 1 file under {folder}/ ({sizeKb} KB) - over the attachment size budget; use the file-read tool if its content is needed]"
+                : $"[omitted: {count} files under {folder}/ ({sizeKb} KB total) - over the attachment size budget; use the file-read tool if their content is needed]");
+        }
+
+        return kept.ToString().Trim('\n');
+    }
+
+    private static bool IsReferencedByRequest(string requestText, string heading, string fileName)
+    {
+        if (requestText.Contains(fileName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var slashPath = heading.Replace(" > ", "/");
+        if (requestText.Contains(slashPath, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return requestText.Contains(heading.Replace(" > ", "\\"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> SplitSections(string dump)
+    {
+        var lines = dump.Replace("\r\n", "\n").Split('\n');
+        var current = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("### ", StringComparison.Ordinal) && current.Length > 0)
+            {
+                yield return current.ToString();
+                current.Clear();
+            }
+
+            current.Append(line).Append('\n');
+        }
+
+        if (current.Length > 0)
+            yield return current.ToString();
+    }
+
+    private static readonly string StashRelativePath = Path.Combine(".agent", "snapshot-changes.json");
+
+    private sealed record ChangeStash(List<string> Lines);
+
+    /// <summary>
+    /// Diffs the CURRENT workspace against the PREVIOUS refresh's baseline and stashes the
+    /// "<kind> <path>" lines under .agent/snapshot-changes.json. Runs inside RefreshAsync
+    /// BEFORE the baseline is overwritten - afterwards the diff would always be vacuously
+    /// empty, which is why the old TreeAndChanged never showed real changes. Best-effort.
+    /// </summary>
+    private async Task StashChangesAsync(string workspaceRoot)
     {
         var baselinePath = Path.Combine(workspaceRoot, BaselineRelativePath);
         if (!_storage.FileExists(baselinePath))
-            return null;
+            return; // no previous baseline: the next BuildAttachments takes the budget path
 
         var read = await _storage.ReadAllTextAsync(baselinePath);
         if (read.IsFailure)
-            return null;
+            return;
 
         BaselineFile? baseline;
         try
@@ -206,11 +337,11 @@ internal sealed class SnapshotService : ISnapshotService
         }
         catch
         {
-            return null;
+            return;
         }
 
         if (baseline is null)
-            return null;
+            return;
 
         object handle = baseline.GitAvailable
             ? (object?)baseline.Porcelain ?? new List<string>()
@@ -221,10 +352,46 @@ internal sealed class SnapshotService : ISnapshotService
 
         var diff = await _changeTracker.DiffAsync(workspaceRoot, handle, baseline.GitAvailable);
         if (diff.IsFailure || diff.Data is null)
+            return;
+
+        var stash = new ChangeStash(diff.Data.Select(c => $"{c.Kind} {c.Path}").ToList());
+        var stashPath = Path.Combine(workspaceRoot, StashRelativePath);
+        var mkdir = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(stashPath)!);
+        if (mkdir.IsFailure)
+            return;
+        await _storage.WriteAllTextAsync(stashPath, System.Text.Json.JsonSerializer.Serialize(stash));
+    }
+
+    /// <summary>
+    /// The stashed change lines from the last refresh; null when there is no stash (first
+    /// run), it is unreadable, or it is EMPTY (nothing to show from diffs - the
+    /// budget-limited dump takes over instead, which is strictly more useful than
+    /// "(no changes since the last snapshot.)").
+    /// </summary>
+    private async Task<string?> BuildChangedFilesContentAsync(string workspaceRoot)
+    {
+        var stashPath = Path.Combine(workspaceRoot, StashRelativePath);
+        if (!_storage.FileExists(stashPath))
             return null;
 
-        var lines = diff.Data.Select(c => $"{c.Kind} {c.Path}").ToList();
-        return (lines.Count > 0 ? string.Join("\n", lines) : "(no changes since the last snapshot.)") + "\n";
+        var read = await _storage.ReadAllTextAsync(stashPath);
+        if (read.IsFailure)
+            return null;
+
+        ChangeStash? stash;
+        try
+        {
+            stash = System.Text.Json.JsonSerializer.Deserialize<ChangeStash>(read.Data);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (stash is null || stash.Lines is not { Count: > 0 })
+            return null;
+
+        return string.Join("\n", stash.Lines) + "\n";
     }
 
     private sealed record BaselineFile(

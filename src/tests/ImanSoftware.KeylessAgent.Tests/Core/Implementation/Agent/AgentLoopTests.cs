@@ -83,7 +83,7 @@ public class AgentLoopTests : IDisposable
             return Task.FromResult(Outcome.Successful());
         }
 
-        public Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options)
+        public Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options, string? requestText = null, Func<string, object, Task>? logEvent = null)
             => Task.FromResult(Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]));
 
         public Task<Outcome<bool>> IsStaleAsync(string workspaceRoot)

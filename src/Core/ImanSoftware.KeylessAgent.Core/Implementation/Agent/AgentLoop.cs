@@ -485,7 +485,7 @@ internal sealed class AgentLoop : IAgentLoop
 
             // --- Step 7: Send the request (system prompt on the first message of a new chat) ---
             timings.Start("attachments");
-            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options);
+            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, request, (type, payload) => logger.AppendAsync(type, payload, cancellationToken));
             timings.Stop("attachments");
             var attachments = attachmentsOutcome.IsSuccess ? attachmentsOutcome.Data : [];
             if (attachmentsOutcome.IsFailure)
@@ -834,7 +834,7 @@ internal sealed class AgentLoop : IAgentLoop
                 // --- Step 8c: Send the per-command results back ---
                 timings.Start("attachments");
                 var feedbackAttachments = options.Snapshot.AttachOnFeedback
-                    ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options)).Data ?? []
+                    ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, requestText: null, logEvent: (type, payload) => logger.AppendAsync(type, payload, cancellationToken))).Data ?? []
                     : [];
                 timings.Stop("attachments");
 
