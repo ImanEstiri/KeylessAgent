@@ -219,6 +219,43 @@ public sealed class ChromeViewModelTests
     }
 
     [Fact]
+    public async Task CloseChrome_CallsTheController_AndClearsTheStaleStatus()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        var viewModel = CreateViewModel();
+
+        viewModel.CloseChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsClosing);
+
+        _windowController.CloseCalls.Should().Be(1);
+        viewModel.StatusText.Should().Be("Ready", "no stale Chrome-visible status survives");
+        viewModel.Note.Should().Contain("Chrome closed").And.Contain("Start Chrome");
+    }
+
+    [Fact]
+    public async Task CloseChrome_Failure_SurfacesTheErrorInTheNote()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.Fail = true;
+        var viewModel = CreateViewModel();
+
+        viewModel.CloseChromeCommand.Execute(null);
+        await WaitUntilAsync(() => !viewModel.IsClosing);
+
+        viewModel.StatusText.Should().Be("Ready");
+        viewModel.Note.Should().Contain("close failed");
+    }
+
+    [Fact]
+    public void CloseChrome_IsDisabled_WithoutAWorkspace()
+    {
+        var viewModel = CreateViewModel();
+        _agent.WorkspaceRoot = string.Empty;
+
+        viewModel.CloseChromeCommand.CanExecute(null).Should().BeFalse("no workspace selected");
+    }
+
+    [Fact]
     public void ShowAndHide_CrossDisable_WhileAnotherWindowActionRuns()
     {
         _agent.WorkspaceRoot = @"G:\demo";

@@ -230,6 +230,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     /// Dispose policy: the chat tab STAYS OPEN by default — the conversation continues across
     /// turns and across runs (the next run reuses the tab and the saved chat URL). Only
     /// Browser.CloseChromeOnExit closes the window/context when the session ends.
+    /// DISTINCTION from the WPF App.OnExit override: CloseChromeOnExit governs THIS per-turn
+    /// session disposal while the app runs (tab/context left open between turns); App.OnExit
+    /// is a separate, always-on safety net that closes the actual OS-level Chrome process the
+    /// app itself launched when the whole application exits. Keep them separate.
     /// </summary>
     internal static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions, BrowserConnectionKind kind)
     {

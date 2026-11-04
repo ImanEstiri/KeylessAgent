@@ -159,6 +159,12 @@
                                             MinWidth="130"
                                             Margin="8,0,0,0"
                                             ToolTip="Send the Chrome window back offscreen" />
+                                    <Button Content="Close Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding CloseChromeCommand}"
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Close the KeylessAgent Chrome entirely (all tabs and the process)" />
                                     <TextBlock Text="{Binding StatusText}" Style="{DynamicResource BodyText}"
                                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
                                 </StackPanel>

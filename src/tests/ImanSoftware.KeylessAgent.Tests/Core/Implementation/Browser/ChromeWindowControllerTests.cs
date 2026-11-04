@@ -39,6 +39,7 @@ public class ChromeWindowControllerTests
     {
         public bool SetWindowBoundsThrows;
         public bool ReadBackAlwaysMismatches;
+        public bool CloseClosesPort = true; // a real Browser.close takes the debug port down
         public readonly List<(string Method, object? Args)> Calls = new();
 
         public JsonElement Handle(string method, Dictionary<string, object>? args)
@@ -54,6 +55,11 @@ public class ChromeWindowControllerTests
                     if (SetWindowBoundsThrows)
                         throw new InvalidOperationException("cdp refused");
                     _lastBounds = args is not null && args.TryGetValue("bounds", out var b) ? b : null;
+                    return Json(new { });
+                case "Browser.close":
+                    Calls.Add((method, args));
+                    if (CloseClosesPort && Environment is not null)
+                        Environment.PortOpen = false; // a real Browser.close takes the port down
                     return Json(new { });
                 case "Browser.getWindowBounds":
                     // A real Chrome echoes what it actually applied; the verification compares
@@ -103,12 +109,15 @@ public class ChromeWindowControllerTests
         var playwright = Substitute.For<IPlaywright>();
         playwright.Chromium.Returns(chromium);
 
-        var controller = new ChromeWindowController(new FakeEnvironment { PortOpen = true })
+        Environment = new FakeEnvironment { PortOpen = true };
+        var controller = new ChromeWindowController(Environment)
         {
             PlaywrightFactory = _ => Task.FromResult(playwright),
         };
         return (controller, cdp);
     }
+
+    private static FakeEnvironment? Environment { get; set; }
 
     [Fact]
     public async Task PortClosed_FailsWithTheChromeNotRunningMessage()
@@ -177,6 +186,107 @@ public class ChromeWindowControllerTests
         var outcome = await controller.ShowAsync(new BrowserOptions { ChromeDebugPort = 9222 }, 0);
 
         outcome.IsSuccess.Should().BeTrue("but failed: {0}", outcome.Error?.Message ?? "-");
+    }
+
+    [Fact]
+    public async Task CloseAsync_GracefulCdpClose_ConfirmedByThePortGoingDown()
+    {
+        var (controller, cdp) = CreateController();
+        controller.ProcessInfosOverride = () =>
+            [(111, 0, $"--user-data-dir={BrowserConnector.ResolveUserDataDir(new BrowserOptions())} --remote-debugging-port=9222")];
+        try
+        {
+            var outcome = await controller.CloseAsync(new BrowserOptions { ChromeDebugPort = 9222 }, allowAttached: false);
+            outcome.IsSuccess.Should().BeTrue();
+            cdp.Calls.Should().ContainSingle(c => c.Method == "Browser.close",
+                "the graceful path closes the WHOLE browser, not one tab");
+        }
+        finally
+        {
+            controller.ProcessInfosOverride = null;
+        }
+    }
+
+    [Fact]
+    public async Task CloseAsync_PortStaysUp_FallsBackToKill_AndFailsHonest_WhenProcessesSurvive()
+    {
+        var (controller, cdp) = CreateController();
+        cdp.CloseClosesPort = false; // the graceful close "succeeds" but the port stays up
+        var killed = new List<int>();
+        controller.ProcessInfosOverride = () =>
+            [(111, 0, $"--user-data-dir={BrowserConnector.ResolveUserDataDir(new BrowserOptions())} --remote-debugging-port=9222")];
+        controller.KillOverride = pid => killed.Add(pid);
+        ChromeWindowMover.Win32ShowWindowsOverride = (_, _, _, _, _, _) => false;
+        try
+        {
+            var outcome = await controller.CloseAsync(new BrowserOptions { ChromeDebugPort = 9222 });
+
+            killed.Should().Contain(111, "the tree kill reached the owned pid");
+            outcome.IsFailure.Should().BeTrue("the kill fallback cannot verify against a fake port that never closes");
+            outcome.Error.Message.Should().Contain("could not be closed");
+            cdp.Calls.Should().ContainSingle(c => c.Method == "Browser.close",
+                "the graceful attempt still ran before the kill fallback");
+        }
+        finally
+        {
+            controller.ProcessInfosOverride = null;
+            controller.KillOverride = null;
+            ChromeWindowMover.Win32ShowWindowsOverride = null;
+        }
+    }
+
+    [Fact]
+    public async Task CloseAsync_AttachedOnlyChrome_IsRefused_WithoutKilling()
+    {
+        // A Chrome matched ONLY by our debug port (no KeylessAgent profile dir) is the
+        // user's own browser - refused by default, exactly like AttachedToRunningChrome.
+        var (controller, cdp) = CreateController();
+        controller.ProcessInfosOverride = () => [(222, 0, "--remote-debugging-port=9222")];
+        try
+        {
+            var outcome = await controller.CloseAsync(new BrowserOptions { ChromeDebugPort = 9222 });
+
+            outcome.IsFailure.Should().BeTrue();
+            outcome.Error.Message.Should().Contain("was NOT closed",
+                "the user's own Chrome must never be silently killed");
+            cdp.Calls.Should().NotContain(c => c.Method == "Browser.close",
+                "nothing is sent to a refused browser");
+        }
+        finally
+        {
+            controller.ProcessInfosOverride = null;
+        }
+    }
+
+    [Fact]
+    public async Task CloseAsync_AttachedOnlyChrome_AllowedWithTheExplicitFlag()
+    {
+        var (controller, cdp) = CreateController();
+        controller.ProcessInfosOverride = () => [(222, 0, "--remote-debugging-port=9222")];
+        try
+        {
+            var outcome = await controller.CloseAsync(new BrowserOptions { ChromeDebugPort = 9222 }, allowAttached: true);
+
+            outcome.IsSuccess.Should().BeTrue();
+            cdp.Calls.Should().ContainSingle(c => c.Method == "Browser.close");
+        }
+        finally
+        {
+            controller.ProcessInfosOverride = null;
+        }
+    }
+
+    [Fact]
+    public async Task CloseAsync_NoChromeAtAll_FailsWithNothingToClose()
+    {
+        var (controller, _) = CreateController();
+        controller.ProcessInfosOverride = () => [];
+        Environment!.PortOpen = false;
+
+        var outcome = await controller.CloseAsync(new BrowserOptions { ChromeDebugPort = 9222 });
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Message.Should().Contain("nothing to close");
     }
 
     [Fact]

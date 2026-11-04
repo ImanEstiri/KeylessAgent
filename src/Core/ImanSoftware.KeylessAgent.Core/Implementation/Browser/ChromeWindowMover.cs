@@ -198,31 +198,43 @@ internal static class ChromeWindowMover
         => string.Equals(className, "Chrome_WidgetWin_1", StringComparison.Ordinal);
 
     /// <summary>
+    /// A snapshot of every RUNNING chrome.exe process with its parent pid and command line
+    /// (read through the PEB; null when access is denied). Shared by the ownership matching
+    /// (<see cref="CollectOurChromeProcessIds"/>) and the window-close ownership check.
+    /// </summary>
+    internal static List<(int Pid, int ParentPid, string? CommandLine)> GetChromeProcessInfos()
+    {
+        var chromeProcesses = new List<(int Pid, int ParentPid, string? CommandLine)>();
+        foreach (var process in Process.GetProcessesByName("chrome"))
+        {
+            try
+            {
+                chromeProcesses.Add((process.Id, GetParentProcessId(process.Id), TryReadCommandLine(process.Id)));
+            }
+            catch
+            {
+                // A dying process between enumeration and query is normal.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return chromeProcesses;
+    }
+
+    /// <summary>
     /// The chrome.exe processes that belong to THIS agent: the launched PID's descendant
     /// tree, plus — for the attached case, where no PID is known — the processes whose
     /// command line carries our debug port or profile directory.
     /// </summary>
-    private static HashSet<int> CollectOurChromeProcessIds(int launchedProcessId, string userDataDir, int debugPort)
+    internal static HashSet<int> CollectOurChromeProcessIds(int launchedProcessId, string userDataDir, int debugPort)
     {
         var ours = new HashSet<int>();
         try
         {
-            var chromeProcesses = new List<(int Pid, int ParentPid, string? CommandLine)>();
-            foreach (var process in Process.GetProcessesByName("chrome"))
-            {
-                try
-                {
-                    chromeProcesses.Add((process.Id, GetParentProcessId(process.Id), TryReadCommandLine(process.Id)));
-                }
-                catch
-                {
-                    // A dying process between enumeration and query is normal.
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
+            var chromeProcesses = GetChromeProcessInfos();
 
             if (launchedProcessId > 0)
             {

@@ -90,6 +90,16 @@ public sealed class FakeChromeWindowController : IChromeWindowController
             : Outcome.Successful());
     }
 
+    public int CloseCalls;
+
+    public Task<Outcome> CloseAsync(BrowserOptions options, bool allowAttached = false, CancellationToken ct = default)
+    {
+        CloseCalls++;
+        return Task.FromResult(Fail
+            ? Outcome.Failure(new OutcomeError("close failed", "KA_BROWSER_CONNECTION_FAILED", OutcomeErrorType.Failure))
+            : Outcome.Successful());
+    }
+
 }
 
 public sealed class FakeBrowserConnector : IBrowserConnector

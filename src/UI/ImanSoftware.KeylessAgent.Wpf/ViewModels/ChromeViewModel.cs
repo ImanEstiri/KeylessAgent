@@ -61,10 +61,17 @@ public sealed class ChromeViewModel : ObservableObject
             IsHiding = running.IsRunning;
             HideChromeCommand.NotifyCanExecuteChanged();
         };
+
+        CloseChromeCommand = new AsyncRelayCommand(CloseChromeAsync, () => !IsBusy && _agent.HasWorkspace);
+        CloseChromeCommand.IsRunningChanged += (_, running) =>
+        {
+            IsClosing = running.IsRunning;
+            CloseChromeCommand.NotifyCanExecuteChanged();
+        };
     }
 
-    /// <summary>Whether ANY window/connect action is running (all three commands cross-disable).</summary>
-    private bool IsBusy => IsConnecting || IsShowing || IsHiding;
+    /// <summary>Whether ANY window/connect/close action is running (all four commands cross-disable).</summary>
+    private bool IsBusy => IsConnecting || IsShowing || IsHiding || IsClosing;
 
     /// <summary>Starts or attaches to the dedicated Chrome (disabled while busy or without a workspace).</summary>
     public AsyncRelayCommand StartCommand { get; }
@@ -74,6 +81,9 @@ public sealed class ChromeViewModel : ObservableObject
 
     /// <summary>Moves the Chrome window back offscreen (disabled while busy or without a workspace).</summary>
     public AsyncRelayCommand HideChromeCommand { get; }
+
+    /// <summary>Closes the KeylessAgent Chrome entirely (disabled while busy or without a workspace).</summary>
+    public AsyncRelayCommand CloseChromeCommand { get; }
 
     /// <summary>Whether a show attempt is running.</summary>
     public bool IsShowing
@@ -101,6 +111,19 @@ public sealed class ChromeViewModel : ObservableObject
 
     private bool _isHiding;
 
+    /// <summary>Whether a close attempt is running.</summary>
+    public bool IsClosing
+    {
+        get => _isClosing;
+        private set
+        {
+            if (SetProperty(ref _isClosing, value))
+                NotifyAllCommands();
+        }
+    }
+
+    private bool _isClosing;
+
     /// <summary>Whether a connection attempt is running.</summary>
     public bool IsConnecting
     {
@@ -117,6 +140,7 @@ public sealed class ChromeViewModel : ObservableObject
         StartCommand.NotifyCanExecuteChanged();
         ShowChromeCommand.NotifyCanExecuteChanged();
         HideChromeCommand.NotifyCanExecuteChanged();
+        CloseChromeCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>The status text also shown in the shell status bar ("Ready", "Starting Chrome…", "Chrome ready (…)").</summary>
@@ -299,6 +323,63 @@ public sealed class ChromeViewModel : ObservableObject
             _ui.Post(() =>
             {
                 IsHiding = false;
+                StatusText = "Ready";
+                Note = $"{ex.GetType().Name}: {ex.Message}";
+            });
+        }
+    }
+
+    private async Task CloseChromeAsync()
+    {
+        if (!_agent.HasWorkspace)
+        {
+            Note = "Select a workspace first (Workspace page).";
+            return;
+        }
+
+        Note = string.Empty;
+        var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
+        if (options.IsFailure || options.Data is null)
+        {
+            Note = options.Error?.Message ?? "Could not load keyless.json.";
+            return;
+        }
+
+        StatusText = "Closing Chrome…";
+        try
+        {
+            var outcome = await _windowController.CloseAsync(options.Data.Browser);
+            _ui.Post(() =>
+            {
+                IsClosing = false;
+                if (outcome.IsFailure)
+                {
+                    StatusText = "Ready";
+                    Note = outcome.Error?.Message ?? "Chrome could not be closed.";
+                    return;
+                }
+
+                // No stale "Chrome ready/visible" status may survive a real close.
+                ConnectionKind = string.Empty;
+                Profile = string.Empty;
+                StatusText = "Ready";
+                Note = "Chrome closed. Use Start Chrome to open it again.";
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            _ui.Post(() =>
+            {
+                IsClosing = false;
+                StatusText = "Ready";
+                Note = "Cancelled.";
+            });
+        }
+        catch (Exception ex)
+        {
+            _ui.Post(() =>
+            {
+                IsClosing = false;
                 StatusText = "Ready";
                 Note = $"{ex.GetType().Name}: {ex.Message}";
             });

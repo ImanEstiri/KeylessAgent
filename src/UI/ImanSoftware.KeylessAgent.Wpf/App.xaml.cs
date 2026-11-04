@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using ImanSoftware.KeylessAgent.Core.Factory;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 
 namespace ImanSoftware.KeylessAgent.Wpf;
@@ -34,6 +35,59 @@ public partial class App : Application
             WriteCrashLog(args.Exception);
             args.SetObserved();
         };
+    }
+
+    /// <summary>
+    /// ALWAYS-ON safety net for the OS-level Chrome the app itself launched. DISTINCTION
+    /// from Browser.CloseChromeOnExit (do NOT merge the two): CloseChromeOnExit only gates
+    /// PlaywrightChatProvider.DisposeAsync - whether the chat TAB/CONTEXT stays open between
+    /// turns while the app is running. This override instead closes the actual Chrome
+    /// process/window on normal application exit, because the TinyCorner window is invisible
+    /// by design and would otherwise outlive the app unnoticed. Best-effort with a hard
+    /// timeout; never blocks shutdown indefinitely; never lets an exception escape.
+    /// </summary>
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            // The close runs on a worker (CloseAsync is async; production code must never
+            // block on tasks - the NoSyncOverAsync rule). Shutdown is bounded by a
+            // ManualResetEventSlim wait (a plain synchronization primitive, NOT Task.Wait)
+            // for the same 4s the worker's own cancellation token allows, so the process
+            // never lingers longer than that even if Chrome is unresponsive.
+            using var completed = new System.Threading.ManualResetEventSlim(false);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(4));
+                    var controller = KeylessAgentServiceFactory.CreateChromeWindowController();
+
+                    // Ownership comes from the RUNNING processes' command lines (profile dir +
+                    // debug port in BrowserOptions), so the default options suffice even
+                    // without a selected workspace; allowAttached=false never touches a
+                    // user-launched Chrome.
+                    var options = new Abstractions.Models.Configuration.BrowserOptions();
+                    await controller.CloseAsync(options, allowAttached: false, cts.Token);
+                }
+                catch
+                {
+                    // Chrome cleanup must never make application shutdown fail.
+                }
+                finally
+                {
+                    completed.Set();
+                }
+            });
+
+            completed.Wait(TimeSpan.FromSeconds(4));
+        }
+        catch
+        {
+            // Chrome cleanup must never make application shutdown fail or hang.
+        }
+
+        base.OnExit(e);
     }
 
     /// <summary>The crash-log directory (<c>%LOCALAPPDATA%\KeylessAgent</c> by default).</summary>
