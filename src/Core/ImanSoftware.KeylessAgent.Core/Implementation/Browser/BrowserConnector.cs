@@ -52,7 +52,8 @@ internal sealed class BrowserConnector : IBrowserConnector
         BrowserOptions options,
         IAgentUserInterface ui,
         CancellationToken cancellationToken = default,
-        ITimingRecorder? timings = null)
+        ITimingRecorder? timings = null,
+        string? resumeChatUrl = null)
     {
         try
         {
@@ -71,7 +72,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                     ui.ShowProgress(new AgentProgressEvent(
                         AgentEventType.ConnectingToBrowser,
                         $"Attached to Chrome on port {options.ChromeDebugPort}."));
-                    return await OpenChatTabAsync(attach.Data, userDataDir, options, ui, timings, cancellationToken);
+                    return await OpenChatTabAsync(attach.Data, userDataDir, options, resumeChatUrl, ui, timings, cancellationToken);
                 }
 
                 // The port answers but CDP cannot attach: report the reason, do not fall through.
@@ -92,7 +93,7 @@ internal sealed class BrowserConnector : IBrowserConnector
                 var launch = await LaunchRealChromeAsync(playwright, options, userDataDir, ui, cancellationToken);
                 if (launch.IsSuccess)
                 {
-                    return await OpenChatTabAsync(launch.Data, userDataDir, options, ui, timings, cancellationToken);
+                    return await OpenChatTabAsync(launch.Data, userDataDir, options, resumeChatUrl, ui, timings, cancellationToken);
                 }
 
                 // Chrome not found / not started: actionable failure with the exact command line.
@@ -260,6 +261,7 @@ internal sealed class BrowserConnector : IBrowserConnector
         BrowserAttachment attachment,
         string userDataDir,
         BrowserOptions options,
+        string? resumeChatUrl,
         IAgentUserInterface ui,
         ITimingRecorder? timings,
         CancellationToken cancellationToken)
@@ -278,29 +280,51 @@ internal sealed class BrowserConnector : IBrowserConnector
         var context = (IBrowserContext)attachment.Context;
         IPage page;
 
-        var existing = options.ReuseExistingTab
-            ? context.Pages.FirstOrDefault(p =>
-                p.Url.StartsWith(ChatBaseUrl, StringComparison.OrdinalIgnoreCase))
-            : null;
-
-        if (existing is not null)
+        // Tab selection by CONVERSATION ID (never a base-URL prefix, which matches every
+        // DeepSeek tab and made workspaces share one conversation): reuse the tab of the
+        // saved conversation, navigate a base/new-chat tab to it, or open a new tab - but
+        // never touch a tab showing a DIFFERENT conversation.
+        var (selected, action) = ChatUrl.SelectChatTab(context.Pages, resumeChatUrl);
+        switch (action)
         {
-            page = existing;
-            ui.ShowProgress(new AgentProgressEvent(
-                AgentEventType.OpeningChat, "Reusing the existing DeepSeek tab."));
-        }
-        else
-        {
-            // A browser-level CDP session opens a TAB in the existing window when one exists.
-            var anchorPage = context.Pages.Count > 0 ? context.Pages[0] : await context.NewPageAsync();
-            var openSession = await context.NewCDPSessionAsync(anchorPage);
-            await openSession.SendAsync("Target.createTarget", ComposeCreateTargetParams(ChatBaseUrl));
-            await openSession.DetachAsync();
+            case ChatUrl.TabSelectionAction.ReuseSameConversation:
+                page = selected!;
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.OpeningChat, "Reusing the tab of the saved conversation."));
+                break;
 
-            page = await WaitForPageAsync(context, ChatBaseUrl, cancellationToken);
+            case ChatUrl.TabSelectionAction.NavigateExistingBaseTab:
+                page = selected!;
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.OpeningChat, "Navigating an empty DeepSeek tab to the saved conversation."));
+                await page.GotoAsync(resumeChatUrl!, new PageGotoOptions
+                {
+                    WaitUntil = WaitUntilState.Commit,
+                    Timeout = 15_000,
+                });
+                break;
 
-            ui.ShowProgress(new AgentProgressEvent(
-                AgentEventType.OpeningChat, "Opened a new DeepSeek tab."));
+            default:
+            {
+                // No saved conversation: a NEW tab at the saved URL (or the base URL when
+                // there is none). An existing tab on a DIFFERENT conversation is never touched.
+                var targetUrl = ChatUrl.IsConversationUrl(resumeChatUrl) ? resumeChatUrl! : ChatBaseUrl;
+
+                // A browser-level CDP session opens a TAB in the existing window when one exists.
+                var anchorPage = context.Pages.Count > 0 ? context.Pages[0] : await context.NewPageAsync();
+                var openSession = await context.NewCDPSessionAsync(anchorPage);
+                await openSession.SendAsync("Target.createTarget", ComposeCreateTargetParams(targetUrl));
+                await openSession.DetachAsync();
+
+                var resumeId = ChatUrl.ConversationId(targetUrl);
+                page = resumeId is null
+                    ? await WaitForPageAsync(context, ChatBaseUrl, cancellationToken)
+                    : await WaitForConversationPageAsync(context, resumeId, cancellationToken);
+
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.OpeningChat, "Opened a new DeepSeek tab."));
+                break;
+            }
         }
 
         // Safety net: no Playwright call may ride the 30 s library default. Every hot call
@@ -401,6 +425,25 @@ internal sealed class BrowserConnector : IBrowserConnector
         ["newWindow"] = false,
         ["background"] = true,
     };
+
+    /// <summary>Waits for a page whose URL is the SAME conversation (id equality, not a prefix).</summary>
+    private static async Task<IPage> WaitForConversationPageAsync(
+        IBrowserContext context, string conversationId, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var match = context.Pages.FirstOrDefault(p =>
+                ChatUrl.ConversationId(p.Url) == conversationId);
+            if (match is not null)
+                return match;
+
+            await Task.Delay(250, cancellationToken);
+        }
+
+        throw new TimeoutException("The resumed DeepSeek conversation tab did not appear within 15s.");
+    }
 
     private static async Task<IPage> WaitForPageAsync(IBrowserContext context, string urlPrefix, CancellationToken cancellationToken)
     {

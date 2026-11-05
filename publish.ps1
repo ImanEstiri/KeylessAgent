@@ -6,7 +6,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
+$env:HTTP_PROXY  = "http://127.0.0.1:10808"
+$env:HTTPS_PROXY = "http://127.0.0.1:10808"
 $solutionRoot  = $PSScriptRoot
 $srcRoot       = Join-Path $solutionRoot "src"
 $artifactsPath = Join-Path $solutionRoot "artifacts\$ProjectName"

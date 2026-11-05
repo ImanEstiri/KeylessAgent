@@ -9,6 +9,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Configuration;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
+using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 using ImanSoftware.KeylessAgent.Core.Implementation.Parsing;
 using ImanSoftware.KeylessAgent.Core.Implementation.Git;
@@ -38,6 +39,12 @@ internal sealed class AgentLoop : IAgentLoop
     private readonly IChangeTracker _changeTracker;
     private readonly BranchNameBuilder _branchNames;
     private readonly IDateTimeProvider _time;
+
+    /// <summary>
+    /// How long the loop polls for the conversation URL (resume verification and the
+    /// post-first-send update). Internal so unit tests can shorten the wall-clock wait.
+    /// </summary>
+    internal int ResumeProbeSeconds { get; set; } = 10;
     private readonly ILoggerAdapter<AgentLoop> _log;
 
     public AgentLoop(IChatProvider chat, ILoggerAdapter<AgentLoop>? log = null)
@@ -166,6 +173,10 @@ internal sealed class AgentLoop : IAgentLoop
         // summary can report the turn with and without time spent waiting for the user.
         ui = new UserWaitTimingUi(ui, timings);
         var countingUi = new CommandCountingUserInterface(ui);
+
+        // Set once the chat session exists so the turn-end finally can re-read the LIVE page
+        // URL (chatSession itself is scoped to the try block; the finally is not).
+        Func<string>? liveChatUrl = null;
 
         try
         {
@@ -454,7 +465,54 @@ internal sealed class AgentLoop : IAgentLoop
                 return Failed(chatOutcome.Error.Message, dryRun);
 
             await using var chatSession = chatOutcome.Data;
+            liveChatUrl = () => chatSession.ChatUrl;
             timings.Stop("connect");
+
+            // --- Chat-URL identity -------------------------------------------------------
+            // A saved ChatUrl is only meaningful when it is a CONVERSATION URL. The provider
+            // navigated the tab to it; poll briefly for the address bar to reflect that (a
+            // dead/deleted conversation redirects to the base URL instead). On failure the
+            // turn is treated as a brand-new chat: the system prompt is resent and the
+            // per-chat counters reset.
+            var savedChatUrl = session?.ChatUrl ?? string.Empty;
+            var resumeRequested = Browser.ChatUrl.IsConversationUrl(savedChatUrl);
+            AgentSession? continuation = session;
+            if (resumeRequested)
+            {
+                // WALL-CLOCK poll (Stopwatch): a frozen/injectable IDateTimeProvider must not
+                // be able to turn this into an infinite loop.
+                var sameConversation = false;
+                var resumeWatch = System.Diagnostics.Stopwatch.StartNew();
+                while (resumeWatch.Elapsed < TimeSpan.FromSeconds(ResumeProbeSeconds))
+                {
+                    if (Browser.ChatUrl.SameConversation(chatSession.ChatUrl, savedChatUrl))
+                    {
+                        sameConversation = true;
+                        break;
+                    }
+
+                    await Task.Delay(250, cancellationToken);
+                }
+
+                if (!sameConversation)
+                {
+                    await logger.AppendAsync("chat-resume-failed", new
+                    {
+                        Turn = turn,
+                        SavedChatUrl = savedChatUrl,
+                        CurrentUrl = chatSession.ChatUrl,
+                    }, CancellationToken.None);
+                    continuation = null; // new chat: ChatUrl empty, prompt resent, turns reset
+                }
+            }
+            else if (session is not null)
+            {
+                // Legacy/broken persisted state: SystemPromptSent=true can only stand when
+                // the saved ChatUrl is a conversation URL.
+                continuation = null;
+            }
+
+            var chatUrlIsConversation = Browser.ChatUrl.IsConversationUrl(chatSession.ChatUrl);
 
             // The environment probe ran concurrently with the connection; collect its result.
             var env = await envTask;
@@ -462,15 +520,22 @@ internal sealed class AgentLoop : IAgentLoop
             var envSummary = env.IsSuccess ? env.Data.Summary : "";
             savedSession = new AgentSession
             {
-                ChatUrl = chatSession.ChatUrl,
+                // Never persist the base URL: a non-conversation page URL persists as EMPTY.
+                ChatUrl = Browser.ChatUrl.ForPersistence(chatSession.ChatUrl),
                 Branch = branch,
                 Turn = turn,
-                SystemPromptSent = session?.SystemPromptSent ?? false,
-                CreatedAtUtc = session?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
+
+                // The system-prompt invariant: sent=true only when the session actually
+                // CONTINUES a conversation whose URL is a conversation URL.
+                SystemPromptSent = continuation is not null
+                    && continuation.SystemPromptSent
+                    && chatUrlIsConversation,
+                CreatedAtUtc = continuation?.CreatedAtUtc ?? _time.Now.ToUniversalTime().ToString("O"),
                 AgentChangedPaths = [.. agentPaths],
 
                 // Incremented at turn start, not end, so the limit check sees the true count.
-                TurnsInChat = (session?.TurnsInChat ?? 0) + 1,
+                // A resume failure resets the chat: this turn is its first.
+                TurnsInChat = (continuation?.TurnsInChat ?? 0) + 1,
             };
             await _sessions.SaveAsync(workspaceRoot, savedSession);
 
@@ -507,7 +572,11 @@ internal sealed class AgentLoop : IAgentLoop
             // Message 1 of a new chat: the AgentScript rules ALONE, with the instruction that
             // they apply to the whole conversation. Mixing them into the request made the model
             // skim the grammar and invent formats ("@@command", JSON blocks).
-            var sendSystemPrompt = session is null || !session.SystemPromptSent;
+            // Resend when this is a new chat, the prompt was never sent, or the page ended
+            // up on a fresh/empty chat instead of the saved conversation.
+            var sendSystemPrompt = continuation is null
+                || !continuation.SystemPromptSent
+                || !chatUrlIsConversation;
             if (sendSystemPrompt)
             {
                 var prompt = SystemPromptBuilder.Build(options);
@@ -533,6 +602,27 @@ internal sealed class AgentLoop : IAgentLoop
                         return Failed(sentPrompt.Error.Message, dryRun);
 
                     savedSession = savedSession! with { SystemPromptSent = true };
+
+                    // DeepSeek rewrites the address bar to the conversation URL once the first
+                    // message lands in a fresh chat; poll briefly and persist IMMEDIATELY so a
+                    // crash/restart still resumes the right conversation. The base URL is
+                    // never persisted - if it has not become a conversation URL yet, ChatUrl
+                    // stays empty and the turn-end re-check picks it up later.
+                    var urlWatch = System.Diagnostics.Stopwatch.StartNew();
+                    while (urlWatch.Elapsed < TimeSpan.FromSeconds(ResumeProbeSeconds)
+                           && !Browser.ChatUrl.IsConversationUrl(chatSession.ChatUrl))
+                        await Task.Delay(250, cancellationToken);
+
+                    var conversationUrl = Browser.ChatUrl.ForPersistence(chatSession.ChatUrl);
+                    if (conversationUrl.Length > 0 && conversationUrl != savedSession.ChatUrl)
+                    {
+                        savedSession = savedSession with
+                        {
+                            ChatUrl = conversationUrl,
+                            ChatUrlUpdatedUtc = _time.Now.ToUniversalTime().ToString("O"),
+                        };
+                    }
+
                     await _sessions.SaveAsync(workspaceRoot, savedSession);
                     await logger.AppendAsync("system-prompt-sent", new { Turn = turn }, cancellationToken);
                 }
@@ -895,6 +985,30 @@ internal sealed class AgentLoop : IAgentLoop
                 {
                     turnChanges.AddRange(changed);
                     agentPaths.UnionWith(changed.Select(c => c.Path));
+                }
+            }
+
+            // Turn-end re-check of the conversation URL: the agent may have opened/switched
+            // chats during the turn; the persisted ChatUrl must always match reality (and
+            // never be the base URL). Best-effort: a closed page must not fail the turn.
+            if (savedSession is not null)
+            {
+                try
+                {
+                    var rawUrl = liveChatUrl?.Invoke();
+                    var liveUrl = Browser.ChatUrl.ForPersistence(rawUrl);
+                    if (liveUrl.Length > 0 && liveUrl != savedSession.ChatUrl)
+                    {
+                        savedSession = savedSession with
+                        {
+                            ChatUrl = liveUrl,
+                            ChatUrlUpdatedUtc = _time.Now.ToUniversalTime().ToString("O"),
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning("Turn-end ChatUrl re-check failed best-effort: {Message}", ex.Message);
                 }
             }
 

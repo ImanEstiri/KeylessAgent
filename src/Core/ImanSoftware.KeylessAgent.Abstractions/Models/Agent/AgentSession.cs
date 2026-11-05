@@ -6,9 +6,19 @@ namespace ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 public sealed record AgentSession
 {
     /// <summary>
-    /// The chat URL the session runs in.
+    /// The chat URL the session runs in. ONLY a conversation URL
+    /// (https://chat.deepseek.com/a/chat/s/&lt;id&gt;) is ever persisted here — the bare base
+    /// URL is stored as EMPTY instead (the base is not a conversation and must never be
+    /// resumed or shared between workspaces).
     /// </summary>
     public string ChatUrl { get; init; } = string.Empty;
+
+    /// <summary>
+    /// UTC timestamp of the last time ChatUrl was confirmed/updated from the live page
+    /// (after the first send of a chat and re-checked at every turn end). Empty when the
+    /// conversation URL has not been observed yet.
+    /// </summary>
+    public string ChatUrlUpdatedUtc { get; init; } = string.Empty;
 
     /// <summary>
     /// The agent branch created for this session.

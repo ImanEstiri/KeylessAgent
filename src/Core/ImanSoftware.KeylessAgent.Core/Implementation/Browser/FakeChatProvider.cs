@@ -38,11 +38,25 @@ internal sealed class FakeChatProvider : IChatProvider
     /// </summary>
     public List<SentMessage> Sent { get; } = [];
 
+    /// <summary>
+    /// When false, the provider IGNORES ResumeChatUrl and always starts a fresh fake
+    /// conversation - simulating a dead/deleted conversation for the resume-failure path.
+    /// Default true (a resume lands on the SAME conversation, like the real provider).
+    /// </summary>
+    public bool HonorResumeUrl { get; set; } = true;
+
     public Task<Outcome<IChatSession>> StartSessionAsync(ChatSessionOptions options, CancellationToken cancellationToken = default)
     {
         StartCount++;
         MessagesPerSession.Add(0);
-        IChatSession session = new FakeChatSession(this, StartCount, $"https://chat.deepseek.com/a/fake-session-{StartCount}");
+
+        // Conversation-SHAPED URLs (/a/chat/s/<id>): the loop's ChatUrl invariant only
+        // persists and resumes conversation URLs. A resume lands on the SAME conversation
+        // (like the real provider); a fresh chat gets a new id.
+        var url = HonorResumeUrl && ChatUrl.IsConversationUrl(options.ResumeChatUrl)
+            ? options.ResumeChatUrl!
+            : $"https://chat.deepseek.com/a/chat/s/fake-session-{StartCount}";
+        IChatSession session = new FakeChatSession(this, StartCount, url);
         return Task.FromResult(Outcome.Successful(session));
     }
 

@@ -111,7 +111,7 @@ public sealed class FakeBrowserConnector : IBrowserConnector
     public BrowserOptions? LastOptions;
 
     public Task<Outcome<(BrowserAttachment Attachment, object Page)>> ConnectAsync(
-        BrowserOptions options, IAgentUserInterface ui, CancellationToken cancellationToken = default, ITimingRecorder? timings = null)
+        BrowserOptions options, IAgentUserInterface ui, CancellationToken cancellationToken = default, ITimingRecorder? timings = null, string? resumeChatUrl = null)
     {
         CallCount++;
         LastOptions = options;

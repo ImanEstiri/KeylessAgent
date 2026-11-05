@@ -115,7 +115,7 @@ public sealed class ChromeViewModelTests
     private sealed class GateConnector(TaskCompletionSource gate) : IBrowserConnector
     {
         public async Task<Outcome<(BrowserAttachment Attachment, object Page)>> ConnectAsync(
-            BrowserOptions options, IAgentUserInterface ui, CancellationToken cancellationToken = default, ITimingRecorder? timings = null)
+            BrowserOptions options, IAgentUserInterface ui, CancellationToken cancellationToken = default, ITimingRecorder? timings = null, string? resumeChatUrl = null)
         {
             await gate.Task.WaitAsync(cancellationToken);
             return Outcome.Successful(

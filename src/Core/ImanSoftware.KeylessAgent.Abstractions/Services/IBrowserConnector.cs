@@ -64,5 +64,6 @@ public interface IBrowserConnector : IService
         BrowserOptions options,
         IAgentUserInterface ui,
         CancellationToken cancellationToken = default,
-        ITimingRecorder? timings = null);
+        ITimingRecorder? timings = null,
+        string? resumeChatUrl = null);
 }

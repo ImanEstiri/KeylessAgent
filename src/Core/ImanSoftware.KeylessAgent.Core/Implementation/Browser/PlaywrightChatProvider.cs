@@ -51,7 +51,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             // so every turn can prove which anti-occlusion flags Chrome received.
             _connector.LogEventSink = options.LogEvent;
 
-            var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken, options.Timings);
+            var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken, options.Timings, options.ResumeChatUrl);
             if (connected.IsFailure)
                 return Outcome.Failure<IChatSession>(connected.Error);
 
@@ -69,19 +69,28 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                 await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
             }
 
-            // Resume: when a saved chat URL exists and the current tab is not already on it,
-            // navigate the tab there so the conversation continues in the same chat.
-            if (!string.IsNullOrEmpty(options.ResumeChatUrl) &&
-                !page.Url.StartsWith(options.ResumeChatUrl, StringComparison.OrdinalIgnoreCase))
+            // Resume safety net: the connector already selected/navigated the tab by
+            // CONVERSATION ID; navigate here only when the picked tab is still not on the
+            // saved conversation (e.g. the connector's navigation failed). Commit returns as
+            // soon as the navigation is acknowledged; a hung navigation cannot cost a minute.
+            // A dead conversation redirects to the base URL - the loop's chat-resume-failed
+            // handling takes over from there.
+            if (ChatUrl.IsConversationUrl(options.ResumeChatUrl) &&
+                !ChatUrl.SameConversation(page.Url, options.ResumeChatUrl))
             {
-                // Commit returns as soon as the navigation is acknowledged; the composer
-                // reset after login waits for the input box separately, so DOM-ready is not
-                // needed and a hung navigation cannot cost a full minute.
-                await page.GotoAsync(options.ResumeChatUrl, new PageGotoOptions
+                try
                 {
-                    WaitUntil = WaitUntilState.Commit,
-                    Timeout = 15_000,
-                });
+                    await page.GotoAsync(options.ResumeChatUrl!, new PageGotoOptions
+                    {
+                        WaitUntil = WaitUntilState.Commit,
+                        Timeout = 15_000,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    new LoggerAdapter<PlaywrightChatProvider>(NullLoggerFactory.Instance).LogWarning(
+                        "Resume navigation failed best-effort: {Message}", ex.Message);
+                }
             }
 
             var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken, loggerFactory: _loggerFactory);

@@ -967,7 +967,8 @@ public class AgentLoopTests : IDisposable
         await loop.RunAsync(_root, "first request", ui);
         var firstSession = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
         firstSession.IsSuccess.Should().BeTrue();
-        firstSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/fake-session-1\"");
+        firstSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/chat/s/fake-session-1\"",
+            "the persisted ChatUrl is now a CONVERSATION url, never the base");
 
         var cleared = await new SessionStore().ClearAsync(_root);
         cleared.IsSuccess.Should().BeTrue();
@@ -975,7 +976,7 @@ public class AgentLoopTests : IDisposable
         await loop.RunAsync(_root, "second request", ui);
         var secondSession = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
         secondSession.IsSuccess.Should().BeTrue();
-        secondSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/fake-session-2\"",
+        secondSession.Data.Should().Contain("\"ChatUrl\": \"https://chat.deepseek.com/a/chat/s/fake-session-2\"",
             "after the clear the next turn must open a new chat, not resume the old one");
 
         // Turn 1's messages went to chat 1 and turn 2's to chat 2 — nothing crossed over.

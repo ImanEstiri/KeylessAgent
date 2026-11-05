@@ -27,7 +27,10 @@ public interface IChatProvider : IService
 public interface IChatSession : IAsyncDisposable
 {
     /// <summary>
-    /// The chat URL (persisted in <c>.agent/session.json</c> for <c>keyless resume</c>).
+    /// The CURRENT page URL of the session. Before the first message of a fresh chat this is
+    /// the base URL; only once it becomes a CONVERSATION URL
+    /// (https://chat.deepseek.com/a/chat/s/&lt;id&gt;) may it be persisted into
+    /// <c>.agent/session.json</c> (persist empty otherwise) — see AgentSession.ChatUrl.
     /// </summary>
     string ChatUrl { get; }
 
