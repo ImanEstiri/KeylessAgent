@@ -1,4 +1,9 @@
 {
+  // Bump whenever the embedded default selectors change: older workspace files are
+  // merged (never-customized keys refreshed, user customizations preserved) and backed
+  // up as selectors.json.v<old>.bak. See SelectorsCatalog.ShippedValues.
+  "CatalogVersion": 2,
+
   "InputBox": [
     "textarea[placeholder=\"Message DeepSeek\"]",
     "textarea#chat-input",
@@ -32,14 +37,16 @@
     ".ds-think-content"
   ],
   "MessageCopyButton": [
-    ".ds-message [role=\"button\"][aria-label=\"Copy\"]",
+    "[role=\"button\"][aria-label=\"copy\" i]",
+    "[role=\"button\"][title=\"copy\" i]",
+    ".ds-message [role=\"button\"][aria-label*=\"copy\" i]",
     ".ds-message .ds-flex [role=\"button\"]:first-child",
     ".ds-message [role=\"button\"]:has-text(\"Copy\")"
   ],
   "StopIndicator": [
+    "div:has(textarea) [role=\"button\"][aria-label=\"Stop\"]",
     "[role=\"button\"][aria-label=\"Stop\"]",
-    "[role=\"button\"]:has-text(\"Stop\")",
-    ".ds-button--filled:has-text(\"Stop\")"
+    ".ds-button--filled[aria-label=\"Stop\"]"
   ],
   "FileInput": [
     "input[type=\"file\"][multiple]",
@@ -49,6 +56,24 @@
     "[class*='file-chip']",
     "[class*='chips']",
     "[data-testid='file-chip']"
+  ],
+  "AttachmentRemove": [
+    "[class*='file-chip'] button",
+    "[class*='file-chip'] [role=\"button\"]",
+    "[class*='chip'] [aria-label*='remove' i]",
+    "[class*='chip'] [aria-label*='delete' i]",
+    "[class*='chip'] [aria-label*='close' i]",
+    "[class*='chip'] [aria-label*='cancel' i]",
+    "[class*='chip'] [class*='close']",
+    "[class*='chip'] svg[class*='close']"
+  ],
+  "AttachmentFailed": [
+    "[class*='file-chip'][class*='error']",
+    "[class*='file-chip'][class*='failed']",
+    "[class*='chip'][class*='error']",
+    "[class*='chip'][class*='failed']",
+    "[class*='chip'] [aria-label*='failed' i]",
+    "[class*='chip'] [aria-label*='retry' i]"
   ],
   "ChatLimitNotice": [
     "[class*='conversation-limit']",

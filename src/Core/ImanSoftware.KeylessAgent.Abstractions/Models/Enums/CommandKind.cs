@@ -43,4 +43,7 @@ public enum CommandKind
 
     /// <summary>Moves/renames a file: argument = source path, TO payload = destination path.</summary>
     [Description("movefile")] MoveFile,
+
+    /// <summary>Creates a folder (and parents). Idempotent; never confirmed.</summary>
+    [Description("mkdir")] Mkdir,
 }

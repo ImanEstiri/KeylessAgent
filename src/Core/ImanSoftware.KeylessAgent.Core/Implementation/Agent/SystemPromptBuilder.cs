@@ -1,6 +1,7 @@
 using System.Reflection;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Agent;
@@ -18,6 +19,30 @@ internal static class SystemPromptBuilder
     /// </summary>
     /// <param name="options">The effective configuration.</param>
     /// <returns>The prompt text, or a failure when the embedded resource is missing.</returns>
+
+    /// <summary>
+    /// The pace-specific working rule injected into the system prompt (guide Phase 12):
+    /// Step = one command then verify; Balanced = small related groups; Batch = the
+    /// configured per-response limit.
+    /// </summary>
+    internal static string PaceRule(AgentPace pace, int maxCommandsPerResponse)
+    {
+        var effective = Math.Min(pace switch
+        {
+            AgentPace.Step => 1,
+            AgentPace.Balanced => 3,
+            _ => maxCommandsPerResponse,
+        }, maxCommandsPerResponse);
+
+        return pace switch
+        {
+            AgentPace.Step => $"Pace is STEP. Work ONE step at a time. Send one command (never two file changes in one reply), then @@next. " +
+                $"After you read the result, verify it (use the verification summary or readfile) before the next step. Limit: {effective} non-say command(s) per response.",
+            AgentPace.Balanced => $"Pace is BALANCED: group at most {effective} related commands, verify after each group. Limit: {effective} non-say command(s) per response.",
+            _ => $"Limit: {effective} non-say command(s) per response; verify after each group.",
+        };
+    }
+
     public static Outcome<string> Build(KeylessOptions options)
     {
         var assembly = Assembly.GetExecutingAssembly();
@@ -33,6 +58,7 @@ internal static class SystemPromptBuilder
 
         return Outcome.Successful(template
             .Replace("{{MAX_COMMANDS_PER_RESPONSE}}", options.Limits.MaxCommandsPerResponse.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("{{PACE_RULE}}", PaceRule(options.Agent.Pace, options.Limits.MaxCommandsPerResponse), StringComparison.Ordinal)
             .Replace("{{MAX_RESPONSE_CHARS}}", options.Limits.MaxResponseChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{{MAX_FILE_CONTENT_CHARS}}", options.Limits.MaxFileContentChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{{MAX_COMMAND_OUTPUT_CHARS}}", options.Limits.MaxCommandOutputChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)

@@ -31,7 +31,7 @@ set "OUT=%ROOT%\code-dump-result.md"
 set "SELF=%~f0"
 
 set "EXTENSIONS=.razor .css .cs .js .ts .html .cshtml .json .scss .less .xaml .config .csproj .aspx .master .sql .txt .text .md .bat .ps1"
-set "EXCLUDE_DIRS=\bin\ \obj\ \node_modules\ \.git\ \.vs\ \.idea\ \wwwroot\lib\"
+set "EXCLUDE_DIRS=\bin\ \obj\ \node_modules\ \.git\ \.vs\ \.idea\ \wwwroot\lib\ \tests\ \docs\ \artifacts\"
 set "GT=>"
 
 set /a TOTAL=0

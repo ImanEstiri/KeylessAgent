@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 
 namespace ImanSoftware.KeylessAgent.Abstractions.Services;
 
@@ -18,11 +19,15 @@ public interface IAgentLoop : IService
     /// <param name="ui">The UI contract that shows progress, says, questions and diffs.</param>
     /// <param name="dryRun">Print what would happen; execute nothing.</param>
     /// <param name="cancellationToken">Cancels the turn (the snapshot still refreshes).</param>
+    /// <param name="refreshEnv">Ignore the cached environment (<c>.agent/env.json</c>) and re-probe.</param>
+    /// <param name="paceOverride">Overrides <c>Agent.Pace</c> from keyless.json for this turn (CLI/WPF toggle).</param>
     /// <returns>The turn result (branch, commits, summary, stop reason).</returns>
     Task<AgentTurnResult> RunAsync(
         string workspaceRoot,
         string request,
         IAgentUserInterface ui,
         bool dryRun = false,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool refreshEnv = false,
+        AgentPace? paceOverride = null);
 }

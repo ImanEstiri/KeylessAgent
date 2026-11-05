@@ -1,6 +1,8 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
+using ImanSoftware.Extensions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
@@ -22,7 +24,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 {
     private const int LoginWaitSeconds = 300;
 
-    private readonly IBrowserConnector _connector;
+    private readonly BrowserConnector _connector;
     private readonly IDateTimeProvider _time;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IReplyExtractor _replyExtractor;
@@ -45,26 +47,44 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     {
         try
         {
+            // The launch command line travels into the turn log as a "chrome-launched" event,
+            // so every turn can prove which anti-occlusion flags Chrome received.
+            _connector.LogEventSink = options.LogEvent;
+
             var connected = await _connector.ConnectAsync(options.Browser, new ProgressOnlyUi(), cancellationToken, options.Timings);
             if (connected.IsFailure)
                 return Outcome.Failure<IChatSession>(connected.Error);
 
             var (attachment, rawPage) = connected.Data;
             var page = (IPage)rawPage;
+            var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);
+
+            // Hide the window IMMEDIATELY after the tab is open: Target.createTarget now opens
+            // the tab in the background, but Chrome can still move the window while the tab
+            // loads. The post-login hide below stays. Both Minimized and Offscreen mean
+            // offscreen; Normal is never forced.
+            if (options.Browser.MinimizeAfterLogin &&
+                !string.Equals(options.Browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase))
+            {
+                await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
+            }
 
             // Resume: when a saved chat URL exists and the current tab is not already on it,
             // navigate the tab there so the conversation continues in the same chat.
             if (!string.IsNullOrEmpty(options.ResumeChatUrl) &&
                 !page.Url.StartsWith(options.ResumeChatUrl, StringComparison.OrdinalIgnoreCase))
             {
+                // Commit returns as soon as the navigation is acknowledged; the composer
+                // reset after login waits for the input box separately, so DOM-ready is not
+                // needed and a hung navigation cannot cost a full minute.
                 await page.GotoAsync(options.ResumeChatUrl, new PageGotoOptions
                 {
-                    WaitUntil = WaitUntilState.DOMContentLoaded,
-                    Timeout = 60_000,
+                    WaitUntil = WaitUntilState.Commit,
+                    Timeout = 15_000,
                 });
             }
 
-            var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken);
+            var selectors = await SelectorsCatalog.LoadAsync(options.WorkspaceRoot, options.Browser.SelectorsFile, cancellationToken, loggerFactory: _loggerFactory);
             if (selectors.IsFailure)
                 return Outcome.Failure<IChatSession>(selectors.Error);
 
@@ -74,9 +94,29 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
             await WaitForLoginIfNeeded(chatPage, selectors.Data, options, cancellationToken);
 
-            // Logged in (or just logged in): get the window out of the user's way.
+            // One composer reset right after the session starts: stale text or attachment
+            // chips from an earlier failed turn must not leak into the first message.
+            try
+            {
+                var reset = await chatPage.ResetComposerAsync(options.Browser.ReplyTimeoutSeconds, cancellationToken);
+                if (!reset.Clean)
+                    new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory).LogWarning(
+                        "The composer is not clean after StartSession (method: {Method}); the next send resets it again.", reset.Method);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory).LogWarning(
+                    "The post-StartSession composer reset failed best-effort: {Message}", ex.Message);
+            }
+
+            // Logged in (or just logged in): hide the window again — the login probe or the
+            // user's own interaction may have moved it back into view.
             if (options.Browser.MinimizeAfterLogin)
-                await MinimizeWindowAsync(page, cancellationToken);
+                await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
 
             IChatSession session = new PlaywrightChatSession(
                 chatPage,
@@ -103,10 +143,17 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
+    /// Test seam: replaces the login window controller (the login flow shows the hidden
+    /// window once so the user can log in — pure CDP window move).
+    /// </summary>
+    internal Func<BrowserOptions, IChromeWindowController> WindowControllerFactory { get; set; } =
+        options => new ChromeWindowController();
+
+    /// <summary>
     /// Positive-first login detection: ONE parallel wait races the chat InputBox against the
     /// LoginIndicator. If the input appears first the user is logged in — no login wait ever
     /// runs, and absent elements never consume a per-fallback timeout. Only a winning login
-    /// indicator focuses the tab and waits for the manual login (LoginWaitSeconds).
+    /// indicator SHOWS the window and waits for the manual login (LoginWaitSeconds).
     /// </summary>
     internal async Task WaitForLoginIfNeeded(
         IChatPage page, SelectorsCatalog selectors, ChatSessionOptions options,
@@ -130,7 +177,10 @@ internal sealed class PlaywrightChatProvider : IChatProvider
 
         var logger = new LoggerAdapter<PlaywrightChatProvider>(NullLoggerFactory.Instance);
         logger.LogWarning("Login page detected; waiting up to {Seconds}s for a manual login…", LoginWaitSeconds);
-        await page.FocusTabAsync(cancellationToken);
+
+        // The login page would be INVISIBLE in a hidden window (minimized/offscreen): show it
+        // once, explicitly (pure CDP window move — no BringToFront focus steal of the terminal).
+        await WindowControllerFactory(options.Browser).ShowAsync(options.Browser, 0, cancellationToken);
 
         var deadline = DateTime.UtcNow.AddSeconds(LoginWaitSeconds);
         while (DateTime.UtcNow < deadline)
@@ -156,38 +206,34 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
-    /// Minimizes the browser window via CDP (Browser.setWindowBounds) so a successful launch
-    /// does not steal the user's focus. Best-effort.
+    /// Hides the chat window OFFSCREEN so a successful launch does not steal the user's
+    /// focus: CDP Browser.setWindowBounds {left:-32000, top:-32000, width:1280, height:900,
+    /// windowState:normal} with a read-back verification and a normal→offscreen recovery,
+    /// then a Win32 fallback that finds the real Chrome top-level windows of our chrome.exe
+    /// processes and ShowWindow(SW_HIDE)s them (the launched launcher PID often has
+    /// MainWindowHandle == 0). Previously this used windowState:minimized, which throttles
+    /// Chrome's renderer and truncates DeepSeek streaming replies; the window is now MOVED
+    /// offscreen with normal state — the user cannot see it, Chrome does not throttle it.
+    /// Recover with 'keyless show' or the WPF Show Chrome button. Best-effort: every
+    /// failure is swallowed.
     /// </summary>
-    internal static async Task MinimizeWindowAsync(IPage page, CancellationToken cancellationToken = default)
+    internal static async Task HideWindowAsync(
+        IPage page, BrowserOptions browserOptions, int launchedProcessId,
+        ILoggerAdapter<PlaywrightChatProvider>? log = null, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var session = await page.Context.NewCDPSessionAsync(page);
-            var window = await session.SendAsync("Browser.getWindowForTarget");
-            var windowId = ((System.Text.Json.JsonElement)window).GetProperty("windowId").GetInt64();
-            await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
-            {
-                ["windowId"] = windowId,
-                ["bounds"] = new Dictionary<string, object> { ["windowState"] = "minimized" },
-            });
-            await session.DetachAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            // Minimizing is best-effort.
-        }
+        await ChromeWindowMinimizer.HideAsync(
+            page, launchedProcessId, BrowserConnector.ResolveUserDataDir(browserOptions),
+            browserOptions.ChromeDebugPort, log, cancellationToken);
     }
 
     /// <summary>
     /// Dispose policy: the chat tab STAYS OPEN by default — the conversation continues across
     /// turns and across runs (the next run reuses the tab and the saved chat URL). Only
     /// Browser.CloseChromeOnExit closes the window/context when the session ends.
+    /// DISTINCTION from the WPF App.OnExit override: CloseChromeOnExit governs THIS per-turn
+    /// session disposal while the app runs (tab/context left open between turns); App.OnExit
+    /// is a separate, always-on safety net that closes the actual OS-level Chrome process the
+    /// app itself launched when the whole application exits. Keep them separate.
     /// </summary>
     internal static async ValueTask DisposeAsync(IPage page, BrowserOptions browserOptions, BrowserConnectionKind kind)
     {
@@ -227,7 +273,23 @@ internal sealed class PlaywrightChatProvider : IChatProvider
         }
 
         public void ShowProgress(AgentProgressEvent progressEvent)
-            => Console.WriteLine($"[{progressEvent.Type}] {progressEvent.Detail}");
+            => Console.WriteLine($"› {StepLabel(progressEvent.Type)}: {progressEvent.Detail}");
+
+        private static string StepLabel(AgentEventType type) => type switch
+        {
+            AgentEventType.SessionStarting => "setup",
+            AgentEventType.ConnectingToBrowser => "connect",
+            AgentEventType.OpeningChat => "chat",
+            AgentEventType.UploadingAttachments => "attachments",
+            AgentEventType.SendingMessage => "send",
+            AgentEventType.WaitingForReply => "reply",
+            AgentEventType.ValidatingReply => "reply",
+            AgentEventType.ExecutingCommand => "execute",
+            AgentEventType.SendingResults => "results",
+            AgentEventType.RefreshingSnapshot => "snapshot",
+            AgentEventType.TurnFinished => "done",
+            _ => type.ToString().ToLowerInvariant(),
+        };
 
         public Task<bool> ConfirmAsync(ConfirmRequest request) => Task.FromResult(true);
 

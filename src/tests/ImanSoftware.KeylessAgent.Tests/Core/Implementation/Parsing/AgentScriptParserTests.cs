@@ -130,6 +130,49 @@ public class AgentScriptParserTests
     }
 
     [Fact]
+    public void Parse_InlinePayloadCloseFollowedByCommand_IsRepairedIntoBothCommands()
+    {
+        // The repair splits the transport-corrupted line (close marker chained with commands)
+        // so the model's FULL intent is recovered instead of silently swallowing the rest.
+        const string script = """
+            @@newfile src/app.css
+            <<<CONTENT
+            body { color: black; } CONTENT>>> @@end @@newfile login.css <<<CONTENT
+            .login { color: red; }
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+
+        var appCss = result.Commands.OfType<NewFileCommand>().First(c => c.Path == "src/app.css");
+        appCss.Content.Should().Be("body { color: black; }");
+        var loginCss = result.Commands.OfType<NewFileCommand>().First(c => c.Path == "login.css");
+        loginCss.Content.Should().Be(".login { color: red; }");
+    }
+
+    [Fact]
+    public void Parse_MarkersAloneOnTheirOwnLines_StillAccepted()
+    {
+        const string script = """
+            @@newfile src/notes.txt
+            <<<CONTENT
+            The docs say the marker CONTENT>>> must be alone on its own line.
+            The prose also mentions @@end, but never right after a marker.
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+
+        var newFile = result.Commands.OfType<NewFileCommand>().Single();
+        newFile.Content.Should().Contain("CONTENT>>> must be alone on its own line.");
+        newFile.Content.Should().Contain("mentions @@end");
+    }
+
+    [Fact]
     public void Parse_MultilineContent_PreservesEveryLine()
     {
         var script = """
@@ -460,6 +503,36 @@ public class AgentScriptParserTests
         var result = ParseBad(script);
         result.Problems.Select(p => p.Code).Should().Contain([
             ErrorCodes.ParseStrayText, ErrorCodes.ParseUnknownCommand, ErrorCodes.ParseMissingEof]);
+    }
+
+    [Fact]
+    public void Parse_Mkdir_ParsesThePath()
+    {
+        const string script = """
+            @@mkdir src/Generated/Reports
+            @@end
+            @@eof
+            """;
+
+        var result = ParseOk(script);
+        var mkdir = result.Commands.OfType<MkdirCommand>().Single();
+        mkdir.Path.Should().Be("src/Generated/Reports");
+    }
+
+    [Fact]
+    public void Parse_MkdirWithPayload_IsRejected()
+    {
+        const string script = """
+            @@mkdir src/Reports
+            <<<CONTENT
+            no content for folders
+            CONTENT>>>
+            @@end
+            @@eof
+            """;
+
+        var result = ParseBad(script);
+        result.Problems.Select(p => p.Code).Should().Contain(ErrorCodes.ParseUnexpectedPayload);
     }
 
     [Fact]

@@ -17,6 +17,7 @@ public interface IResultFormatter : IService
     /// <param name="results">The executed commands' results, including skipped ones.</param>
     /// <param name="batchLimit">The per-response command limit (for the skipped note).</param>
     /// <param name="limits">The configured limits, for output capping.</param>
+    /// <param name="workspaceRoot">The workspace directory, for verifying file results on disk.</param>
     /// <returns>The complete message text.</returns>
-    string Format(int turn, int batch, IReadOnlyList<CommandExecutionResult> results, int batchLimit, LimitsOptions limits);
+    string Format(int turn, int batch, IReadOnlyList<CommandExecutionResult> results, int batchLimit, LimitsOptions limits, string workspaceRoot);
 }

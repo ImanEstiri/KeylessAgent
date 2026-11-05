@@ -1,36 +1,34 @@
 <Project>
-
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <LangVersion>latest</LangVersion>
-        <AnalysisLevel>latest</AnalysisLevel>
-        <AnalysisMode>All</AnalysisMode>
-	    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-	    <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
-	    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-	    <InvariantGlobalization>false</InvariantGlobalization>
-	    <NuGetAudit>false</NuGetAudit>
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    </PropertyGroup>
-	<PropertyGroup>
-		<!-- CA1031: boundary methods intentionally convert any exception into an Outcome failure.
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NuGetAudit>false</NuGetAudit>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- CA1031: boundary methods intentionally convert any exception into an Outcome failure.
 		     CA1040: IService is a deliberate marker interface (DepLens convention).
 		     CA1303: the CLI is not a localized application.
 		     CA1307/CA1308: StringComparison overload suggestions on char comparisons are noise here.
 		     CA1822: stateless runners stay instance methods for injection symmetry.
 		     S3267: "simplify loop" suggestions fight legitimate async loops with early returns.
 		     CA1707, S1135, CA1861: style choices mirrored from the reference repository. -->
-		<NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1307;CA1308;CA1822;S3267;CA1707;S1135;CA1861;CA1056;CA1054;CA2000;CA5394;S1075;S2245</NoWarn>
-	</PropertyGroup>
-    <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj' and '$(MSBuildProjectName)' != 'ImanSoftware.KeylessAgent.Tests'">
-        <PackageReference Include="SonarAnalyzer.CSharp">
-        <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
-    </ItemGroup>
-
+    <NoWarn>$(NoWarn);CA1873;CA2007;CA1031;CA1040;CA1303;CA1307;CA1308;CA1822;S3267;CA1707;S1135;CA1861;CA1056;CA1054;CA2000;CA5394;S1075;S2245</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(MSBuildProjectExtension)' != '.dcproj' and '$(MSBuildProjectName)' != 'ImanSoftware.KeylessAgent.Tests'">
+    <PackageReference Include="SonarAnalyzer.CSharp">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
   <PropertyGroup>
     <!-- The single source of the application version: Program.cs reads it from the
          assembly and publish.ps1 bumps it here. -->
@@ -45,6 +43,5 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RepositoryUrl>https://github.com/ImanEstiri/KeylessAgent</RepositoryUrl>
     <PackageReadmeFile Condition="Exists('README.md')">README.md</PackageReadmeFile>
-
   </PropertyGroup>
 </Project>

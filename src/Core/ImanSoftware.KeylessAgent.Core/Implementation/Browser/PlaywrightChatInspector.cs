@@ -81,6 +81,52 @@ internal sealed class PlaywrightChatInspector(IPage page) : IChatPageInspector
     }
 
     /// <inheritdoc />
+    public async Task<string> DumpButtonsAsync(string[] assistantMessageSelectors, CancellationToken cancellationToken = default)
+    {
+        for (var index = 0; index < assistantMessageSelectors.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var count = (int)await WithCancellationAsync(_page.Locator(assistantMessageSelectors[index]).CountAsync(), cancellationToken);
+                if (count == 0)
+                    continue;
+
+                var newest = _page.Locator(assistantMessageSelectors[index]).Nth(count - 1);
+                var dump = await WithCancellationAsync(newest.EvaluateAsync(DumpButtonsScript), cancellationToken);
+                return dump?.ToString() ?? "Not found";
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // A broken selector is a finding, not a crash: try the next fallback.
+            }
+        }
+
+        return "Not found";
+    }
+
+    /// <summary>
+    /// Collects tag/role/label/title/text/classes for every button-like element under the
+    /// message element, keeping only entries with at least one identifying attribute.
+    /// </summary>
+    private const string DumpButtonsScript = """
+        element => JSON.stringify(Array.from(element.querySelectorAll('button, [role="button"]')).map(function(b) {
+            return {
+                tag: b.tagName,
+                role: b.getAttribute('role'),
+                label: b.getAttribute('aria-label'),
+                title: b.getAttribute('title'),
+                text: (b.textContent || '').trim().slice(0, 40),
+                classes: String(b.className).slice(0, 120)
+            };
+        }).filter(function(x) { return x.label || x.title || x.text; }))
+        """;
+
+    /// <inheritdoc />
     public async Task<string?> CaptureTrimmedAsync(string[] selectors, CancellationToken cancellationToken = default)
     {
         var probe = await ProbeAsync(selectors, cancellationToken);

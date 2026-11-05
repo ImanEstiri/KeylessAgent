@@ -1,0 +1,32 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Midnight & Champagne color tokens (guide 5.1). Brushes live in Brushes.xaml. -->
+
+    <Color x:Key="BgDeepColor">#080B16</Color>
+    <Color x:Key="BgMidColor">#0E1428</Color>
+
+    <Color x:Key="GlassFillColor">#0FFFFFFF</Color>
+    <Color x:Key="GlassFillHoverColor">#1AFFFFFF</Color>
+    <Color x:Key="GlassFillStrongColor">#26FFFFFF</Color>
+    <Color x:Key="GlassBorderColor">#24FFFFFF</Color>
+
+    <Color x:Key="TextPrimaryColor">#F2F4FA</Color>
+    <Color x:Key="TextSecondaryColor">#A9B1CC</Color>
+    <Color x:Key="TextMutedColor">#8F98B5</Color>
+
+    <Color x:Key="GoldColor">#E3C07A</Color>
+    <Color x:Key="GoldHoverColor">#F0D29A</Color>
+    <Color x:Key="GoldPressedColor">#C9A35F</Color>
+
+    <Color x:Key="VioletColor">#8B7CFF</Color>
+
+    <Color x:Key="SuccessColor">#5CD6A0</Color>
+    <Color x:Key="WarningColor">#F5B94C</Color>
+    <Color x:Key="DangerColor">#F26D7D</Color>
+    <Color x:Key="InfoColor">#6CB4FF</Color>
+
+    <Color x:Key="DiffAddColor">#265CD6A0</Color>
+    <Color x:Key="DiffRemoveColor">#26F26D7D</Color>
+
+</ResourceDictionary>

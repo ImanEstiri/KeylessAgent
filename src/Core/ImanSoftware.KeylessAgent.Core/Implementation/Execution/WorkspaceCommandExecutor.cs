@@ -3,6 +3,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Execution;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Parser;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 
 namespace ImanSoftware.KeylessAgent.Core.Implementation.Execution;
 
@@ -22,11 +23,12 @@ internal sealed class WorkspaceCommandExecutor : IWorkspaceCommandExecutor
             new EditFileExecutor(),
             new DeleteFileExecutor(),
             new ReadFileExecutor(),
-            new RunCommandExecutor(),
+            new RunCommandExecutor(new CommandPolicy(), new CommandRiskClassifier(), new ProcessRunner(), new EnvironmentProbe()),
             new AskExecutor(),
             new CommitExecutor(),
             new NextExecutor(),
             new MoveFileExecutor(),
+            new MkdirExecutor(),
             new DoneExecutor())
     {
     }

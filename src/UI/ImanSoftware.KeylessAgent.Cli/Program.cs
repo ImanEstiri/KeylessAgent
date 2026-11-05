@@ -1,8 +1,12 @@
 using ImanSoftware.KeylessAgent.Cli.Commands.Chrome;
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
+using ImanSoftware.KeylessAgent.Cli.Commands.Diagnostics;
 using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
+using ImanSoftware.KeylessAgent.Cli.Commands.Hide;
+using ImanSoftware.KeylessAgent.Cli.Commands.Show;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 using ImanSoftware.KeylessAgent.Cli.Commands.Resume;
+using ImanSoftware.KeylessAgent.Cli.Commands.Selectors;
 using ImanSoftware.KeylessAgent.Cli.Commands.Run;
 using ImanSoftware.KeylessAgent.Cli.Commands.Undo;
 using Spectre.Console;
@@ -51,6 +55,29 @@ app.Configure(config =>
         .WithExample("doctor", @"G:\Projects\MyApp")
         .WithExample("doctor", @"G:\Projects\MyApp", "--capture", @".\doctor-capture")
         .WithExample("doctor", @"G:\Projects\MyApp", "--watch");
+
+    config.AddCommand<ShowCommand>("show")
+        .WithDescription("Bring the offscreen/minimized Chrome window into view (pure CDP window move; never disturbs a running turn).")
+        .WithExample("show", @"G:\Projects\MyApp")
+        .WithExample("show", @"G:\Projects\MyApp", "--peek", "3");
+
+    config.AddCommand<HideCommand>("hide")
+        .WithDescription("Move the Chrome window back offscreen after a manual show.")
+        .WithExample("hide", @"G:\Projects\MyApp");
+
+    config.AddBranch<Spectre.Console.Cli.CommandSettings>("diagnostics", branch =>
+    {
+        branch.AddCommand<DiagnosticsChromeCommand>("chrome")
+            .WithDescription("Print the running Chrome's command line and verify the anti-occlusion flags.")
+            .WithExample("diagnostics", "chrome", @"G:\Projects\MyApp");
+    });
+
+    config.AddBranch<Spectre.Console.Cli.CommandSettings>("selectors", branch =>
+    {
+        branch.AddCommand<SelectorsRefreshCommand>("refresh")
+            .WithDescription("Force-merge the workspace selectors.json with the current embedded defaults (never-customized keys refreshed, customizations preserved, backup written).")
+            .WithExample("selectors", "refresh", @"G:\Projects\MyApp");
+    });
 
     config.AddCommand<ConfigCommand>("config")
         .WithDescription("Show the effective configuration of a workspace (keyless.json is created with defaults when missing).")

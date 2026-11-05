@@ -97,9 +97,11 @@ keyless doctor "G:\Projects\MyApp"                                    # live sel
 keyless run "G:\Projects\MyApp" "..." --dry-run                       # print what would happen, execute nothing
 keyless run "G:\Projects\MyApp" "..." --verbose                     # (-v) write .agent/logs/diagnostics.log
 keyless run "G:\Projects\MyApp" "..." --timing                        # print the per-phase timing table after the turn
+keyless run "G:\Projects\MyApp" "..." --pace Step                    # one command per response (Step | Balanced | Batch)
+keyless run "G:\Projects\MyApp" "..." --refresh-env                  # re-probe git/dotnet/python/node instead of the 24 h cache
 ```
 
-The interactive session understands `/workspace <path>` (switch workspaces), `/newchat` (fresh chat, same workspace) and `/help`.
+The interactive session understands `/workspace <path>` (switch workspaces), `/newchat` (fresh chat, same workspace), `/tools` / `/refreshenv` (show / re-probe the installed tools) and `/help`.
 
 **Exit codes** for `keyless run` / `keyless resume`:
 
@@ -113,6 +115,34 @@ The interactive session understands `/workspace <path>` (switch workspaces), `/n
 **Ctrl+C** is safe everywhere: during a turn it cancels only that turn (a second press within 2 seconds exits the session); at the idle `keyless>` prompt it exits gracefully with code 0 — logs are flushed and the browser connector is disposed.
 
 The first time a command runs in a workspace it creates `keyless.json` (configuration) and `selectors.json` (editable chat selectors) — see [docs/configuration.md](docs/configuration.md).
+
+## Desktop app (WPF)
+
+KeylessAgent ships a WPF desktop UI ([docs/wpf-ui.md](docs/wpf-ui.md)) built on the same Core
+loop — no API key, no second brain: everything the CLI does, in windows instead of a console.
+
+- **Agent page** — activity feed (progress steps, model messages, commands), a multiline composer with dry-run toggle, Send/Stop (Ctrl+Enter / Esc), a changes panel with a collapsible unified diff viewer (CRLF-safe, large-file fast path), the turn summary card and one-click undo of the newest backup batch (with a confirmation dialog).
+- **Workspace page** — folder picker, recent workspaces (max 10, persisted), and git capability inspection (git installed? repository? branch? agent branch?).
+- **Doctor page** — the live selector check from `keyless doctor` with status chips and a Start-Chrome button; the connection kind shows up in the status bar.
+- **Settings page** — the workspace's `keyless.json` read-only (grouped), open/reload buttons, plus UI preferences: Reduce effects, backdrop (Auto/Mica/Acrylic/None), dry run by default.
+- **About page** — version, description and the terms-of-service notice.
+- **Shell** — Windows 11 Mica/Acrylic backdrop with an app-drawn fallback, custom title bar, queued modal dialogs (one at a time, cancelled when you stop a turn), Persian/Arabic composer direction detection, window size/position persistence with off-screen protection, and a crash log at `%LOCALAPPDATA%\KeylessAgent\wpf-crash.log`.
+
+```bash
+dotnet run --project src/UI/ImanSoftware.KeylessAgent.Wpf
+```
+
+Requirements: Windows plus the .NET 10 SDK (to run from source); the published app needs the .NET 10 **Desktop Runtime**. On Windows 11 22H2+ the window uses the system Mica/Acrylic backdrop (Auto/Mica/Acrylic/None selectable in Settings); older systems get an app-drawn gradient.
+
+Publish:
+
+```powershell
+powershell -File src\UI\ImanSoftware.KeylessAgent.Wpf\publish-wpf.ps1
+```
+
+This publishes into `artifacts\wpf` (framework-dependent, win-x64), verifies the Playwright driver files are present, and reports a summary. Screenshot placeholders: *(to be added)*.
+
+> Verification status: the WPF app is covered by 201 automated tests and a warning-free build, and the publish flow was executed successfully — but **nobody has visually reviewed the running app yet**. Expect rough edges; visual feedback is very welcome.
 
 ## How it works
 
@@ -166,7 +196,9 @@ MSG>>>
 @@eof
 ```
 
-Commands: `say`, `newfile`, `updatefile`, `editfile` (FIND/REPLACE, must match exactly once), `deletefile`, `readfile`, `runcommand`, `ask`, `commit`, `done`. Everything the model writes is English; file content may be any language. No outer Markdown fence.
+Commands: `say`, `newfile`, `updatefile`, `editfile` (FIND/REPLACE, must match exactly once), `mkdir`, `movefile`, `deletefile`, `readfile`, `runcommand`, `ask`, `commit`, `next`, `done`. Everything the model writes is English; file content may be any language. No outer Markdown fence.
+
+Successful file commands carry a `verified:` line (path, bytes, lines, SHA-8, first/last snippets) in the results — the model can trust the write landed without re-reading the file. See the full grammar, pacing and the error-code catalog in [docs/agentscript-spec.md](docs/agentscript-spec.md).
 
 ## Reply sources
 
@@ -191,6 +223,34 @@ The reasoning block is never read, logged, or sent anywhere. See [docs/browser-a
 | Transparency | full per-turn transcript in `.agent/logs`, diffs before file changes in Ask mode |
 
 Details: [docs/security.md](docs/security.md) and [docs/git-workflow.md](docs/git-workflow.md).
+
+## Tools and missing-tool behavior
+
+At session start the agent probes `git`, `dotnet`, `node`, `npm` and `python` (resolving `python` / `py -3` / `python3`, and flagging WindowsApps store aliases) and prints one line:
+
+```text
+Tools: git OK, dotnet OK, python MISSING (https://www.python.org/downloads/), node MISSING (https://nodejs.org), npm MISSING (https://nodejs.org)
+```
+
+`runcommand`s whose program the environment lists as missing are **never started**: the result comes back as `KA_TOOL_MISSING` ("…Do not retry it. Use the file commands, or ask the user to install it.") and counts as a normal failed command. The probe is cached for 24 h, re-checked per tool after 1 h, and auto-invalidated when reality disagrees with the cache. `run --refresh-env` and `/refreshenv` re-probe manually.
+
+## Offline and composer reset
+
+Before every send the agent checks `navigator.onLine` plus a cheap probe of the chat origin. Offline: nothing is uploaded or sent — the result is `KA_NETWORK_OFFLINE` ("Check your connection and try again."), optionally after waiting `Browser.WaitForNetworkSeconds` for the connection. A drop during upload, send-confirmation or the reply wait stops the wait at once, cleans the composer, and reports the same code; the chat session stays valid, so you can resend the same request.
+
+Before every message the composer is reset to a clean state: leftover text is cleared and stale attachment chips (failed ones first) are removed, with a page reload as fallback. After a failed or cancelled attempt with attachments, the same cleanup runs best-effort, so the next message never inherits stale chips.
+
+## Pace modes
+
+`Agent.Pace` caps how many non-`say` commands one response may carry — **Step** = 1, **Balanced** = 3 (default), **Batch** = `Limits.MaxCommandsPerResponse`; the effective limit is `min(Pace, MaxCommandsPerResponse)`:
+
+| Pace | Per response | Prompt rule |
+| --- | --- | --- |
+| `Step` | 1 command | One command, then `@@next`; verify the result (verification summary or `readfile`) before the next step. Iterations raised to ≥ 60. |
+| `Balanced` | 3 commands | Group at most 3 related commands, verify after each group. |
+| `Batch` | `Limits.MaxCommandsPerResponse` | Unchanged batch behavior. |
+
+Extra commands are skipped with `pace=<Pace>: only N command(s) per response; send the next one after reading this result`. Set it in `keyless.json` (`"Agent": { "Pace": "Step" }`) or per turn with `keyless run … --pace Step`.
 
 ## Known limitations
 
@@ -218,12 +278,13 @@ KeylessAgent/
 │   │   ├── ImanSoftware.KeylessAgent.Abstractions/   # models, enums, service contracts, IAgentUserInterface
 │   │   └── ImanSoftware.KeylessAgent.Core/           # parser, executors, git, snapshot, browser, agent loop, factory
 │   ├── UI/
-│   │   └── ImanSoftware.KeylessAgent.Cli/            # the `keyless` dotnet tool (Spectre.Console.Cli)
+│   │   ├── ImanSoftware.KeylessAgent.Cli/            # the `keyless` dotnet tool (Spectre.Console.Cli)
+│   │   └── ImanSoftware.KeylessAgent.Wpf/            # WPF desktop UI (MVVM) + publish-wpf.ps1
 │   ├── Playground/                                   # manual-testing console app (fake chat provider)
-│   └── tests/                                        # xunit + FluentAssertions (247 tests)
-├── docs/                                             # architecture, AgentScript spec, configuration, security, …
+│   └── tests/                                        # xunit + FluentAssertions (733 tests: Core/CLI + WPF)
+├── docs/                                             # architecture, AgentScript spec, configuration, wpf-ui, …
 ├── Directory.Build.props / Directory.Packages.props  # shared properties + Central Package Management
-└── publish.ps1                                       # packs the tool into artifacts/
+└── publish.ps1                                       # packs the CLI tool into artifacts/
 ```
 
 ## Building from source

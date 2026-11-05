@@ -16,4 +16,9 @@ internal sealed class InteractiveSettings : CommandSettings
     [CommandOption("--timing")]
     [Description("Print the per-phase timing table after each turn.")]
     public bool Timing { get; init; }
+
+
+    [CommandOption("--pace")]
+    [Description("Reply pacing: Step (1 command per response), Balanced (3) or Batch (Limits.MaxCommandsPerResponse). Default Balanced.")]
+    public ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace? Pace { get; init; }
 }

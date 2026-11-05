@@ -24,4 +24,12 @@ internal sealed class RunSettings : CommandSettings
     [CommandOption("--timing")]
     [Description("Print the per-phase timing table after the turn.")]
     public bool Timing { get; init; }
+
+    [CommandOption("--refresh-env")]
+    [Description("Re-probe the environment (git/dotnet/node/npm/python) instead of using the 24 h cache.")]
+    public bool RefreshEnv { get; init; }
+
+    [CommandOption("--pace")]
+    [Description("Reply pacing: Step (1 command per response), Balanced (3) or Batch (Limits.MaxCommandsPerResponse). Default Balanced.")]
+    public ImanSoftware.KeylessAgent.Abstractions.Models.Enums.AgentPace? Pace { get; init; }
 }

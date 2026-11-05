@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="ImanSoftware.KeylessAgent.Wpf"/>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- Per-Monitor-V2 DPI awareness: the Show/Hide Chrome buttons compute window geometry
+           from screen APIs; without awareness those return OS-virtualized pixels at
+           non-100% display scales that do not match the DPI-aware Chrome's physical grid.
+           (An explicit manifest beats ApplicationHighDpiMode: verified to embed nothing.) -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>

@@ -29,7 +29,30 @@ internal sealed record ProcessResult(int ExitCode, string Output, string Error, 
 /// Runs external processes (git, dotnet, the snapshot bat files) with output capture,
 /// a hard timeout and full process-tree kill. Process execution deliberately does not go through IFileStorage.
 /// </summary>
-internal sealed class ProcessRunner
+internal interface IProcessRunner
+{
+    /// <summary>
+    /// Runs a process to completion without a console window.
+    /// </summary>
+    /// <param name="fileName">The executable to run.</param>
+    /// <param name="arguments">The argument string.</param>
+    /// <param name="workingDirectory">The working directory for the process.</param>
+    /// <param name="timeoutSeconds">Wall-clock timeout; the process tree is killed when exceeded.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The captured result (exit code, output, error, duration, timeout/cancel reason).</returns>
+    Task<ProcessResult> RunAsync(
+        string fileName,
+        string arguments,
+        string workingDirectory,
+        int timeoutSeconds,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Real implementation: System.Diagnostics.Process with output capture, a hard timeout and a
+/// full process-tree kill on timeout or cancellation.
+/// </summary>
+internal sealed class ProcessRunner : IProcessRunner
 {
     /// <summary>
     /// Runs a process to completion without a console window.
@@ -73,8 +96,11 @@ internal sealed class ProcessRunner
         // Close stdin immediately so batch files that end with `pause` can never hang waiting for a key.
         process.StandardInput.Close();
 
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        // The readers deliberately take NO cancellation token: on timeout/cancel the process
+        // is killed, which closes the pipes and ends the readers — cancelling the readers
+        // themselves would throw away the partial output printed before the kill.
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));

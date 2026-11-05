@@ -12,6 +12,8 @@ internal sealed class InteractiveSession
     private readonly IAnsiConsole _console;
     private readonly Func<string, string, CancellationToken, Task<int>> _runTurn;
     private readonly Func<string, string, CancellationToken, Task<string?>> _switchWorkspace;
+    private readonly ImanSoftware.KeylessAgent.Core.Implementation.Workspace.IEnvironmentTools? _environmentTools;
+    private bool _toolsLinePrinted;
 
     /// <summary>Set when a graceful exit was requested (idle Ctrl+C or the second press).</summary>
     private readonly TaskCompletionSource<bool> _exitRequested =
@@ -34,11 +36,13 @@ internal sealed class InteractiveSession
     public InteractiveSession(
         IAnsiConsole console,
         Func<string, string, CancellationToken, Task<int>> runTurn,
-        Func<string, string, CancellationToken, Task<string?>> switchWorkspace)
+        Func<string, string, CancellationToken, Task<string?>> switchWorkspace,
+        ImanSoftware.KeylessAgent.Core.Implementation.Workspace.IEnvironmentTools? environmentTools = null)
     {
         _console = console;
         _runTurn = runTurn;
         _switchWorkspace = switchWorkspace;
+        _environmentTools = environmentTools;
     }
 
     /// <summary>
@@ -73,6 +77,22 @@ internal sealed class InteractiveSession
     public async Task<(int ExitCode, string Workspace)> RunAsync(string workspace, CancellationToken cancellationToken)
     {
         Console.CancelKeyPress += OnCancelKeyPress;
+
+        // One explicit tool status per session (git/dotnet/python/node with download pages).
+        if (_environmentTools is not null && !_toolsLinePrinted)
+        {
+            _toolsLinePrinted = true;
+            try
+            {
+                var tools = await _environmentTools.GetToolsCachedAsync(workspace, forceRefresh: false, cancellationToken);
+                _console.WriteLine(ImanSoftware.KeylessAgent.Core.Implementation.Workspace.IEnvironmentTools.FormatToolsLine(tools));
+            }
+            catch
+            {
+                // The tools line is informational; a probe failure never blocks the session.
+            }
+        }
+
         try
         {
             while (true)
@@ -167,6 +187,21 @@ internal sealed class InteractiveSession
                 PrintHelp();
                 return null;
 
+            case "/tools":
+            case "/refreshenv":
+                if (_environmentTools is null)
+                {
+                    _console.MarkupLine("[yellow][[!]][/] Environment tools are not available in this session.");
+                    return null;
+                }
+
+                var refreshed = await _environmentTools.GetToolsCachedAsync(
+                    workspace, forceRefresh: command == "/refreshenv", cancellationToken);
+                _console.WriteLine(ImanSoftware.KeylessAgent.Core.Implementation.Workspace.IEnvironmentTools.FormatToolsLine(refreshed));
+                if (command == "/refreshenv")
+                    _console.MarkupLine("[cyan]Environment re-probed.[/]");
+                return null;
+
             case "/newchat":
                 var clearError = await _switchWorkspace(workspace, workspace, cancellationToken);
                 if (clearError is not null)
@@ -213,6 +248,8 @@ internal sealed class InteractiveSession
         _console.MarkupLine("[cyan]Available commands[/]");
         _console.MarkupLine("  [white]/workspace <path>[/]  Switch to another workspace (validated; fresh chat session)");
         _console.MarkupLine("  [white]/newchat[/]           Start a fresh chat in the same workspace");
+        _console.MarkupLine("  [white]/tools[/]            Show the installed tools (git/dotnet/python/node)");
+        _console.MarkupLine("  [white]/refreshenv[/]       Re-probe the environment tools");
         _console.MarkupLine("  [white]/help[/]              Show this list");
         _console.MarkupLine("[grey]Anything else is sent to the agent as a request. An empty line quits.[/]");
     }

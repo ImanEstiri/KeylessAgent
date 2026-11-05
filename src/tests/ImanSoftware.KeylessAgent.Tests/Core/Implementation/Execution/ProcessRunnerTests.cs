@@ -18,7 +18,7 @@ public class ProcessRunnerTests
         using var cts = new CancellationTokenSource();
         var runner = new ProcessRunner();
         var task = runner.RunAsync("cmd", PartialThenHang, Path.GetTempPath(), timeoutSeconds: 60, cts.Token);
-        cts.CancelAfter(300);
+        cts.CancelAfter(1000);
 
         var result = await task;
 

@@ -368,6 +368,35 @@ public class WorkspaceCommandExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task RunCommand_RealShell_EchoHello_Works()
+    {
+        var result = await Run(new RunCommandCommand("echo hello") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Ok, "echo is a cmd.exe built-in and runs under the shell wrapper");
+        result.Output.Should().Contain("hello");
+    }
+
+    [Fact]
+    public async Task RunCommand_RealShell_MkdirBuiltIn_CreatesTheFolder()
+    {
+        var folder = "ka-shell-mkdir-" + Guid.CreateVersion7().ToString("N")[..8];
+        var result = await Run(new RunCommandCommand($"mkdir {folder}") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Ok, "mkdir is a cmd.exe built-in");
+        Directory.Exists(Path.Combine(_root, folder)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunCommand_RealShell_AndChain_RunsBoth()
+    {
+        var result = await Run(new RunCommandCommand("echo a && echo b") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Ok);
+        result.Output.Should().Contain("a");
+        result.Output.Should().Contain("b");
+    }
+
+    [Fact]
     public async Task RunCommand_InAskMode_RequiresConfirmation()
     {
         _ui.ConfirmAnswer = false;

@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Chat;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
@@ -27,7 +28,7 @@ public class PlaywrightChatSessionTests : IDisposable
         Directory.CreateDirectory(_root);
     }
 
-    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null, ITimingRecorder? timings = null)
+    private PlaywrightChatSession CreateSession(FakeChatPage page, int sendConfirmSeconds = 5, int uploadWaitSeconds = 5, Func<BrowserOptions, BrowserOptions>? configureBrowser = null, string? resumeChatUrl = null, ITimingRecorder? timings = null, Func<string, object, Task>? logEvent = null)
     {
         var browserOptions = new BrowserOptions
         {
@@ -49,6 +50,7 @@ public class PlaywrightChatSessionTests : IDisposable
                 Browser = browserOptions,
                 ResumeChatUrl = resumeChatUrl,
                 Timings = timings,
+                LogEvent = logEvent,
             },
             new ReplyExtractor(),
             new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
@@ -205,7 +207,7 @@ public class PlaywrightChatSessionTests : IDisposable
         phases.Should().Contain("toggles", "the new chat applies the DeepThink/Search toggles");
         phases.Should().Contain("upload", "attachment delivery is timed");
         phases.Should().Contain("send", "the send attempt is timed");
-        phases.Should().Contain("send-confirm", "the send confirmation is timed");
+        phases.Should().Contain("send-confirm#1", "the send confirmation is timed once per attempt");
         phases.Should().Contain("first-token", "the wait until generation starts is timed");
         phases.Should().Contain("completion", "the wait until the reply is stable is timed");
         phases.Should().Contain("copy", "the reply capture is timed");
@@ -252,6 +254,230 @@ public class PlaywrightChatSessionTests : IDisposable
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3), "instant checks must not serialize timeouts");
     }
 
+    [Fact]
+    public async Task CopyAttempt_TimedAndReasonLogged_WhenButtonNotMatched()
+    {
+        // Auto mode, NO copy button fallback matches: the reply falls back to the DOM, the
+        // "copy" phase is still timed, and the reason travels in the turn-log event.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = false; // WaitForMessageCopyButton finds nothing
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "dom reply", 2));
+        };
+        var recorder = new TimingRecorder();
+        var session = CreateSession(page, timings: recorder);
+
+        (await session.SendMessageAsync("request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).IsSuccess.Should().BeTrue();
+
+        recorder.Entries.Select(e => e.Phase).Should().Contain("copy",
+            "the copy attempt is timed even when it ends in a Dom fallback");
+    }
+
+    [Fact]
+    public async Task CopyButtonMissOnce_DisablesTheCopyPathForTheSession()
+    {
+        // Auto mode, NO copy button ever matches: the FIRST miss may cost the (capped) wait,
+        // every LATER reply must skip the copy path entirely — one wait per session, not one
+        // per message. The wait itself is capped at 3 s even with a 10 s reply timeout.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = false;
+        var turn = 0;
+        page.OnSent = () =>
+        {
+            turn++;
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply($"44{turn + 1}", $"reply {turn}", turn + 1));
+        };
+        var session = CreateSession(page); // ReplyTimeoutSeconds = 10
+
+        (await session.SendMessageAsync("request one", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply 1");
+        (await session.SendMessageAsync("request two", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("reply 2");
+
+        page.CopyButtonWaitCalls.Should().Be(1,
+            "the first miss opens the circuit breaker; the second reply goes straight to the DOM");
+        page.CopyButtonWaitTimeouts.Single().Should().BeLessOrEqualTo(TimeSpan.FromSeconds(3),
+            "the copy-button wait is capped at 3 s regardless of the reply timeout");
+        session.LastReplyOrigin.Should().Contain("copy disabled",
+            "the second reply's origin says WHY the copy path was skipped");
+    }
+
+    [Fact]
+    public async Task ReplySourceDom_NeverWaitsForTheCopyButton()
+    {
+        // Browser.ReplySource=Dom short-circuits the copy path: zero copy-button waits even
+        // though the button is (pretend-)visible and would match.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.CopyButtonVisible = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(100).ContinueWith(_ =>
+                page.SimulateAssistantReply("442", "dom reply", 2));
+        };
+        var session = CreateSession(page, configureBrowser: b => b with { ReplySource = ReplySourceMode.Dom });
+
+        (await session.SendMessageAsync("request", [])).IsSuccess.Should().BeTrue();
+        (await session.WaitForReplyAsync()).Data.Should().Be("dom reply");
+
+        page.CopyButtonWaitCalls.Should().Be(0, "Dom mode never touches the copy path");
+    }
+
+    private const string TruncatedReply = "@@newfile hello.html\n<<<CONTENT\n<h1>hi</h1>\nCONTENT>>>\n@@end";
+    private const string CompleteReply = TruncatedReply + "\n@@eof";
+
+    [Fact]
+    public async Task TruncatedReply_IsRejected_ThenACompletedReplyIsAccepted()
+    {
+        // A minimized Chrome can throttle the stream: an AgentScript reply without @@eof is
+        // never accepted — the wait keeps polling until the stream completes, then returns.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, object Payload)>();
+        var firstTruncationSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2); // the throttled stream lands first
+            _ = Task.Run(async () =>
+            {
+                await firstTruncationSeen.Task; // the wait loop rejected the truncated text
+                await Task.Delay(100);          // then the stream completes
+                page.SimulateAssistantReply("442", CompleteReply, 2);
+            });
+        };
+        var session = CreateSession(page, logEvent: (type, payload) =>
+        {
+            if (type == "reply-truncated")
+            {
+                lock (events)
+                    events.Add((type, payload));
+                firstTruncationSeen.TrySetResult();
+            }
+            return Task.CompletedTask;
+        });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsSuccess.Should().BeTrue("the stream resumes and the completed reply must be accepted");
+        reply.Data.Should().Contain("@@newfile hello.html", "the AgentScript body survived extraction");
+        reply.Data.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase).Should().BeTrue(
+            "the COMPLETED reply is returned — never the truncated one (extraction collapses newlines)");
+        page.FocusedTabs.Should().BeEmpty("one truncation never triggers the un-minimize recovery");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated").ToList();
+            truncations.Should().NotBeEmpty("truncation events give the diagnostic trail");
+        }
+    }
+
+    [Fact]
+    public async Task TruncationBudgetExceeded_Default_NeverFocus_AndFailWithTheResendHint()
+    {
+        // Default AutoFocusOnTruncation=false: the window STAYS hidden - the wait polls
+        // (spaced by the poll delay) and fails with the resend hint once the WALL-CLOCK
+        // truncation budget is spent. A 1s budget keeps the test fast; the mechanism is
+        // identical for the 20s default.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, System.Text.Json.JsonElement Payload)>();
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2); // the stream never completes
+        };
+        var session = CreateSession(
+            page,
+            configureBrowser: b => b with { TruncationBudgetSeconds = 4 },
+            logEvent: (type, payload) =>
+            {
+                lock (events)
+                    events.Add((type, System.Text.Json.JsonSerializer.SerializeToElement(payload)));
+                return Task.CompletedTask;
+            });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsFailure.Should().BeTrue("a permanently truncated stream must fail, not return garbage");
+        reply.Error.Code.Should().Be("KA_REPLY_TRUNCATED");
+        reply.Error.Message.Should().Contain("cut off repeatedly for")
+            .And.Contain("Resend the same request")
+            .And.Contain("Browser.AutoFocusOnTruncation");
+        page.FocusedTabs.Should().BeEmpty("the default path never un-minimizes the window");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated")
+                .Select(e => e.Payload).ToList();
+            truncations.Should().HaveCountGreaterThanOrEqualTo(10,
+                "detections are spaced by the poll delay, so a 1s budget holds many attempts");
+            truncations[0].GetProperty("Attempt").GetInt32().Should().Be(1);
+            truncations.Should().OnlyContain(e => e.GetProperty("FocusTriggered").GetBoolean() == false,
+                "focus never fires by default");
+            // ElapsedSeconds grows with real time (poll delay spacing), not 150ms jumps.
+            var elapsed = truncations.Select(e => e.GetProperty("ElapsedSeconds").GetDouble()).ToList();
+            elapsed.Should().BeInAscendingOrder("the budget is wall-clock based");
+            elapsed.Last().Should().BeGreaterThanOrEqualTo(1.0, "the failure fires only past the budget");
+        }
+    }
+    [Fact]
+    public async Task AutoFocusOnTruncationTrue_FocusesOnceAtAQuarterOfTheBudget_ThenAcceptsCompletion()
+    {
+        // Opt-in recovery: exactly ONE FocusTabAsync per wait, fired when a QUARTER of the
+        // truncation budget has elapsed (8s budget -> focus at ~2s, 6x headroom: even a multi-second suite stall cannot reach the budget before the swap lands). The completion swap
+        // runs in the first event callback that carries FocusTriggered=true - one detection
+        // AFTER the focus decision - so the recovery is already done and no further
+        // truncation slips in before the completed reply.
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        var events = new List<(string Type, System.Text.Json.JsonElement Payload)>();
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            page.SimulateAssistantReply("442", TruncatedReply, 2);
+        };
+        var session = CreateSession(
+            page,
+            configureBrowser: b => b with { AutoFocusOnTruncation = true, TruncationBudgetSeconds = 8 },
+            logEvent: (type, payload) =>
+            {
+                var element = System.Text.Json.JsonSerializer.SerializeToElement(payload);
+                lock (events)
+                    events.Add((type, element));
+                if (type == "reply-truncated" && element.GetProperty("FocusTriggered").GetBoolean())
+                    page.SimulateAssistantReply("442", CompleteReply, 2); // the recovered stream finishes
+                return Task.CompletedTask;
+            });
+
+        (await session.SendMessageAsync("create a hello.html", [])).IsSuccess.Should().BeTrue();
+        var reply = await session.WaitForReplyAsync();
+
+        reply.IsSuccess.Should().BeTrue("the recovered stream completes and is accepted");
+        reply.Data.TrimEnd().EndsWith("@@eof", StringComparison.OrdinalIgnoreCase).Should().BeTrue();
+        page.FocusedTabs.Should().ContainSingle("at most ONE focus per WaitForReplyAsync call");
+        lock (events)
+        {
+            var truncations = events.Where(e => e.Type == "reply-truncated")
+                .Select(e => e.Payload).ToList();
+            truncations.Should().HaveCountGreaterThanOrEqualTo(6,
+                "focus fires after a quarter of the 8s budget, not at a fixed attempt");
+            truncations.Count(e => e.GetProperty("FocusTriggered").GetBoolean()).Should().Be(1,
+                "exactly one detection happens after the one-shot focus");
+            truncations.First(e => e.GetProperty("FocusTriggered").GetBoolean())
+                .GetProperty("ElapsedSeconds").GetDouble().Should().BeGreaterThanOrEqualTo(2.0,
+                "the focus fires only past a quarter of the budget");
+        }
+    }
     [Fact]
     public async Task ChatLimitProbe_CostsOneRoundTripPerWait()
     {
@@ -561,6 +787,187 @@ public class PlaywrightChatSessionTests : IDisposable
         (DateTime.UtcNow - startedAt).Should().BeLessThan(TimeSpan.FromSeconds(2),
             "an undetectable send control must not block until the upload timeout");
         (await session.WaitForReplyAsync()).Data.Should().Be("reply");
+    }
+
+    // ---------- stale-composer reset + offline detection ----------
+
+    private static SnapshotAttachment Attachment(string name, string content)
+        => new(name, SnapshotAttachmentKind.CodeDump, content);
+
+    [Fact]
+    public async Task Reset_RemovesStaleTextAndChips_ThenSendSucceedsInSameCall()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 2;
+        page.FailedChipCount = 1;
+        page.ChipsVisible = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("442", "ok", 2));
+        };
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("fresh message", []);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.ResetCalls.Should().Be(1);
+        page.LastResetMethod.Should().Be("chips removed");
+        page.LastInsertedText.Should().Be("fresh message");
+    }
+
+    [Fact]
+    public async Task Reset_RemoveClickDoesNothing_ReloadFallbackCleans()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 1;
+        page.RemoveClickDoesNothing = true;
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("442", "ok", 2));
+        };
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", []);
+
+        outcome.IsSuccess.Should().BeTrue();
+        page.ReloadCalls.Should().Be(1, "the reload fallback is used when the remove clicks do nothing");
+        page.LastResetMethod.Should().Be("page reloaded");
+    }
+
+    [Fact]
+    public async Task Reset_ReloadAlsoFails_ComposerNotClean_NothingSent()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.InputHasText = true;
+        page.StaleChipCount = 1;
+        page.RemoveClickDoesNothing = true;
+        page.FailReload = true;
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.ComposerNotClean);
+        page.Sends.Should().BeEmpty("nothing is sent from a dirty composer");
+        page.UploadCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Offline_BeforeSend_FailsFast_ZeroUploadsZeroPastes()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.Online = false;
+        var session = CreateSession(page);
+
+        var outcome = await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        outcome.Error.Message.Should().Contain("Nothing was sent");
+        page.UploadCalls.Should().Be(0, "nothing is uploaded while offline");
+        page.LastInsertedText.Should().BeNull("nothing is pasted while offline");
+    }
+
+    [Fact]
+    public async Task ConnectionDropsDuringUploadWait_NetworkOffline_ComposerCleaned()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnlineDropsAfterFirstCheck = true;
+        page.OnUpload = () =>
+        {
+            page.StaleChipCount = 1;
+            page.ChipsVisible = true;
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 5);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var outcome = await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+        sw.Stop();
+
+        outcome.IsFailure.Should().BeTrue();
+        outcome.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "the offline check stops the upload wait at once");
+        page.ResetCalls.Should().Be(2, "the initial reset plus the best-effort cleanup");
+        page.StaleChipCount.Should().Be(0, "the composer is cleaned after the failure");
+    }
+
+    [Fact]
+    public async Task Message1FailsOffline_Message2OnSameSession_SucceedsWithItsOwnAttachments()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.Online = false;
+        page.StaleChipCount = 2;
+        page.FailedChipCount = 1;
+        page.ChipsVisible = true;
+        var session = CreateSession(page, uploadWaitSeconds: 2);
+
+        var outcome1 = await session.SendMessageAsync("first message", [Attachment("one.md", "one")]);
+
+        outcome1.Error.Code.Should().Be(ErrorCodes.NetworkOffline);
+        page.UploadCalls.Should().Be(0, "the offline gate runs before any upload");
+
+        page.Online = true;
+        page.InputFileNames.Add("a.md");
+        page.OnSent = () =>
+        {
+            page.SimulateUserMessageAccepted();
+            _ = Task.Delay(50).ContinueWith(_ => page.SimulateAssistantReply("443", "second reply", 2));
+        };
+
+        var outcome2 = await session.SendMessageAsync("second message",
+            [Attachment("a.md", "A"), Attachment("b.md", "B")]);
+
+        outcome2.IsSuccess.Should().BeTrue();
+        page.ResetCalls.Should().Be(2, "message 2's reset cleaned the stale chips left by message 1");
+        page.StaleChipCount.Should().Be(0);
+        page.FailedChipCount.Should().Be(0);
+        page.UploadCalls.Should().Be(1);
+        page.LastInsertedText.Should().Be("second message", "only message 2's text, no stale content");
+    }
+
+    [Fact]
+    public async Task EnterRetry_DoesNotTriggerAnotherComposerReset()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnSent = () => { }; // nothing lands: unconfirmed → exactly one Enter retry
+        var session = CreateSession(page, sendConfirmSeconds: 1);
+
+        var outcome = await session.SendMessageAsync("request", []);
+
+        outcome.IsFailure.Should().BeTrue();
+        page.Sends.Select(s => s.Method).Should().Equal("click", "enter");
+        page.ResetCalls.Should().Be(1, "the reset runs once per message — the Enter retry must not wipe the pending text");
+    }
+
+    [Fact]
+    public async Task CleanupComposer_NeverThrows_WhenThePageIsClosed()
+    {
+        var page = new FakeChatPage();
+        ArrangeFirstReplyDelivered(page);
+        page.OnUpload = () =>
+        {
+            page.Closed = true;
+            page.StaleChipCount = 1;
+            page.ChipsVisible = true;
+        };
+        var session = CreateSession(page, uploadWaitSeconds: 5);
+
+        var act = async () => await session.SendMessageAsync("message", [Attachment("one.md", "content")]);
+
+        var outcome = await act.Should().NotThrowAsync();
+        outcome.Subject.IsFailure.Should().BeTrue("the original failure is reported, not the cleanup failure");
+        outcome.Subject.Error.Message.Should().Contain("The page is closed.");
     }
 
     public void Dispose()

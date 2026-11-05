@@ -37,6 +37,7 @@ KeylessAgent mirrors the layout of [DepLens](https://github.com/ImanEstiri/DepLe
 | `ISnapshotService` | `Snapshot/SnapshotService` + `SnapshotFilter` + `WorkspaceAnalyzer` | generates the tree/code-dump snapshots natively in C# (no workspace scripts needed); filters/chunks attachments |
 | `IResultFormatter` | `Agent/ResultFormatter` | `[KEYLESSAGENT RESULTS]` messages |
 | `IChatProvider` / `IChatSession` | `Browser/PlaywrightChatProvider` / `PlaywrightChatSession`, `Browser/FakeChatProvider` | the browser behind an interface; fake for tests/Playground |
+| `IEnvironmentTools` / `EnvironmentProbe` | probes git/dotnet/node/npm/python (24 h cache, per-tool 1 h freshness, invalidation); powers the fail-fast tool rule and the UIs' Tools line |
 | `ISessionStore` | `Agent/SessionStore` | `.agent/session.json` (chat URL, branch, turn) |
 | `IConfigurationService` | `Configuration/ConfigurationService` | tolerant `keyless.json` load/validate/create |
 | `IAgentLoop` | `Agent/AgentLoop` | one call = one turn; orchestrates everything |

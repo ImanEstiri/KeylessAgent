@@ -29,6 +29,25 @@ internal sealed record AssistantStamp(string? Key, int TextHash, int VisibleCoun
 }
 
 /// <summary>
+/// The composer state snapshot taken before every send and after failures: text length,
+/// attachment-chip counts and the send-control state.
+/// </summary>
+/// <param name="TextLength">Characters currently in the input box.</param>
+/// <param name="ChipCount">How many attachment chips are visible.</param>
+/// <param name="FailedChipCount">How many chips show the failed/error state.</param>
+/// <param name="SendEnabled">The send-control state (null when undetectable).</param>
+internal sealed record ComposerState(int TextLength, int ChipCount, int FailedChipCount, bool? SendEnabled);
+
+/// <summary>
+/// The outcome of a composer reset. <see cref="Clean"/> means the next message can be typed
+/// safely; otherwise the caller fails the turn with KA_COMPOSER_NOT_CLEAN.
+/// </summary>
+/// <param name="Clean">The text is empty and no chips remain.</param>
+/// <param name="Method">How the state was reached: "already clean", "text cleared", "chips removed", "page reloaded", "not clean".</param>
+/// <param name="ChipsRemoved">How many chips were removed by clicking their remove controls.</param>
+internal sealed record ComposerResetResult(bool Clean, string Method, int ChipsRemoved);
+
+/// <summary>
 /// The page operations the chat session needs — the seam that makes the reply-waiting logic
 /// unit-testable against a fake page. All operations are async and accept a CancellationToken
 /// so Ctrl+C interrupts Playwright waits.
@@ -129,6 +148,16 @@ internal interface IChatPage
     Task<bool> IsChatLimitNoticeVisibleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Fingerprint (item key + text hash) of the newest MESSAGE ITEM — user or assistant —
+    /// used by the send confirmation to detect that the sent message landed. Null when the
+    /// list is empty.
+    /// </summary>
+    Task<AssistantStamp?> GetNewestItemStampAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The visible text of the newest message item (user or assistant), or null.</summary>
+    Task<string?> GetNewestItemTextAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Instant presence+visibility check across the fallback list in ONE round trip (no
     /// waiting) — for "is it there right now" questions: polling loops, login probes, notices.
     /// </summary>
@@ -143,4 +172,34 @@ internal interface IChatPage
 
     /// <summary>Brings the tab to the front so the user can act on it (best-effort).</summary>
     Task FocusTabAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Snapshots the composer: text length, chip/failed-chip counts, send state.</summary>
+    Task<ComposerState> InspectComposerAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes the composer safe for the next message: waits out a still-running generation (up
+    /// to <paramref name="replyTimeoutSeconds"/>), clears the text (select all + delete,
+    /// verified), removes every attachment chip (failed ones first, remove-control clicks
+    /// with re-inspection, at most 10 rounds in a 3 s budget), falls back to reloading the
+    /// chat page (which discards unsent drafts and attachments), and verifies the result.
+    /// Never throws for page-level failures — an unusable composer is reported through
+    /// <see cref="ComposerResetResult.Clean"/>.
+    /// </summary>
+    Task<ComposerResetResult> ResetComposerAsync(int replyTimeoutSeconds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the page is online: navigator.onLine AND a cheap no-store probe of the chat
+    /// origin (any HTTP response counts as online). Cached for ~2 seconds.
+    /// </summary>
+    Task<bool> IsOnlineAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Whether any attachment chip shows the failed/error state (the upload did not land).</summary>
+    Task<bool> AreFailedChipsVisibleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reloads the current chat page and waits for the input box to come back (the combined
+    /// wait helper). A reload discards unsent drafts and attachment chips — the safety net
+    /// when the chip selectors cannot be trusted.
+    /// </summary>
+    Task ReloadAndWaitForComposerAsync(CancellationToken cancellationToken = default);
 }

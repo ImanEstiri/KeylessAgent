@@ -1,0 +1,24 @@
+<Application x:Class="ImanSoftware.KeylessAgent.Wpf.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="Views/ShellWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Merge order matters: brushes reference colors, styles reference brushes.
+                     Views use DynamicResource so later phases can swap dictionaries. -->
+                <ResourceDictionary Source="Themes/Colors.xaml" />
+                <ResourceDictionary Source="Themes/Brushes.xaml" />
+                <ResourceDictionary Source="Themes/Typography.xaml" />
+                <ResourceDictionary Source="Themes/Converters.xaml" />
+                <ResourceDictionary Source="Themes/Glass.xaml" />
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+                <ResourceDictionary Source="Themes/Controls.Inputs.xaml" />
+                <ResourceDictionary Source="Themes/Dialogs.xaml" />
+                <ResourceDictionary Source="Themes/Pages.xaml" />
+                <ResourceDictionary Source="Themes/FeedTemplates.xaml" />
+                <ResourceDictionary Source="Themes/Animations.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

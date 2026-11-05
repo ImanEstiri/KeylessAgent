@@ -19,6 +19,8 @@ public class DocsConsistencyTests
     {
         var prompt = ReadResource("system-prompt.md");
 
+        prompt.Should().Contain("@@mkdir",
+            "the parser accepts @@mkdir; omitting it makes the model avoid a valid command");
         prompt.Should().Contain("@@movefile",
             "the parser accepts @@movefile; omitting it from the keyword list makes the model avoid (or invent around) a valid command");
         prompt.Should().Contain("@@next",
@@ -148,7 +150,7 @@ public class DocsConsistencyTests
         var documented = ParseDocumentedJsonBlocks(doc);
 
         var serializer = ConfigurationService.CreateSerializer();
-        var serialized = serializer.Serialize(new KeylessOptions());
+        var serialized = serializer.Serialize(KeylessOptions.CreateDefault());
         using var actual = JsonDocument.Parse(serialized);
 
         var problems = new List<string>();

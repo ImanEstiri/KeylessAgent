@@ -95,7 +95,24 @@ internal sealed class AgentLoop : IAgentLoop
     /// <summary>
     /// A compact fixed reminder (~8 lines) prepended to every user-request message.
     /// </summary>
-    private static string BuildPerMessageReminder(string envSummary, bool noGitMode)
+
+    /// <summary>
+    /// Counts the numbered plan lines ("1. …", "2) …") in the reply's FIRST say block.
+    /// Returns null when the reply has no say or no numbered plan.
+    /// </summary>
+    private static int? CountPlanSteps(IReadOnlyList<AgentScriptCommand> commands)
+    {
+        var say = commands.FirstOrDefault(c => c.Kind == CommandKind.Say) as SayCommand;
+        if (say is null)
+            return null;
+
+        var numbered = say.Message
+            .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .Count(line => System.Text.RegularExpressions.Regex.IsMatch(line, "^ *[0-9]+[.)] "));
+        return numbered > 0 ? numbered : null;
+    }
+
+    private static string BuildPerMessageReminder(string envSummary, bool noGitMode, AgentPace pace)
     {
         var gitNote = noGitMode
             ? "git is NOT installed — do not use @@commit or git commands."
@@ -103,12 +120,19 @@ internal sealed class AgentLoop : IAgentLoop
 
         return string.Join("\n",
             "[REMINDER] AgentScript v1 — reply ONLY with blocks from this set:",
-            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
-            "Each block: @@keyword [argument] line, optional <<<NAME text NAME>>> payload (markers alone on their own line), then @@end. End with @@eof. No @@command, no JSON, no markdown fence.",
+            "@@say / @@newfile <path> / @@updatefile <path> / @@editfile <path> / @@deletefile <path> / @@readfile <path> / @@runcommand / @@ask / @@commit / @@mkdir <path> / @@movefile <from> + <<<TO ... TO>>> / @@next + optional <<<MSG ... MSG>>> / @@done",
+            "The WHOLE reply is plain AgentScript v1 - no outer markdown fence around the reply. BUT every CONTENT payload inside @@newfile or @@updatefile MUST be wrapped in its own triple-backtick fence: a ``` (or ```html) line, then the file content, then a ``` line BEFORE CONTENT>>>. The program strips that inner fence before writing the file; without it the chat renderer collapses newlines and the reply is corrupted.",
+            "Example: @@newfile src/x.html, then <<<CONTENT, then ```html, then the file content, then ```, then CONTENT>>>, then @@end.",
+            "Markers are ALONE on their own line, then @@end ends the block. End with @@eof. No @@command, no JSON envelope.",
+            "Every payload marker (<<<NAME and NAME>>>) MUST be ALONE on its own line — never chain \"CONTENT>>> @@end @@newfile x\" on one line.",
             "You CAN create/modify files with @@newfile/@@updatefile/@@editfile/@@movefile — you DO execute commands yourself via @@runcommand. Never give the user commands to run.",
+            "Missing tools: never edit, move or create files via python/node/shell when a file command exists; if a needed tool is missing (e.g. dotnet for a build), say so in @@say, skip that verification, finish the rest, and tell the user what to install — never retry a missing tool.",
             $"Environment: {envSummary}",
+            "Commands run in cmd.exe on Windows (built-ins like mkdir/dir/type and && chains work); for files and folders prefer @@newfile/@@editfile/@@movefile — a new file's parent folders are created automatically.",
             gitNote,
-            "Investigate first (read-only commands, readfile) instead of guessing; use @@next to get results before continuing; use @@done to end the turn.",
+            pace == AgentPace.Step
+                ? "Pace is STEP: send ONE command, then @@next, and verify the result (verification summary or readfile) before the next command."
+                : "Group at most 3 related commands, verify after each group.",
             "[/REMINDER]");
     }
 
@@ -117,7 +141,9 @@ internal sealed class AgentLoop : IAgentLoop
         string request,
         IAgentUserInterface ui,
         bool dryRun = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool refreshEnv = false,
+        AgentPace? paceOverride = null)
     {
         var logger = new TurnLogger(ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage(), _time);
         KeylessOptions options = new();
@@ -136,6 +162,9 @@ internal sealed class AgentLoop : IAgentLoop
         var timings = new TimingRecorder();
         var runCommandCount = 0;
         var baseBranch = string.Empty;
+        // User interactions (approvals, menus, @@ask) are timed as "user-wait" so the
+        // summary can report the turn with and without time spent waiting for the user.
+        ui = new UserWaitTimingUi(ui, timings);
         var countingUi = new CommandCountingUserInterface(ui);
 
         try
@@ -147,7 +176,38 @@ internal sealed class AgentLoop : IAgentLoop
             if (configOutcome.IsFailure)
                 return Failed(configOutcome.Error.Message, dryRun);
             options = configOutcome.Data;
+            if (_configuration.LastLoadMigratedSchema)
+            {
+                ui.Say("[!] keyless.json in this workspace was upgraded to the current schema. " +
+                    "Previous defaults like ReplyTimeoutSeconds 300, SendConfirmSeconds 15 and UploadWaitSeconds 60 " +
+                    "have been replaced with the new tuned defaults. The old file is backed up as keyless.json.v1.bak in the workspace root.");
+            }
             timings.Stop("config");
+
+            // The pace (CLI/WPF override or keyless.json) decides how many non-say commands
+            // one response may carry: min(Pace limit, Limits.MaxCommandsPerResponse). Step
+            // pace also raises MaxIterationsPerTurn to at least 60 (one command per response
+            // needs more rounds) and says so once.
+            var pace = paceOverride ?? options.Agent.Pace;
+            var paceLimit = pace switch
+            {
+                AgentPace.Step => 1,
+                AgentPace.Balanced => 3,
+                _ => int.MaxValue,
+            };
+            var effectiveCommandLimit = Math.Min(paceLimit, options.Limits.MaxCommandsPerResponse);
+            var effectiveIterations = options.Limits.MaxIterationsPerTurn;
+            if (pace == AgentPace.Step && effectiveIterations < 60)
+            {
+                effectiveIterations = 60;
+                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SessionStarting,
+                    "Step pace: MaxIterationsPerTurn raised to 60 for this turn."));
+            }
+
+            // The system prompt must describe the pace actually used this turn.
+            options = options with { Agent = options.Agent with { Pace = pace } };
+            var executedNonSayTotal = 0; // turn-scoped counter for the "Step k/N" plan labels
+            var turnPlanSteps = (int?)null; // captured from the first say with a numbered plan
 
             if (options.Mode is ApprovalMode.AutoSafe or ApprovalMode.Auto)
             {
@@ -207,13 +267,11 @@ internal sealed class AgentLoop : IAgentLoop
                 await _git.EnsureAgentPathsExcludedAsync(workspaceRoot);
             timings.Stop("git-checks");
 
-            // --- Step 2c: Environment probe (parallel, 3s timeout each) ---
-            timings.Start("env-probe");
+            // --- Step 2c: environment probe STARTS here and runs CONCURRENTLY with the
+            // browser connection below; cached in .agent/env.json for 24h (keyed by the
+            // workspace itself). Its awaited result is read just before the first send.
             var environmentProbe = new EnvironmentProbe();
-            var env = await environmentProbe.ProbeAsync(workspaceRoot, cancellationToken);
-            var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
-            var envSummary = env.IsSuccess ? env.Data.Summary : "";
-            timings.Stop("env-probe");
+            var envTask = environmentProbe.ProbeCachedAsync(workspaceRoot, refreshEnv, cancellationToken);
 
             // --- Step 3+4: Git preconditions (menus) ---
             branch = noGitMode ? string.Empty : capabilities.CurrentBranch;
@@ -272,10 +330,29 @@ internal sealed class AgentLoop : IAgentLoop
                     dirtyOptions,
                     DefaultId: isAgentBranch ? "here" : "carry");
 
+                // On an agent branch the menu usually means the USER changed something the
+                // agent does not know about: name up to 5 paths that are not agent-made.
+                if (isAgentBranch)
+                {
+                    var notAgentMade = (await _changeTracker.DiffAsync(workspaceRoot, changeBaseline!, !noGitModeUsed, cancellationToken))
+                        .Data?
+                        .Where(c => agentChangedPaths is null || !agentChangedPaths.Contains(c.Path, StringComparer.OrdinalIgnoreCase))
+                        .Select(c => c.Path)
+                        .Take(5)
+                        .ToList();
+
+                    if (notAgentMade is { Count: > 0 })
+                    {
+                        ui.Say("[?] Changes I did not make: " + string.Join(", ", notAgentMade));
+                        _log.LogWarning("Dirty menu shown on an agent branch; paths not in AgentChangedPaths: {Paths}",
+                            string.Join(", ", notAgentMade));
+                    }
+                }
+
                 var dirtyChoice = await ui.ChooseAsync(dirtyMenu, cancellationToken);
                 lastDirtyChoice = dirtyChoice.SelectedId;
                 if (dirtyChoice.Cancelled || dirtyChoice.SelectedId == "cancel")
-                    return Failed("Cancelled by the user (dirty working tree).", dryRun);
+                    return Failed("Cancelled by the user (dirty working tree).", dryRun, ErrorCodes.Cancelled);
 
                 if (dirtyChoice.SelectedId == "stash")
                 {
@@ -371,12 +448,18 @@ internal sealed class AgentLoop : IAgentLoop
                     WorkspaceRoot = workspaceRoot,
                     ResumeChatUrl = session?.ChatUrl,
                     Timings = timings,
+                    LogEvent = (type, payload) => logger.AppendAsync(type, payload, CancellationToken.None),
                 }, cancellationToken);
             if (chatOutcome.IsFailure)
                 return Failed(chatOutcome.Error.Message, dryRun);
 
             await using var chatSession = chatOutcome.Data;
             timings.Stop("connect");
+
+            // The environment probe ran concurrently with the connection; collect its result.
+            var env = await envTask;
+            var envBlock = env.IsSuccess ? env.Data.Block : "[ENVIRONMENT unavailable]";
+            var envSummary = env.IsSuccess ? env.Data.Summary : "";
             savedSession = new AgentSession
             {
                 ChatUrl = chatSession.ChatUrl,
@@ -402,7 +485,7 @@ internal sealed class AgentLoop : IAgentLoop
 
             // --- Step 7: Send the request (system prompt on the first message of a new chat) ---
             timings.Start("attachments");
-            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options);
+            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, request, (type, payload) => logger.AppendAsync(type, payload, cancellationToken));
             timings.Stop("attachments");
             var attachments = attachmentsOutcome.IsSuccess ? attachmentsOutcome.Data : [];
             if (attachmentsOutcome.IsFailure)
@@ -457,7 +540,7 @@ internal sealed class AgentLoop : IAgentLoop
 
             // Message 2: the user's request + a compact AgentScript reminder + the workspace
             // snapshot attachments. The full system prompt stays on the first message only.
-            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed);
+            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed, pace);
             var message = reminder + "\n\n" + request;
             if (!dryRun)
             {
@@ -476,7 +559,7 @@ internal sealed class AgentLoop : IAgentLoop
             // --- Step 8: The conversation loop ---
             var formatRetries = 0;
             var batch = 0;
-            while (batch < options.Limits.MaxIterationsPerTurn)
+            while (batch < effectiveIterations)
             {
                 batch++;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -531,17 +614,16 @@ internal sealed class AgentLoop : IAgentLoop
                 var verdict = verdictOutcome.Data;
                 var script = verdict.Script!;
 
-                // Compact per-reply summary (the raw panel stays reserved for invalid replies
-                // and -v debugging): one line instead of the raw event dump. Script is null
-                // for invalid replies, where the raw panel below tells the user what broke.
-                if (verdict.Script is not null)
+                // ONE compact per-reply summary line for VALID replies (the raw panel stays
+                // reserved for invalid replies and -v debugging): it names the command mix
+                // and where the reply text came from.
+                if (verdict.IsValid)
                 {
-                    var kinds = script.Commands
+                    var kinds = string.Join(", ", script.Commands
                         .GroupBy(c => c.Kind)
-                        .Select(g => $"{g.Key} x{g.Count()}");
-                    ui.ShowProgress(new AgentProgressEvent(
-                        AgentEventType.ValidatingReply,
-                        $"Reply: {script.Commands.Count} commands ({string.Join(", ", kinds)})"));
+                        .Select(g => $"{g.Key} x{g.Count()}"));
+                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply,
+                        $"Reply: {script.Commands.Count} commands ({kinds}) via {replySource}"));
                 }
 
                 // Show the raw reply panel ONLY when invalid (the user needs to see what went
@@ -554,12 +636,6 @@ internal sealed class AgentLoop : IAgentLoop
                         ? reply
                         : reply[..MaxConsoleReplyChars] + $"… ({reply.Length - MaxConsoleReplyChars} more; full text in .agent/logs)";
                     ui.Say($"[raw reply]{Environment.NewLine}{visibleReply}");
-                }
-                else
-                {
-                    var commandKinds = string.Join(", ", script.Commands.Select(c => c.Kind.ToString().ToLowerInvariant()));
-                    ui.ShowProgress(new AgentProgressEvent(AgentEventType.ValidatingReply,
-                        $"Reply: {script.Commands.Count} commands ({commandKinds}) via {replySource}"));
                 }
                 if (!verdict.IsValid)
                 {
@@ -604,6 +680,10 @@ internal sealed class AgentLoop : IAgentLoop
                 formatRetries = 0;
 
                 // --- Step 8b: Execute (say always; others up to the batch limit; rest skipped) ---
+                // The model's plan (a short numbered list in the first say) drives the
+                // "Step k/N" progress labels; missing or unparsable plans show nothing.
+                turnPlanSteps ??= CountPlanSteps(script.Commands);
+                var planSteps = turnPlanSteps;
                 var executed = new List<CommandExecutionResult>();
                 var usedSlots = 0;
                 var stopBatch = false;
@@ -619,7 +699,7 @@ internal sealed class AgentLoop : IAgentLoop
                         continue;
                     }
 
-                    if (usedSlots >= options.Limits.MaxCommandsPerResponse)
+                    if (usedSlots >= effectiveCommandLimit)
                     {
                         executed.Add(new CommandExecutionResult
                         {
@@ -627,14 +707,18 @@ internal sealed class AgentLoop : IAgentLoop
                             Kind = command.Kind,
                             Target = command.Target,
                             Status = CommandStatus.Skipped,
-                            ErrorMessage = "batch limit reached",
+                            ErrorMessage = paceLimit < options.Limits.MaxCommandsPerResponse
+                                ? $"pace={pace}: only {effectiveCommandLimit} command(s) per response; send the next one after reading this result"
+                                : "batch limit reached",
                         });
                         continue;
                     }
 
                     usedSlots++;
+                    executedNonSayTotal++;
+                    var planNote = planSteps is not null ? $"Step {Math.Min(executedNonSayTotal, planSteps.Value)}/{planSteps.Value}: " : string.Empty;
                     ui.ShowProgress(new AgentProgressEvent(AgentEventType.ExecutingCommand,
-                        $"#{command.Number} {command.Kind} {command.Target}"));
+                        $"{planNote}#{command.Number} {command.Kind} {command.Target}"));
 
                     if (stopBatch)
                     {
@@ -741,20 +825,20 @@ internal sealed class AgentLoop : IAgentLoop
                     break;
                 }
 
-                if (batch >= options.Limits.MaxIterationsPerTurn)
+                if (batch >= effectiveIterations)
                 {
-                    stoppedReason = $"iteration limit reached ({options.Limits.MaxIterationsPerTurn} responses)";
+                    stoppedReason = $"iteration limit reached ({effectiveIterations} responses)";
                     break;
                 }
 
                 // --- Step 8c: Send the per-command results back ---
                 timings.Start("attachments");
                 var feedbackAttachments = options.Snapshot.AttachOnFeedback
-                    ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options)).Data ?? []
+                    ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, requestText: null, logEvent: (type, payload) => logger.AppendAsync(type, payload, cancellationToken))).Data ?? []
                     : [];
                 timings.Stop("attachments");
 
-                var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits);
+                var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits, workspaceRoot);
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
                 await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)

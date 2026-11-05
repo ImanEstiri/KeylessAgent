@@ -1,4 +1,4 @@
-# Configuration
+ Fires after a quarter of **TruncationBudgetSeconds** has elapsed, not after a fixed attempt count.# Configuration
 
 KeylessAgent reads `keyless.json` from the workspace root. The first run writes the full default file so you can edit it. Parsing is **tolerant**: comments (`//`), case-insensitive keys, trailing commas, and string enums (`"Ask"`, `"AutoSafe"`, …) all work. Invalid JSON or out-of-range values fail with a precise message instead of an exception.
 
@@ -6,6 +6,10 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
 {
   // How much confirmation the agent asks for.
   "Mode": "Ask",            // Ask | AutoSafe | Auto
+
+  // Schema version of this file; absent = v1. The loader migrates stale files to
+  // CurrentSchemaVersion (backing up the original as keyless.json.v<N>.bak).
+  "SchemaVersion": 2,
 
   "Browser": {
     "ChromeDebugPort": 9222,        // CDP port; ignored by Chrome's DEFAULT profile since Chrome 136
@@ -18,17 +22,20 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "EnableDeepThink": true,        // DeepThink toggle before the first message
     "EnableSearch": true,           // Search toggle before the first message
     "SelectorsFile": "selectors.json",
-    "ReplyTimeoutSeconds": 300,
+    "ReplyTimeoutSeconds": 180,
     "ReplySource": "Auto",           // Auto (copy button + validation + DOM fallback) | Copy | Dom
-    "WindowMode": "Minimized",       // Minimized | Offscreen | Normal (auto-launched Chrome only)
+    "WindowMode": "TinyCorner",      // TinyCorner (default) | EdgePeek | Offscreen | Minimized | Normal (auto-launched Chrome only)
     "MinimizeAfterLogin": true,      // minimize the window after login completes
+    "AutoFocusOnTruncation": false,  // un-minimize once when a throttled stream was rejected 5x (default: stay minimized)
+    "TruncationBudgetSeconds": 20,   // wall-clock budget for a throttled stream before the wait fails (KA_REPLY_TRUNCATED)
     "LoginProbeSeconds": 15,         // positive-first probe: wait for InputBox OR login indicator
     "MaxTurnsPerChat": 20,           // turns per chat before a new chat starts automatically
     "HumanDelay": false,             // random delays between browser actions (default: event-driven only)
-    "SendConfirmSeconds": 15,        // wait for proof the message was sent before retrying once
-    "UploadWaitSeconds": 60,         // wait for attachment chips + enabled send before pasting
-    "MinDelayMs": 0,                // random delay between actions (default: event-driven only)
-    "MaxDelayMs": 150,
+    "SendConfirmSeconds": 8,         // wait for proof the message was sent before retrying once
+    "UploadWaitSeconds": 15,         // wait for attachment chips + enabled send before pasting
+    "WaitForNetworkSeconds": 0,      // when offline before a send: poll up to N s for the connection (0 = fail at once)
+    "MinDelayMs": 400,              // random delay between actions (default: event-driven only)
+    "MaxDelayMs": 1500,
     "MaxMessagesPerMinute": 6,      // local rate limiter
     "Debug": false                  // screenshots on errors
   },
@@ -43,12 +50,15 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   },
 
   "Snapshot": {
-    "Mode": "Full",                 // Full | TreeAndChanged
+    "Mode": "TreeAndChanged",       // TreeAndChanged (default) | Full
+    "MaxTotalAttachmentChars": 400000, // total ceiling for ONE turn's attachments (tree + dump)
+    "MaxDumpedFileChars": 50000,    // per-file cap in the attached dump (placeholder beyond it)
     "AttachOnFeedback": false,      // also attach the snapshot to result messages
     "RefreshAfterEachBatch": false,
     "Filter": {
       "ExcludeTreePatterns": [ "bin", "obj", ".git", "node_modules", ".agent", "artifacts" ],
       "ExcludeDumpHeadings": [ "tree-view-result", "code-dump-result" ],
+      "ExcludeFilePatterns": [ "*.min.js", "*.min.css", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.designer.cs", "*.g.cs", "*.g.i.cs", "*ModelSnapshot.cs" ],
       "SensitiveFilePatterns": [ ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", "*.keystore", "secrets.json", "*secret*", "*password*", "*credential*", "appsettings.Production.json", "appsettings.*.Production.json" ],
       "MaskSensitiveLines": true
     }
@@ -60,11 +70,15 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "ProtectedBranchPatterns": [ "main", "master", "release*" ]
   },
 
+  "Agent": {
+    "Pace": "Balanced"            // Step = 1 command per response, Balanced = 3, Batch = Limits.MaxCommandsPerResponse
+  },
+
   "Commands": {
     "Allowlist": [ "dotnet", "git", "npm", "node", "python" ],
     "AutoApprove": [ "ReadOnly", "Build" ],
     "BatchFailureMode": "StopOnMutationFailure",
-    "TimeoutSeconds": 300
+    "TimeoutSeconds": 180
   }
 }
 ```
@@ -107,7 +121,8 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 
 ### Browser window
 
-- **WindowMode**: `Minimized` (default), `Offscreen`, or `Normal`. Affects auto-launched Chrome only. When minimized, throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`) prevent slow-downs.
+- **WindowMode**: `TinyCorner` (default), `EdgePeek`, `Offscreen`, `Minimized` (backward-compatibility alias of offscreen), or `Normal`. Affects auto-launched Chrome only and the hide geometry. The window must be visible-on-screen (at least 80x80 pixels) to prevent Chrome's occlusion throttling: fully offscreen positions do NOT work on Chrome 130+ / Windows 11 24H2 even with `--disable-features=CalculateNativeWinOcclusion` — the renderer throttles and truncates the DeepSeek stream (turn-17/18 evidence). TinyCorner keeps an 80x80 square in the bottom-right corner (primary screen bounds, not hardcoded); EdgePeek uses a 10x10 sliver in the corner (may still be throttled if Chrome's heuristic rejects it). Anti-throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling`) are always passed; verify the running Chrome with `keyless diagnostics chrome`.
+- **TruncationBudgetSeconds** (default 20): wall-clock budget for a throttled reply stream - the wait keeps polling (spaced by the normal poll delay) while the stream may still resume, and fails with KA_REPLY_TRUNCATED only when the time since the FIRST truncation detection exceeds this. The reply-truncated turn event carries ElapsedSeconds so the logs show real timing.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
 
 ### Snapshot — sensitive content never reaches the chat
@@ -122,6 +137,11 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - The snapshots are **generated natively in C#** — no `.bat` files need to exist in the workspace. `tree-view-result.txt` and `code-dump-result.md` are written into the workspace root (and excluded from git via `.git/info/exclude`).
 - Filtering applies to the **attached copy only** — `tree-view-result.txt` and `code-dump-result.md` on disk are never modified.
 - Oversized dumps are split at `### heading` boundaries into `code-dump-result-part1.md`, `-part2.md`, … and uploaded as consecutive files.
+- **Snapshot.Mode** is `TreeAndChanged` by default: the tree plus the files changed since the previous refresh (the diff is stashed BEFORE the baseline is overwritten, so it really contains the agent's changes). `Full` attaches everything, for anyone who explicitly wants it.
+- **First turn / no usable baseline / empty diff**: the attachment falls back to the tree plus a BUDGET-LIMITED dump — never an unlimited full dump. The next turn has a real baseline and diffs normally.
+- **Snapshot.MaxTotalAttachmentChars** (default 400,000 ≈ chars/4 tokens) caps EVERYTHING attached to one turn. When exceeded: the tree stays complete, the dump keeps only files referenced by the turn's request text, and every other file becomes a per-folder note (`[omitted: N files under …/ (N KB) — use the file-read tool …]`). A `snapshot-budget-exceeded` turn event records the original total, the ceiling and the omissions.
+- **Snapshot.MaxDumpedFileChars** (default 50,000) caps each file's fenced content in the dump: oversized files keep their `###` heading plus `[file too large to attach: N KB — use the file-read tool …]`.
+- **Snapshot.Filter.ExcludeFilePatterns** (case-insensitive `*` wildcards against the file name) drop generated/vendored files from the attached dump entirely: `*.min.js`, `*.min.css`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `*.designer.cs`, `*.g.cs`, `*.g.i.cs`, `*ModelSnapshot.cs` by default. Disk copies are never touched.
 
 ### Git
 

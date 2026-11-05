@@ -92,11 +92,14 @@ public class BrowserConnectorTests
             return Task.FromResult<(object? Browser, object Context)>((new object(), new object()));
         }
 
-        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default)
+        public Action<string>? LastOnCommandLine { get; private set; }
+
+        public Task<int> StartChromeAsync(string chromePath, int port, string userDataDir, string windowMode, CancellationToken cancellationToken = default, Action<string>? onCommandLine = null)
         {
             StartedChrome = true;
             LastWindowMode = windowMode;
             LastArguments = $"--remote-debugging-port={port} --user-data-dir=\"{userDataDir}\"";
+            LastOnCommandLine = onCommandLine;
             PortOpen = true;
             return Task.FromResult(4242);
         }
@@ -202,36 +205,167 @@ public class BrowserConnectorTests
                 Outcome.Successful<object>("page-stub")),
         };
 
-        var outcome = await connector.ConnectAsync(Options() with { WindowMode = "Offscreen" }, Ui());
+        var outcome = await connector.ConnectAsync(Options() with { WindowMode = "TinyCorner" }, Ui());
 
         outcome.IsSuccess.Should().BeTrue();
-        environment.LastWindowMode.Should().Be("Offscreen");
+        environment.LastWindowMode.Should().Be("TinyCorner");
+    }
+
+    [Fact]
+    public async Task ChromeLaunch_ForwardsTheCommandLineAsChromeLaunchedEvent()
+    {
+        // The launch command line must reach the turn log ("chrome-launched") so a turn can
+        // prove which anti-occlusion flags the launched Chrome actually received.
+        var environment = new FakeEnvironment { PortOpen = false };
+        var connector = new BrowserConnector(environment, null)
+        {
+            OpenTabOverride = (_, _) => Task.FromResult(
+                Outcome.Successful<object>("page-stub")),
+        };
+        var events = new List<(string Type, object Payload)>();
+        connector.LogEventSink = (type, payload) =>
+        {
+            lock (events)
+                events.Add((type, payload));
+            return Task.CompletedTask;
+        };
+
+        (await connector.ConnectAsync(Options(), Ui())).IsSuccess.Should().BeTrue();
+
+        environment.LastOnCommandLine.Should().NotBeNull("the connector wires the launch diagnostics");
+        environment.LastOnCommandLine!("--disable-features=CalculateNativeWinOcclusion ...");
+        lock (events)
+        {
+            var launched = events.Where(e => e.Type == "chrome-launched")
+                .Select(e => System.Text.Json.JsonSerializer.SerializeToElement(e.Payload)).ToList();
+            launched.Should().HaveCount(1);
+            launched[0].GetProperty("Arguments").GetString().Should().Be("--disable-features=CalculateNativeWinOcclusion ...");
+            launched[0].GetProperty("RawScreenSize").GetString().Should().Match("*x*",
+                "the raw monitor size rides along for the discrepancy diagnosis");
+            launched[0].GetProperty("WorkAreaSize").GetString().Should().Match("*x*",
+                "the work-area size (what the geometry is computed from) rides along too");
+        }
     }
 
     [Theory]
-    [InlineData("Minimized", "--start-minimized", "--window-position=-32000,-32000")]
-    [InlineData("Offscreen", "--window-position=-32000,-32000", "--start-minimized")]
-    [InlineData("Normal", "", "--start-minimized")]
-    [InlineData("Nonsense", "--start-minimized", "--window-position=-32000,-32000")]
-    [InlineData("", "--start-minimized", "--window-position=-32000,-32000")]
-    public void ChromeArguments_MapWindowModeToItsFlag(string windowMode, string expectedFlag, string forbiddenFlag)
+    [InlineData("Minimized")]
+    [InlineData("Offscreen")]
+    [InlineData("Nonsense")]
+    [InlineData("")]
+    public void ChromeArguments_MinimizedAndOffscreenBothPlaceTheWindowOffscreen(string windowMode)
     {
+        // A truly minimized window is throttled by the renderer and truncates the DeepSeek
+        // stream, so every non-Normal mode now means OFFSCREEN (Minimized = backward compat).
         var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", windowMode);
 
-        if (expectedFlag.Length == 0)
-        {
-            arguments.Should().NotContain("--start-minimized", "Normal never forces the window");
-            arguments.Should().NotContain("--window-position");
-        }
-        else
-        {
-            arguments.Should().Contain(expectedFlag);
-        }
-
-        arguments.Should().NotContain(forbiddenFlag);
+        arguments.Should().Contain("--window-position=-32000,-32000",
+            "offscreen on every monitor: invisible, but Chrome still renders it");
+        arguments.Should().Contain("--window-size=1280,900");
+        arguments.Should().NotContain("--start-minimized",
+            "--start-minimized truly minimizes, which throttles the renderer");
         arguments.Should().Contain("--remote-debugging-port=9222");
         arguments.Should().Contain("--disable-renderer-backgrounding", "the throttling flags are kept");
-        arguments.Should().Contain("https://chat.deepseek.com/");
+        arguments.Should().NotContain("chat.deepseek.com",
+            "Chrome 136+ ignores --start-minimized when a URL is present — the tab is opened via CDP");
+    }
+
+    [Fact]
+    public void ChromeArguments_TinyCorner_KeepsAVisible80x80SquareInTheCorner()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "TinyCorner", (1920, 1080));
+
+        arguments.Should().Contain("--window-position=1840,1000", "the primary screen's bottom-right corner");
+        arguments.Should().Contain("--window-size=80,80",
+            "visible-on-screen so Chrome does not occlude-throttle; 80x80 is the recommended minimum");
+        arguments.Should().NotContain("-32000");
+    }
+
+    [Fact]
+    public void ChromeArguments_EdgePeek_KeepsA10x10SliverInTheCorner()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "EdgePeek", (1920, 1080));
+
+        arguments.Should().Contain("--window-position=1910,1070");
+        arguments.Should().Contain("--window-size=10,10");
+    }
+
+    [Fact]
+    public void PrimaryScreenSize_UsesTheRealPrimaryScreen_NotAHardcodedValue()
+    {
+        var (width, height) = BrowserEnvironment.PrimaryScreenSize();
+
+        width.Should().BeGreaterThan(0);
+        height.Should().BeGreaterThan(0);
+        (width, height).Should().NotBe((0, 0), "the primary screen bounds must come from the OS, never hardcoded");
+    }
+
+    [Fact]
+    public void TinyCornerBounds_StaysInsideTheWorkArea_WhenATaskbarTakesSpace()
+    {
+        // Simulated taskbar: screen 1920x1080 with a 48px taskbar → work area 1920x1032.
+        // The square must fit entirely inside the WORK AREA — never overlap the taskbar
+        // region, where it would be invisible and indistinguishable.
+        const int workAreaWidth = 1920;
+        const int workAreaHeight = 1032;
+
+        var bounds = BrowserEnvironment.TinyCornerBounds((workAreaWidth, workAreaHeight));
+
+        (bounds.Left + bounds.Width).Should().BeLessThanOrEqualTo(workAreaWidth,
+            "the square's right edge must stay inside the work area");
+        (bounds.Top + bounds.Height).Should().BeLessThanOrEqualTo(workAreaHeight,
+            "the square's bottom edge must stay ABOVE the taskbar");
+        bounds.Left.Should().Be(workAreaWidth - 80);
+        bounds.Top.Should().Be(workAreaHeight - 80);
+    }
+
+    [Fact]
+    public void TinyCornerBounds_NoTaskbar_ReturnsTheBottomRightCorner()
+    {
+        // No taskbar offset (full-screen work area): the square's bottom-right corner sits
+        // exactly at the screen's corner.
+        var bounds = BrowserEnvironment.TinyCornerBounds((1920, 1080));
+
+        bounds.Should().Be((1840, 1000, 80, 80));
+        (bounds.Left + bounds.Width).Should().Be(1920);
+        (bounds.Top + bounds.Height).Should().Be(1080);
+    }
+
+    [Theory]
+    [InlineData("TinyCorner", 1840, 952, 80, 80)]
+    [InlineData("EdgePeek", 1910, 1022, 10, 10)]
+    [InlineData("Offscreen", -32000, -32000, 1280, 900)]
+    [InlineData("Minimized", -32000, -32000, 1280, 900)]
+    public void RequestedWindowBounds_MapsEveryForcedMode(string mode, int left, int top, int width, int height)
+    {
+        // What the launch ASKS for, against which the real GetWindowRect is compared later.
+        var bounds = BrowserEnvironment.RequestedWindowBounds(mode, (1920, 1032));
+
+        bounds.Should().Be(((left, top, width, height)));
+    }
+
+    [Fact]
+    public void RequestedWindowBounds_Normal_IsNull_NeverForced()
+    {
+        BrowserEnvironment.RequestedWindowBounds("Normal").Should().BeNull();
+    }
+
+    [Fact]
+    public void RawScreenSize_IsPositive_AndIndependentlyQueryable()
+    {
+        var (width, height) = BrowserEnvironment.RawScreenSize();
+
+        width.Should().BeGreaterThan(0);
+        height.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void ChromeArguments_NormalMode_NeverForcesTheWindow()
+    {
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "Normal");
+
+        arguments.Should().NotContain("--start-minimized", "Normal never forces the window");
+        arguments.Should().NotContain("--window-position");
+        arguments.Should().Contain("--remote-debugging-port=9222");
     }
 
     [Fact]
@@ -298,5 +432,32 @@ public class BrowserConnectorTests
 
         BrowserConnector.ResolveUserDataDir(new BrowserOptions { UserDataDir = @"D:\profiles\ka" })
             .Should().Be(Path.GetFullPath(@"D:\profiles\ka"));
+    }
+
+    [Fact]
+    public void CreateTargetParams_OpenTheTabInBackground_SoAMinimizedWindowStaysMinimized()
+    {
+        var parameters = BrowserConnector.ComposeCreateTargetParams(BrowserConnector.ChatBaseUrl);
+
+        parameters["url"].Should().Be(BrowserConnector.ChatBaseUrl);
+        parameters["newWindow"].Should().Be(false,
+            "the chat is a tab in the existing window, never a new foreground window");
+        parameters["background"].Should().Be(true,
+            "without background Chrome ACTIVATES the new tab and restores a minimized window");
+    }
+
+    [Fact]
+    public void ChromeArguments_DisableOcclusionThrottling_SoAMinimizedWindowKeepsStreaming()
+    {
+        // Windows 11 throttles minimized windows through native occlusion detection even
+        // with the classic flags — the DeepSeek stream then truncates mid-reply.
+        var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "Minimized");
+
+        arguments.Should().Contain("--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling",
+            "exactly these two features are disabled, nothing else");
+        arguments.Should().Contain("--disable-ipc-flooding-protection");
+        arguments.Should().Contain("--disable-hang-monitor");
+        (arguments.Split("--disable-features").Length - 1).Should().Be(1,
+            "one --disable-features flag, comma-separated values");
     }
 }

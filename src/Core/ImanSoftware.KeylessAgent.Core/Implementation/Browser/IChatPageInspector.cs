@@ -33,4 +33,11 @@ internal interface IChatPageInspector
     /// (scripts, styles, svg removed, personal text masked), or null when nothing matched.
     /// </summary>
     Task<string?> CaptureTrimmedAsync(string[] selectors, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dumps every button-like element (tag, role, label, title, text, classes) on the newest
+    /// assistant message as a JSON string, so the doctor can show the real candidates when a
+    /// selector matches nothing. Returns "Not found" when no assistant message is visible.
+    /// </summary>
+    Task<string> DumpButtonsAsync(string[] assistantMessageSelectors, CancellationToken cancellationToken = default);
 }

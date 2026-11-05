@@ -115,6 +115,22 @@ internal sealed class BackupService : IBackupService
         return await AppendJournalAsync(workspaceRoot, stamp, new JournalEntry("create", Path: relative.Replace('\\', '/')));
     }
 
+    /// <summary>
+    /// Journals a DIRECTORY creation into a fresh batch (undo removes the folder while it
+    /// is empty). Best-effort like every journal write.
+    /// </summary>
+    internal async Task<Outcome> RecordCreateDirectoryAsync(string workspaceRoot, string createdFullPath)
+    {
+        var relative = Path.GetRelativePath(workspaceRoot, createdFullPath);
+        var stamp = _time.Now.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", System.Globalization.CultureInfo.InvariantCulture);
+        var batchDir = Path.Combine(workspaceRoot, BackupFolderName, stamp);
+        var mkdir = await _storage.CreateDirectoryAsync(batchDir);
+        if (mkdir.IsFailure)
+            return mkdir;
+
+        return await AppendJournalAsync(workspaceRoot, stamp, new JournalEntry("create-dir", Path: relative.Replace('\\', '/')));
+    }
+
     /// <inheritdoc />
     public async Task<Outcome<IReadOnlyList<string>>> UndoLatestAsync(string workspaceRoot)
     {
@@ -172,6 +188,20 @@ internal sealed class BackupService : IBackupService
                     var affected = entry.Op == "move" ? entry.To : entry.Path;
                     if (string.IsNullOrWhiteSpace(affected))
                         continue;
+
+                    // A created directory is removed while EMPTY; anything the user or a
+                    // later command added keeps the folder.
+                    if (entry.Op == "create-dir")
+                    {
+                        var dirTarget = sandbox.Resolve(affected);
+                        if (dirTarget.IsFailure || !_storage.DirectoryExists(dirTarget.Data))
+                            continue;
+
+                        var removeEmpty = await _storage.DeleteDirectoryAsync(dirTarget.Data, recursive: false);
+                        if (removeEmpty.IsSuccess)
+                            restored.Add($"removed: {affected}");
+                        continue;
+                    }
 
                     var target = sandbox.Resolve(affected);
                     if (target.IsFailure || !_storage.FileExists(target.Data))

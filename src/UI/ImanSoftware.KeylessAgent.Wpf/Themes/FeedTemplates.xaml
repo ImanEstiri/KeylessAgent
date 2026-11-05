@@ -1,0 +1,100 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:feed="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed"
+                    xmlns:views="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Views">
+
+    <!-- Feed item views (guide Phase 6): one DataTemplate per feed item type. -->
+
+    <DataTemplate DataType="{x:Type feed:UserRequestItem}">
+        <Border Background="{StaticResource GlassFillStrong}"
+                BorderBrush="{StaticResource Gold}"
+                BorderThickness="1,0,0,0"
+                CornerRadius="6"
+                Padding="12,8"
+                Margin="0,4">
+            <StackPanel>
+                <TextBlock Text="You" Style="{StaticResource CaptionText}" Foreground="{StaticResource Gold}" />
+                <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,2,0,0" />
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:ModelMessageItem}">
+        <Border Background="{StaticResource GlassFill}"
+                BorderBrush="{StaticResource GlassBorder}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12,8"
+                Margin="0,4">
+            <StackPanel>
+                <TextBlock Text="◆ Model" Style="{StaticResource CaptionText}" Foreground="{StaticResource TextSecondary}" />
+                <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,2,0,0" />
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:StepItem}">
+        <StackPanel Orientation="Horizontal" Margin="4,3">
+            <TextBlock Text="{Binding Symbol}" Style="{StaticResource BodyText}" Foreground="{StaticResource Gold}" Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Label}" Style="{StaticResource BodyText}" />
+            <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionText}" Foreground="{StaticResource TextMuted}"
+                       VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:CommandItem}">
+        <StackPanel Orientation="Horizontal" Margin="4,3">
+            <TextBlock Text="{Binding Number, StringFormat='#{0}'}" Style="{StaticResource MonoText}" Foreground="{StaticResource Gold}" Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Kind}" Style="{StaticResource MonoText}" Foreground="{StaticResource TextSecondary}" Margin="0,0,8,0" />
+            <TextBlock Text="{Binding Target}" Style="{StaticResource MonoText}" Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:DiffItem}">
+        <views:DiffView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:ErrorItem}">
+        <TextBlock Text="{Binding Message}" Style="{StaticResource BodyText}" Foreground="{StaticResource Danger}"
+                   TextWrapping="Wrap" Margin="4,3" />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type feed:TurnSummaryItem}">
+        <Border Background="{StaticResource GlassFillStrong}"
+                BorderBrush="{StaticResource GlassBorder}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12,10"
+                Margin="0,4">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource BodyText}" Foreground="{StaticResource Gold}">
+                        <Run Text="Turn " /><Run Text="{Binding Turn, Mode=OneWay}" /><Run Text=" on " /><Run Text="{Binding Branch, Mode=OneWay}" />
+                    </TextBlock>
+                    <Border Background="{StaticResource GlassFill}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
+                            Visibility="{Binding DryRun, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="dry-run" Style="{StaticResource CaptionText}" Foreground="{StaticResource Info}" />
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="{Binding StoppedReason}" Style="{StaticResource CaptionText}" Foreground="{StaticResource Warning}"
+                           TextWrapping="Wrap" Margin="0,4,0,0"
+                           Visibility="{Binding StoppedReason, Converter={StaticResource NullToCollapsed}}" />
+                <ItemsControl ItemsSource="{Binding Commits}" Margin="0,6,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Style="{StaticResource CaptionText}" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap">
+                                <Run Text="• " /><Run Text="{Binding Mode=OneWay}" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding Summary}" Style="{StaticResource BodyText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Visibility="{Binding Summary, Converter={StaticResource NullToCollapsed}}" />
+                <TextBlock Style="{StaticResource CaptionText}" Foreground="{StaticResource TextMuted}" Margin="0,6,0,0">
+                    <Run Text="Auto-approved: " /><Run Text="{Binding AutoApprovedCommands, Mode=OneWay}" /><Run Text=" | Confirmed: " /><Run Text="{Binding ConfirmedCommands, Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+</ResourceDictionary>

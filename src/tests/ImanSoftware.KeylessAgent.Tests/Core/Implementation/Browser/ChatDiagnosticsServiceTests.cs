@@ -69,6 +69,15 @@ public class ChatDiagnosticsServiceTests : IDisposable
             return Task.FromResult(key is null || !Matched.Contains(key) ? null : CapturedHtml);
         }
 
+        public Task<string> DumpButtonsAsync(string[] assistantMessageSelectors, CancellationToken cancellationToken = default)
+        {
+            var key = KeyFor(assistantMessageSelectors);
+            var dump = key is not null && Matched.Contains(key) && !string.IsNullOrWhiteSpace(CapturedHtml)
+                ? "[{\"label\":\"Copy reply\"}]"
+                : "Not found";
+            return Task.FromResult(dump);
+        }
+
         /// <summary>Maps the first fallback selector back to its catalog key (test bookkeeping).</summary>
         private static string? KeyFor(string[] selectors)
         {
@@ -110,6 +119,45 @@ public class ChatDiagnosticsServiceTests : IDisposable
         report.Data.DeepThinkPressed.Should().Be("true");
         report.Data.Checks.First(c => c.Key == "StopIndicator").Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
         report.Data.Checks.First(c => c.Key == "AttachmentChips").Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+    }
+
+    [Fact]
+    public async Task AttachmentChipKeys_WhenNothingMatches_PrintTheComposerCandidate()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage();
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), fakePage as IChatPage))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        foreach (var key in new[] { "AttachmentChips", "AttachmentRemove", "AttachmentFailed" })
+        {
+            var check = report.Data.Checks.First(c => c.Key == key);
+            check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+            check.Detail.Should().Contain("Closest candidate (composer, trimmed)",
+                "unverified {0} selectors must be fixable from facts", key);
+        }
+    }
+
+    [Fact]
+    public async Task AttachmentRemove_WithChipsVisibleButNoMatch_ReportsNotFoundWithChipCandidate()
+    {
+        var inspector = FullyWorking();
+        inspector.Matched.Add("AttachmentChips"); // the chips ARE visible on the page
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage();
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), fakePage as IChatPage))));
+        // Chips visible, remove control not matched: NotFound with the CHIP candidate.
+        inspector.CapturedHtml = "<div class='file-chip'><button>x</button></div>";
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "AttachmentRemove");
+        check.Status.Should().Be(SelectorCheckStatus.NotFound);
+        check.Detail.Should().Contain("file-chip");
     }
 
     [Fact]
@@ -177,6 +225,51 @@ public class ChatDiagnosticsServiceTests : IDisposable
             "the editability check probes exactly one fallback list per doctor run");
         inspector.EditableSelectors[0].Should().Equal(Catalog().InputBox,
             "the editable check must use the selectors.json fallback list, not hardcoded selectors");
+    }
+
+    [Fact]
+    public async Task MessageCopyButton_NotMatched_KeepsClosestCandidateHtml()
+    {
+        var inspector = FullyWorking();
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "MessageCopyButton");
+        check.Status.Should().Be(SelectorCheckStatus.NotApplicableNow);
+        check.Detail.Should().Contain("<div class='composer'>",
+            "the trimmed closest-candidate HTML gives the selector author facts to fix from");
+    }
+
+    [Fact]
+    public async Task StopIndicator_Matched_ReportsFallbackIndex()
+    {
+        var inspector = FullyWorking();
+        inspector.Matched.Add("StopIndicator");
+        IChatPageInspector asInterface = inspector;
+        var fakePage = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeChatPage
+        {
+            CopyButtonVisible = inspector is not null,
+            CapturedReply = "captured probe text",
+        };
+        IChatPage pageAsInterface = fakePage;
+        var service = new ChatDiagnosticsService((_, _, _) => Task.FromResult(
+            Outcome.Successful((asInterface, (Func<ValueTask>)(() => ValueTask.CompletedTask), pageAsInterface))));
+
+        var report = await service.InspectAsync(_root, new BrowserOptions(), null, watch: false);
+
+        var check = report.Data.Checks.First(c => c.Key == "StopIndicator");
+        check.Status.Should().Be(SelectorCheckStatus.Matched);
+        check.FallbackIndex.Should().BeGreaterThanOrEqualTo(0, "the matched fallback index is reported");
+        check.Detail.Should().Contain("fallback #");
     }
 
     [Fact]

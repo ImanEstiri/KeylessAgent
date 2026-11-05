@@ -82,6 +82,133 @@ internal static partial class SnapshotFilter
     }
 
     /// <summary>
+    /// Drops dump sections (delimited by <c>### heading</c> lines) whose FILE NAME matches
+    /// any wildcard pattern (case-insensitive <c>*</c>) — the generated/vendored denylist
+    /// (minified bundles, lock files, designer/migration snapshots). The heading itself is
+    /// kept out entirely, exactly like the node_modules directory exclusion.
+    /// </summary>
+    internal static string FilterDumpSectionsByFileName(string dump, IReadOnlyList<string> filePatterns)
+    {
+        if (filePatterns.Count == 0)
+            return dump;
+
+        var lines = dump.Replace("\r\n", "\n").Split('\n');
+        var kept = new List<string>();
+        var skipping = false;
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                var heading = line["### ".Length..].Trim();
+                skipping = MatchesFileWildcard(LastHeadingSegment(heading), filePatterns);
+            }
+
+            if (!skipping)
+                kept.Add(line);
+        }
+
+        return string.Join("\n", kept).Trim('\n');
+    }
+
+    /// <summary>
+    /// Caps every section's fenced code content at <paramref name="maxFileChars"/>: oversized
+    /// files keep their <c>### heading</c> (existence stays visible in the attachment) but the
+    /// content is replaced by a placeholder pointing at the file-read tool.
+    /// </summary>
+    internal static string CapDumpSectionSizes(string dump, int maxFileChars)
+    {
+        if (maxFileChars <= 0)
+            return dump;
+
+        var lines = dump.Replace("\r\n", "\n").Split('\n');
+        var result = new List<string>();
+        var i = 0;
+        while (i < lines.Length)
+        {
+            if (!lines[i].StartsWith("### ", StringComparison.Ordinal))
+            {
+                result.Add(lines[i]);
+                i++;
+                continue;
+            }
+
+            // A section: heading, blank, fence, content…, fence (blank follows, if any).
+            var sectionStart = i;
+            var fenceCount = 0;
+            var contentStart = -1;
+            var contentEnd = -1;
+            var j = i + 1;
+            for (; j < lines.Length; j++)
+            {
+                if (lines[j].StartsWith("```", StringComparison.Ordinal) ||
+                    lines[j].StartsWith("````", StringComparison.Ordinal))
+                {
+                    fenceCount++;
+                    if (fenceCount == 1)
+                        contentStart = j + 1;
+                    else
+                    {
+                        contentEnd = j;
+                        break;
+                    }
+                }
+            }
+
+            if (fenceCount < 2 || contentStart < 0 || contentEnd < 0)
+            {
+                // Malformed section: keep verbatim to the next heading (or end).
+                while (i <= sectionStart && i < lines.Length)
+                    result.Add(lines[i++]);
+                continue;
+            }
+
+            var contentLength = 0;
+            for (var k = contentStart; k < contentEnd; k++)
+                contentLength += lines[k].Length + 1;
+
+            if (contentLength > maxFileChars)
+            {
+                // Oversized: heading + fences remain, the content becomes the placeholder.
+                var sizeKb = Math.Max(1, contentLength / 1024);
+                result.Add(lines[i]); // heading
+                for (var k = i + 1; k < contentStart - 1; k++)
+                    result.Add(lines[k]);
+                result.Add(lines[contentStart - 1]); // opening fence
+                result.Add($"[file too large to attach: {sizeKb} KB - use the file-read tool if its content is needed]");
+                result.Add(lines[contentEnd]); // closing fence
+            }
+            else
+            {
+                for (var k = i; k <= contentEnd; k++)
+                    result.Add(lines[k]);
+            }
+
+            i = contentEnd + 1;
+        }
+
+        return string.Join("\n", result).Trim('\n');
+    }
+
+    /// <summary>Case-insensitive <c>*</c> wildcard match against a file name.</summary>
+    internal static bool MatchesFileWildcard(string fileName, IReadOnlyList<string> patterns)
+    {
+        foreach (var pattern in patterns)
+        {
+            if (pattern.Length == 0)
+                continue;
+
+            var regex = "^" + Regex
+                .Escape(pattern.Trim())
+                .Replace("\\*", ".*", StringComparison.Ordinal) + "$";
+            if (Regex.IsMatch(fileName, regex, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Drops dump sections (delimited by <c>### heading</c> lines) whose heading's file name
     /// matches any exclude pattern (previous outputs, generated reports).
     /// </summary>

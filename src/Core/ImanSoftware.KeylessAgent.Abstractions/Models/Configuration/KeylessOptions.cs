@@ -8,6 +8,22 @@ namespace ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 /// </summary>
 public sealed record KeylessOptions
 {
+    /// <summary>The current keyless.json schema version.</summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>
+    /// The keyless.json schema version this file was written for. Null means the file was
+    /// written before versioning existed (schema version 1) and it will be migrated on load.
+    /// </summary>
+    public int? SchemaVersion { get; init; }
+
+    /// <summary>
+    /// Creates the current default configuration with the schema version set, for fresh
+    /// workspaces and for the schema migration.
+    /// </summary>
+    public static KeylessOptions CreateDefault() => new() { SchemaVersion = CurrentSchemaVersion };
+
+
     /// <summary>
     /// How much confirmation the agent asks for. Default: <see cref="ApprovalMode.Ask"/>.
     /// </summary>
@@ -37,6 +53,23 @@ public sealed record KeylessOptions
     /// External command policy settings.
     /// </summary>
     public CommandsOptions Commands { get; init; } = new();
+
+    /// <summary>
+    /// Pacing of the model's replies: how many non-say commands one response may carry.
+    /// </summary>
+    public AgentOptions Agent { get; init; } = new();
+}
+
+/// <summary>
+/// The <c>Agent</c> section: reply pacing. The effective per-response command limit is
+/// min(Pace limit, Limits.MaxCommandsPerResponse).
+/// </summary>
+public sealed record AgentOptions
+{
+    /// <summary>
+    /// Step = 1 command per response, Balanced = 3 (default), Batch = Limits.MaxCommandsPerResponse.
+    /// </summary>
+    public AgentPace Pace { get; init; } = AgentPace.Balanced;
 }
 
 /// <summary>
@@ -112,31 +145,38 @@ public sealed record BrowserOptions
     public ReplySourceMode ReplySource { get; init; } = ReplySourceMode.Auto;
 
     /// <summary>
-    /// How long to wait for a complete reply. Default 300 seconds.
+    /// How long to wait for a complete reply. Default 180 seconds.
     /// </summary>
-    public int ReplyTimeoutSeconds { get; init; } = 300;
+    public int ReplyTimeoutSeconds { get; init; } = 180;
 
     /// <summary>
     /// How long to wait for confirmation that a message was actually sent (new message item,
-    /// or empty input plus generating indicator) before retrying once and failing. Default 15 seconds.
+    /// or empty input plus generating indicator) before retrying once and failing. Default 8 seconds.
     /// </summary>
-    public int SendConfirmSeconds { get; init; } = 15;
+    public int SendConfirmSeconds { get; init; } = 8;
 
     /// <summary>
     /// How long to wait for attachment uploads to settle (chips visible, send enabled)
-    /// before falling back to pasting the content. Default 60 seconds.
+    /// before falling back to pasting the content. Default 15 seconds.
     /// </summary>
-    public int UploadWaitSeconds { get; init; } = 60;
+    public int UploadWaitSeconds { get; init; } = 15;
+
+    /// <summary>
+    /// When the machine is offline before a send, wait up to this many seconds for the
+    /// connection to come back (polling every 2 seconds) instead of failing immediately.
+    /// Default 0 — fail at once with KA_NETWORK_OFFLINE.
+    /// </summary>
+    public int WaitForNetworkSeconds { get; init; } = 0;
 
     /// <summary>
     /// Minimum artificial delay between browser actions. Default 400 ms.
     /// </summary>
-    public int MinDelayMs { get; init; } = 0;
+    public int MinDelayMs { get; init; } = 400;
 
     /// <summary>
     /// Maximum artificial delay between browser actions. Default 1500 ms.
     /// </summary>
-    public int MaxDelayMs { get; init; } = 150;
+    public int MaxDelayMs { get; init; } = 1500;
 
     /// <summary>
     /// Rate limit for messages sent to the chat. Default 6 per minute.
@@ -154,15 +194,37 @@ public sealed record BrowserOptions
     public bool HumanDelay { get; init; }
 
     /// <summary>
-    /// Browser window behavior: Minimized (default, with throttling flags), Offscreen
-    /// (--window-position=-32000,-32000), Normal. Only affects auto-launched Chrome.
+    /// Browser window behavior. Accepted values: "Offscreen", "Minimized", "TinyCorner",
+    /// "EdgePeek", "Normal". Default "TinyCorner": a visible-but-imperceptible 80x80 window
+    /// in the bottom-right corner of the primary screen. The window MUST be visible-on-screen
+    /// (at least 80x80 pixels) to prevent Chrome's occlusion throttling — fully offscreen
+    /// positions (-32000,-32000, "Offscreen"/"Minimized") and truly minimized windows are
+    /// treated as occluded by Chrome 130+ on Windows 11 24H2 regardless of the
+    /// --disable-features=CalculateNativeWinOcclusion flag, and the renderer throttle
+    /// truncates DeepSeek streaming replies (turn-17/18 evidence). Normal = never forced.
+    /// Only affects auto-launched Chrome; every hide path uses the same tiny-corner geometry.
     /// </summary>
-    public string WindowMode { get; init; } = "Minimized";
+    public string WindowMode { get; init; } = "TinyCorner";
 
     /// <summary>
     /// Minimize the window again after the login completes. Default true.
     /// </summary>
     public bool MinimizeAfterLogin { get; init; } = true;
+
+    /// <summary>
+    /// Un-minimize the chat window ONCE when a throttled reply stream has been rejected for
+    /// a quarter of TruncationBudgetSeconds in a single reply wait. Default false: the
+    /// window stays hidden for the whole turn (focusing it steals the terminal from the user).
+    /// </summary>
+    public bool AutoFocusOnTruncation { get; init; }
+
+    /// <summary>
+    /// Wall-clock budget for a THROTTLED reply stream: when truncation detections span
+    /// longer than this (time since the FIRST detection, not an attempt count), the reply
+    /// wait fails with KA_REPLY_TRUNCATED. Default 20 seconds - enough for a stream that
+    /// resumes after a few real seconds, quick enough to fail a permanently stuck one.
+    /// </summary>
+    public int TruncationBudgetSeconds { get; init; } = 20;
 
     /// <summary>
     /// Upper bound of the positive-first login probe: wait this long for EITHER the chat
@@ -213,9 +275,29 @@ public sealed record LimitsOptions
 public sealed record SnapshotOptions
 {
     /// <summary>
-    /// What gets attached to a user request. Default <see cref="SnapshotMode.Full"/>.
+    /// What gets attached to a user request. Default <see cref="SnapshotMode.TreeAndChanged"/>:
+    /// the tree plus only files changed since the last baseline. Full remains fully supported
+    /// for anyone who explicitly wants it. When TreeAndChanged has no usable baseline (first
+    /// turn), the attachment falls back to the tree plus a BUDGET-LIMITED relevant-file dump
+    /// (see <see cref="MaxTotalAttachmentChars"/>), never an unlimited full dump.
     /// </summary>
-    public SnapshotMode Mode { get; init; } = SnapshotMode.Full;
+    public SnapshotMode Mode { get; init; } = SnapshotMode.TreeAndChanged;
+
+    /// <summary>
+    /// Total character ceiling for everything attached to ONE turn (tree + dump + notes
+    /// combined; chars/4 is a rough token estimate for DeepSeek). When exceeded: the tree is
+    /// always kept, the dump keeps only files referenced by the turn's request (plus the
+    /// TreeAndChanged diff when active), and everything else becomes a one-line omission
+    /// note pointing at the file-read tool. Default 400,000.
+    /// </summary>
+    public int MaxTotalAttachmentChars { get; init; } = 400_000;
+
+    /// <summary>
+    /// Per-file cap for the attached code dump: a file whose fenced content exceeds this is
+    /// replaced by its heading plus a "[file too large to attach: N KB …]" placeholder line,
+    /// keeping the file's existence visible without its full content. Default 50,000.
+    /// </summary>
+    public int MaxDumpedFileChars { get; init; } = 50_000;
 
     /// <summary>
     /// Whether the snapshot is also attached to result messages. Default false.
@@ -247,6 +329,17 @@ public sealed record SnapshotFilterOptions
     /// Code-dump section filters: sections whose <c>###</c> heading matches any of these are dropped.
     /// </summary>
     public IReadOnlyList<string> ExcludeDumpHeadings { get; init; } = ["tree-view-result", "code-dump-result"];
+
+    /// <summary>
+    /// Generated/vendored files excluded from the ATTACHED dump by file-name wildcard
+    /// (case-insensitive <c>*</c>, like SensitiveFilePatterns): minified bundles, lock files
+    /// and generated designer/migration snapshots are huge and rarely useful to attach.
+    /// </summary>
+    public IReadOnlyList<string> ExcludeFilePatterns { get; init; } =
+    [
+        "*.min.js", "*.min.css", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "*.designer.cs", "*.g.cs", "*.g.i.cs", "*ModelSnapshot.cs",
+    ];
 
     /// <summary>
     /// Files whose sections are dropped from the ATTACHED copy entirely (never from disk):
@@ -312,7 +405,7 @@ public sealed record CommandsOptions
     public string BatchFailureMode { get; init; } = "StopOnMutationFailure";
 
     /// <summary>
-    /// Timeout for every external process. Default 300 seconds.
+    /// Timeout for every external process. Default 180 seconds.
     /// </summary>
-    public int TimeoutSeconds { get; init; } = 300;
+    public int TimeoutSeconds { get; init; } = 180;
 }

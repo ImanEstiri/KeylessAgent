@@ -1,0 +1,190 @@
+<UserControl x:Class="ImanSoftware.KeylessAgent.Wpf.Views.DoctorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels">
+    <!-- Doctor page: live selector checks (Run/Cancel), summary rows, Start-Chrome section. -->
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <!-- Status chip color by check status. -->
+        <Style x:Key="CheckChip" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource GlassFillStrong}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8,1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Status}" Value="Matched">
+                    <Setter Property="Background" Value="{DynamicResource DiffAdd}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Status}" Value="NotFound">
+                    <Setter Property="Background" Value="{DynamicResource DiffRemove}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,16" MaxWidth="860" HorizontalAlignment="Left">
+            <TextBlock Text="Doctor" Style="{DynamicResource TitleText}" />
+            <TextBlock Text="Attaches to Chrome, opens the chat page and reports every selector's state — without sending anything."
+                       Style="{DynamicResource BodyText}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                <Button Content="Run checks"
+                        Style="{DynamicResource PrimaryButton}"
+                        Command="{Binding RunCommand}"
+                        MinWidth="120" />
+                <Button Content="Cancel"
+                        Style="{DynamicResource GhostButton}"
+                        Command="{Binding CancelCommand}"
+                        MinWidth="90"
+                        Margin="12,0,0,0"
+                        Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
+                <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center"
+                            Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="●" Foreground="{DynamicResource Gold}" Style="{DynamicResource BodyText}" Margin="0,0,8,0" />
+                    <TextBlock Text="Inspecting the chat page…" Style="{DynamicResource BodyText}" Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock Text="{Binding Note}"
+                       Style="{DynamicResource BodyText}"
+                       Foreground="{DynamicResource Warning}"
+                       TextWrapping="Wrap"
+                       Margin="0,12,0,0"
+                       Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock Text="{Binding PageUrl}"
+                       Style="{DynamicResource CaptionText}"
+                       Foreground="{DynamicResource TextMuted}"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="0,8,0,0"
+                       Visibility="{Binding PageUrl, Converter={StaticResource NullToCollapsed}}" />
+
+            <!-- Summary rows -->
+            <ItemsControl ItemsSource="{Binding Summaries}" Margin="0,12,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{DynamicResource GlassFill}"
+                                BorderBrush="{DynamicResource GlassBorder}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10,6"
+                                Margin="0,3">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Label}" Style="{DynamicResource BodyText}" />
+                                <Border Grid.Column="1" CornerRadius="4" Padding="8,1" HorizontalAlignment="Left"
+                                        Background="{DynamicResource GlassFillStrong}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource DiffRemove}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Ok}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource DiffAdd}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding Value}" Style="{DynamicResource CaptionText}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Selector check table -->
+            <ItemsControl ItemsSource="{Binding Checks}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{DynamicResource GlassFill}"
+                                BorderBrush="{DynamicResource GlassBorder}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10,6"
+                                Margin="0,3">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Key}" Style="{DynamicResource MonoText}" TextTrimming="CharacterEllipsis" />
+                                <Border Grid.Column="1" Style="{DynamicResource CheckChip}" Margin="8,0">
+                                    <TextBlock Text="{Binding State}" Style="{DynamicResource CaptionText}" />
+                                </Border>
+                                <TextBlock Grid.Column="2" Text="{Binding Fallback}" Style="{DynamicResource CaptionText}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding Elements}" Style="{DynamicResource CaptionText}"
+                                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="4" Text="{Binding Detail}" Style="{DynamicResource CaptionText}"
+                                           Foreground="{DynamicResource TextMuted}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Start Chrome section -->
+            <ContentControl Content="{Binding Chrome}" Margin="0,20,0,0">
+                <ContentControl.Resources>
+                    <DataTemplate DataType="{x:Type vm:ChromeViewModel}">
+                        <Border Background="{DynamicResource GlassFill}"
+                                BorderBrush="{DynamicResource GlassBorder}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="12">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Start Chrome"
+                                            Style="{DynamicResource PrimaryButton}"
+                                            Command="{Binding StartCommand}"
+                                            MinWidth="130" />
+                                    <Button Content="Show Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding ShowChromeCommand}"
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Bring the offscreen Chrome window into view" />
+                                    <Button Content="Hide Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding HideChromeCommand}"
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Send the Chrome window back offscreen" />
+                                    <Button Content="Close Chrome"
+                                            Style="{DynamicResource GhostButton}"
+                                            Command="{Binding CloseChromeCommand}"
+                                            MinWidth="130"
+                                            Margin="8,0,0,0"
+                                            ToolTip="Close the KeylessAgent Chrome entirely (all tabs and the process)" />
+                                    <TextBlock Text="{Binding StatusText}" Style="{DynamicResource BodyText}"
+                                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Note}"
+                                           Style="{DynamicResource CaptionText}"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0"
+                                           Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Text="{Binding Profile, StringFormat='Profile: {0}'}"
+                                           Style="{DynamicResource CaptionText}"
+                                           Foreground="{DynamicResource TextMuted}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Margin="0,4,0,0"
+                                           Visibility="{Binding Profile, Converter={StaticResource NullToCollapsed}}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ContentControl.Resources>
+            </ContentControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

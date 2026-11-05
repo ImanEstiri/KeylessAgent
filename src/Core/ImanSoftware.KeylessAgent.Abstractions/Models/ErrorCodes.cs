@@ -118,11 +118,23 @@ public static class ErrorCodes
     /// <summary>No reply arrived within the configured timeout.</summary>
     public const string ReplyTimeout = "KA_REPLY_TIMEOUT";
 
+    /// <summary>The reply stream stayed truncated (AgentScript without @@eof) longer than Browser.TruncationBudgetSeconds in one reply wait.</summary>
+    public const string ReplyTruncated = "KA_REPLY_TRUNCATED";
+
     /// <summary>The message could not be sent (not confirmed in the DOM, retry failed too).</summary>
     public const string SendNotConfirmed = "KA_SEND_NOT_CONFIRMED";
 
     /// <summary>Uploading attachments to the chat failed.</summary>
     public const string AttachmentUploadFailed = "KA_ATTACHMENT_UPLOAD_FAILED";
+
+    /// <summary>The machine is offline: nothing was uploaded or sent.</summary>
+    public const string NetworkOffline = "KA_NETWORK_OFFLINE";
+
+    /// <summary>The composer still holds stale text or attachment chips after the reset attempt.</summary>
+    public const string ComposerNotClean = "KA_COMPOSER_NOT_CLEAN";
+
+    /// <summary>A runcommand's tool is listed as Missing in the environment — the process was never started.</summary>
+    public const string ToolMissing = "KA_TOOL_MISSING";
 
     /// <summary>The chat hit its length limit and could not be continued.</summary>
     public const string ChatExhausted = "KA_CHAT_EXHAUSTED";

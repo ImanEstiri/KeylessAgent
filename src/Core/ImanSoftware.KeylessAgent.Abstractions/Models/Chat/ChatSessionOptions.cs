@@ -27,4 +27,10 @@ public sealed record ChatSessionOptions
     /// Optional per-phase timing recorder (the --timing table). Null when timing is off.
     /// </summary>
     public ITimingRecorder? Timings { get; init; }
+
+    /// <summary>
+    /// Optional sink for session-level events (e.g. send attempts with their observed
+    /// signals) — the agent loop wires this into the turn log. Null when no log is wanted.
+    /// </summary>
+    public Func<string, object, Task>? LogEvent { get; init; }
 }

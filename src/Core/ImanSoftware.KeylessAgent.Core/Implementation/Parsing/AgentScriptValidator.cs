@@ -31,16 +31,14 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
             // These apply to parse-valid replies too, so they run before the early return.
             var hasDone = parse.Commands.Any(c => c is DoneCommand);
             var hasNext = parse.Commands.Any(c => c is NextCommand);
-            var hasSay = parse.Commands.Any(c => c is SayCommand);
             var hasOther = parse.Commands.Any(c => c is not (SayCommand or DoneCommand or NextCommand));
 
             if (hasDone && hasNext)
                 problems.Add(new FormatProblem(null, ErrorCodes.ParseConflictingControl,
                     "Both @@next and @@done in one reply — use exactly one control directive."));
 
-            if (hasSay && !hasDone && !hasNext && !hasOther)
-                problems.Add(new FormatProblem(null, ErrorCodes.ParseSayOnly,
-                    "A reply with only @@say gives me nothing to do — add commands, @@next, or @@done."));
+            // A say-only reply is a valid conversational turn: the loop handles it by
+            // re-waiting for the model, so it is no longer rejected here.
 
             if (parse.Problems.Count > 0)
                 return Outcome.Successful((IReadOnlyList<FormatProblem>)problems);
@@ -76,6 +74,10 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                     case MoveFileCommand moveFile:
                         CheckPath(moveFile.Path, command, problems);
                         CheckPath(moveFile.ToPath, command, problems);
+                        break;
+
+                    case MkdirCommand mkdirCommand:
+                        CheckPath(mkdirCommand.Path, command, problems);
                         break;
                 }
             }

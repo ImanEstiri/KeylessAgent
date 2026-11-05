@@ -1,6 +1,7 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.Extensions;
 using ImanSoftware.Logging;
 using ImanSoftware.Outcomes;
 
@@ -40,7 +41,8 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
     /// <summary>Keys that legitimately cannot exist in some page states.</summary>
     internal static readonly IReadOnlyList<string> ConditionalKeys =
     [
-        "StopIndicator", "AttachmentChips", "Reasoning", "FinalAnswer", "LoginIndicator",
+        "StopIndicator", "AttachmentChips", "AttachmentRemove", "AttachmentFailed",
+        "Reasoning", "FinalAnswer", "LoginIndicator",
     ];
 
     /// <inheritdoc />
@@ -163,7 +165,7 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         var checks = new List<SelectorCheck>();
         foreach (var (key, selectors) in SelectorEntries(catalog))
         {
-            checks.Add(await ClassifyAsync(key, selectors, inspector, login, cancellationToken));
+            checks.Add(await ClassifyAsync(key, selectors, inspector, catalog, login, cancellationToken));
         }
 
         var deepThink = await inspector.GetToggleStateAsync(catalog.DeepThinkToggle, cancellationToken);
@@ -210,12 +212,14 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
         yield return ("DeepThinkToggle", catalog.DeepThinkToggle);
         yield return ("SearchToggle", catalog.SearchToggle);
         yield return ("AttachmentChips", catalog.AttachmentChips);
+        yield return ("AttachmentRemove", catalog.AttachmentRemove);
+        yield return ("AttachmentFailed", catalog.AttachmentFailed);
         yield return ("LoginIndicator", catalog.LoginIndicator);
         yield return ("ChatLimitNotice", catalog.ChatLimitNotice);
     }
 
     internal static async Task<SelectorCheck> ClassifyAsync(
-        string key, string[] selectors, IChatPageInspector inspector,
+        string key, string[] selectors, IChatPageInspector inspector, SelectorsCatalog catalog,
         (int Index, int Count)? login, CancellationToken cancellationToken)
     {
         if (key == "LoginIndicator")
@@ -227,6 +231,43 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
                     "Not on the login page (the session looks logged in).");
         }
 
+        // The two attachment-chip repair keys: they only matter when a chip is actually
+        // visible. Without chips they are legitimately not applicable; WITH chips a miss is
+        // a real problem, so the doctor prints the closest chip candidate (trimmed HTML) to
+        // fix the selectors from facts.
+        if (key is "AttachmentRemove" or "AttachmentFailed")
+        {
+            var own = await inspector.ProbeAsync(selectors, cancellationToken);
+            if (own is not null)
+            {
+                var ownDetail = key == "AttachmentRemove"
+                    ? $"The chip's remove control matched (fallback #{own.Value.Index})."
+                    : "A failed/error chip marker matched (the upload did not land).";
+                return new SelectorCheck(key, SelectorCheckStatus.Matched, own.Value.Index, own.Value.Count, ownDetail);
+            }
+
+            var chip = await inspector.ProbeAsync(catalog.AttachmentChips, cancellationToken);
+            if (chip is null)
+            {
+                var composer = await inspector.CaptureTrimmedAsync(catalog.InputBox, cancellationToken);
+                var composerNote = string.IsNullOrWhiteSpace(composer)
+                    ? string.Empty
+                    : $" Closest candidate (composer, trimmed): {composer.Truncate(300)}";
+                return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0,
+                    "No attachment chips are visible right now (nothing to remove)." + composerNote);
+            }
+
+            var candidate = await inspector.CaptureTrimmedAsync(catalog.AttachmentChips, cancellationToken);
+            var candidateNote = string.IsNullOrWhiteSpace(candidate)
+                ? string.Empty
+                : $" Closest chip candidate (trimmed): {candidate.Truncate(300)}";
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0,
+                (key == "AttachmentRemove"
+                    ? "A chip is visible but its remove control did not match."
+                    : "A chip is visible but no failed/error marker matched.") + candidateNote);
+        }
+
         var probe = await inspector.ProbeAsync(selectors, cancellationToken);
         if (probe is not null)
         {
@@ -234,21 +275,47 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             {
                 "FinalAnswer" => "Final-answer element exists (a reply is present or in progress).",
                 "Reasoning" => "A reasoning block exists (a thinking message is present).",
-                "StopIndicator" => "Generating is in progress.",
+                "StopIndicator" => $"Generating is in progress (fallback #{probe.Value.Index}).",
+                "MessageCopyButton" => $"Message-level Copy control exists (fallback #{probe.Value.Index}; hover the reply shows it).",
                 "AttachmentChips" => "Attachment chips are visible (files attached).",
-                "MessageCopyButton" => "Message-level Copy control exists (hover the reply shows it).",
                 "ChatLimitNotice" => "The chat has reached its length limit (exhausted).",
-                _ => "Selector matched.",
+                _ => $"Selector matched (fallback #{probe.Value.Index}).",
             };
             return new SelectorCheck(key, SelectorCheckStatus.Matched, probe.Value.Index, probe.Value.Count, detail);
+        }
+
+        // For the two hover/generating-state controls, a NOT-MATCHED result is only useful
+        // with evidence: include the trimmed HTML of the closest candidate (the newest
+        // assistant message) so a changed web UI can be diagnosed from the doctor output.
+        if (key is "MessageCopyButton" or "StopIndicator")
+        {
+            var candidate = await inspector.CaptureTrimmedAsync(catalog.AssistantMessage, cancellationToken);
+            var candidateNote = string.IsNullOrWhiteSpace(candidate)
+                ? string.Empty
+                : $" Closest candidate (newest message, trimmed): {candidate.Truncate(300)}";
+
+            var notApplicableNow = key == "MessageCopyButton"
+                ? "No assistant message is visible — the Copy button appears only on a reply."
+                : "Nothing is generating right now.";
+
+            // The Copy button is the highest-value selector: when an assistant message IS
+            // visible but the button did not match, dump every real button candidate with
+            // its actual aria-label and class names.
+            if (key == "MessageCopyButton")
+            {
+                var buttons = await inspector.DumpButtonsAsync(catalog.AssistantMessage, cancellationToken);
+                candidateNote += buttons.Length > 0
+                    ? $" Buttons on the newest message: {buttons.Truncate(400)}"
+                    : string.Empty;
+            }
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicableNow + candidateNote);
         }
 
         // Nothing matched: is that legitimate for the current state?
         var notApplicable = key switch
         {
-            "StopIndicator" => "Nothing is generating right now.",
             "AttachmentChips" => "Nothing is attached right now.",
-            "MessageCopyButton" => "No assistant message is visible — the Copy button appears only on a reply.",
             "Reasoning" => "No message with a reasoning block is visible right now.",
             "FinalAnswer" => "No assistant message is visible right now (new chat).",
             "LoginIndicator" => "Not on the login page.",
@@ -256,9 +323,21 @@ internal sealed class ChatDiagnosticsService : IChatDiagnostics
             _ => string.Empty,
         };
 
-        return notApplicable.Length > 0
-            ? new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicable)
-            : new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0, "No fallback selector matched — this key is required and must be fixed.");
+        if (notApplicable.Length > 0)
+        {
+            // The chip keys report against the COMPOSER: when they match nothing, print the
+            // trimmed composer-area HTML so unverified selectors can be fixed from facts.
+            var composerCandidate = key is "AttachmentChips" or "AttachmentRemove" or "AttachmentFailed"
+                ? await inspector.CaptureTrimmedAsync(catalog.InputBox, cancellationToken)
+                : null;
+            var composerNote = string.IsNullOrWhiteSpace(composerCandidate)
+                ? string.Empty
+                : $" Closest candidate (composer, trimmed): {composerCandidate.Truncate(300)}";
+
+            return new SelectorCheck(key, SelectorCheckStatus.NotApplicableNow, -1, 0, notApplicable + composerNote);
+        }
+
+        return new SelectorCheck(key, SelectorCheckStatus.NotFound, -1, 0, "No fallback selector matched — this key is required and must be fixed.");
     }
 
     internal static async Task<IReadOnlyList<string>> CaptureAsync(

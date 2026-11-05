@@ -1,0 +1,61 @@
+<Window x:Class="ImanSoftware.KeylessAgent.Wpf.Views.StyleGalleryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KeylessAgent — Style gallery"
+        Width="720" Height="640"
+        Background="{DynamicResource BgDeep}">
+    <ScrollViewer Padding="24">
+        <StackPanel>
+            <TextBlock Style="{StaticResource TitleText}" Text="Style gallery" />
+            <TextBlock Style="{StaticResource CaptionText}" Text="Midnight &amp; Champagne — every style once (debug only)" />
+
+            <Border Style="{StaticResource GlassCard}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SubtitleText}" Text="Typography" />
+                    <TextBlock Style="{StaticResource DisplayText}" Text="Display 28" />
+                    <TextBlock Style="{StaticResource TitleText}" Text="Title 22" />
+                    <TextBlock Style="{StaticResource SubtitleText}" Text="Subtitle 16" />
+                    <TextBlock Style="{StaticResource BodyText}" Text="Body 14 — the quick brown fox jumps over the lazy dog." />
+                    <TextBlock Style="{StaticResource CaptionText}" Text="Caption 12" />
+                    <TextBlock Style="{StaticResource MonoText}" Text="Mono 14 — dotnet build" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource GlassCardStrong}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SubtitleText}" Text="Buttons" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Style="{StaticResource PrimaryButton}" Content="Primary" />
+                        <Button Style="{StaticResource GhostButton}" Content="Ghost" Margin="8,0,0,0" />
+                        <Button Style="{StaticResource DangerButton}" Content="Danger" Margin="8,0,0,0" />
+                        <Button Style="{StaticResource PrimaryButton}" Content="Disabled" IsEnabled="False" Margin="8,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource GlassCard}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SubtitleText}" Text="Inputs" />
+                    <TextBox Margin="0,8,0,0" Text="TextBox" />
+                    <ComboBox Margin="0,8,0,0" SelectedIndex="0">
+                        <ComboBoxItem Content="Option one" />
+                        <ComboBoxItem Content="Option two" />
+                    </ComboBox>
+                    <CheckBox Style="{StaticResource ToggleSwitch}" Content="Toggle switch" Margin="0,8,0,0" IsChecked="True" />
+                    <ListBox Height="72" Margin="0,8,0,0">
+                        <ListBoxItem Content="List item one" IsSelected="True" />
+                        <ListBoxItem Content="List item two" />
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                <Border Style="{StaticResource Pill}">
+                    <TextBlock Style="{StaticResource CaptionText}" Text="Pill: agent/2026…" />
+                </Border>
+                <Ellipse Width="12" Height="12" Margin="12,0,0,0"
+                         Fill="{DynamicResource Success}" Style="{StaticResource PulseDot}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

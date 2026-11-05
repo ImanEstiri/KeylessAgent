@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:ImanSoftware.KeylessAgent.Wpf.ViewModels"
+                    xmlns:views="clr-namespace:ImanSoftware.KeylessAgent.Wpf.Views">
+
+    <!-- Page views are selected by their view-model type through the shell navigation. -->
+
+    <DataTemplate DataType="{x:Type vm:AgentViewModel}">
+        <views:AgentView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:WorkspaceViewModel}">
+        <views:WorkspaceView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:DoctorViewModel}">
+        <views:DoctorView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+        <views:SettingsView />
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:AboutViewModel}">
+        <views:AboutView />
+    </DataTemplate>
+
+</ResourceDictionary>

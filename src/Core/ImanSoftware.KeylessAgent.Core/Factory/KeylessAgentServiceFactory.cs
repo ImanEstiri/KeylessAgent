@@ -42,8 +42,8 @@ public static class KeylessAgentServiceFactory
     /// Creates the configuration service.
     /// </summary>
     /// <returns>The configuration service.</returns>
-    public static IConfigurationService CreateConfigurationService()
-        => new ConfigurationService();
+    public static IConfigurationService CreateConfigurationService(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        => new ConfigurationService(loggerFactory: loggerFactory);
 
     /// <summary>
     /// Creates the git service.
@@ -95,6 +95,14 @@ public static class KeylessAgentServiceFactory
         => new WorkspaceInspector();
 
     /// <summary>
+    /// Creates the environment-tools facade (probed git/dotnet/node/npm/python states with
+    /// caching, per-tool re-probes and invalidation) for the fail-fast rule and the UIs.
+    /// </summary>
+    /// <returns>The environment tools.</returns>
+    public static IEnvironmentTools CreateEnvironmentTools()
+        => new EnvironmentProbe();
+
+    /// <summary>
     /// Creates the change tracker (git porcelain or no-git index).
     /// </summary>
     /// <returns>The change tracker.</returns>
@@ -122,4 +130,13 @@ public static class KeylessAgentServiceFactory
     /// <returns>The parser.</returns>
     public static IAgentScriptParser CreateParser()
         => new AgentScriptParser();
+
+    /// <summary>
+    /// Creates the Chrome window show/hide controller (pure CDP window moves; powers
+    /// <c>keyless show</c>/<c>keyless hide</c>, the doctor page button and the login flow).
+    /// Pass a logger factory to receive the CDP call lines in the workspace log.
+    /// </summary>
+    /// <returns>The window controller.</returns>
+    public static IChromeWindowController CreateChromeWindowController(ILoggerFactory? loggerFactory = null)
+        => new ChromeWindowController(loggerFactory: loggerFactory);
 }
