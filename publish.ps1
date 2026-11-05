@@ -177,8 +177,9 @@ function Invoke-ProcessWithTimeout {
 # ===================================================================
 
 try {
-    # KeylessAgent nests projects under src\Core, src\UI, src\Playground, ... so we
-    # locate the .csproj by name instead of assuming a fixed path.
+    # KeylessAgent nests projects under src\Core, src\UI, ... (like DepLens, unlike
+    # Platform's flat src\<ProjectName>), so we locate the .csproj by name instead of
+    # assuming a fixed path.
     Write-Step "looking for $ProjectName.csproj under $srcRoot ..."
 
     $csprojFile = Get-ChildItem -Path $srcRoot -Filter "$ProjectName.csproj" -Recurse -ErrorAction SilentlyContinue |
@@ -192,6 +193,16 @@ try {
     $csprojPath  = $csprojFile.FullName
     Write-Step "found project at $projectPath"
 
+    # ===== API Key =====
+    # Recommendation: do NOT hardcode the key in this file. Set it once, outside of git:
+    #   setx NUGET_API_KEY "your-real-key-here"
+    # Then close and reopen your terminal / Visual Studio so the new value is loaded.
+    $ApiKey = $env:NUGET_API_KEY
+
+    if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+        Write-Error "Environment variable NUGET_API_KEY is not set. Run 'setx NUGET_API_KEY your-key' and restart your terminal."
+    }
+
     # Note: previous builds are kept intentionally, so you have a local history
     # of every version ever packed. We don't delete anything here.
     if (-not (Test-Path $artifactsPath)) {
@@ -203,16 +214,13 @@ try {
     # Pack (auto-bumping the patch version if it was already packed)
     # ---------------------------------------------------------------
 
-    # The version lives in ONE place: Directory.Build.props (the csproj no longer carries it).
+    # The version lives in ONE place: Directory.Build.props (the CLI assembly reads it and
+    # the repo's consistency test forbids a second <Version> in the csproj).
     $buildPropsPath = Join-Path $solutionRoot "Directory.Build.props"
-    if (-not (Test-Path $buildPropsPath)) {
-        Write-Error "Could not find $buildPropsPath."
-    }
-
     $version = Get-BuildPropsVersion -Path $buildPropsPath
 
     if (-not $version) {
-        Write-Error "Could not read <Version> from $buildPropsPath. Make sure it's set explicitly in Directory.Build.props."
+        Write-Error "Could not read <Version> from $buildPropsPath. Make sure it's set explicitly there."
     }
 
     $originalVersion = $version
@@ -234,7 +242,7 @@ try {
     if ($version -ne $originalVersion) {
         Set-BuildPropsVersion -Path $buildPropsPath -NewVersion $version
         Write-Step "updated <Version> in $buildPropsPath : $originalVersion -> $version"
-        Add-Summary "Directory.Build.props updated: Version $originalVersion -> $version"
+        Add-Summary "Directory.Build.props updated: $ProjectName Version $originalVersion -> $version"
     } else {
         Add-Summary "Version used: $ProjectName $version (no bump needed)"
     }
@@ -247,41 +255,37 @@ try {
     }
     Add-Summary "Packed: $ProjectName v$version -> $artifactsPath"
 
-    # The package we just built has the EXACT name for the current version — never pick
-    # "newest *.nupkg by timestamp", which can grab the wrong file if anything else
-    # touched the folder after the pack.
-    $nupkgPath = Join-Path $artifactsPath "$ProjectName.$version.nupkg"
+    # Multiple versions may already sit in this folder from previous runs.
+    # The one we just built is always the most recently modified file, so we
+    # sort by LastWriteTime and take the newest — nothing else gets touched.
+    $nupkg = Get-ChildItem -Path $artifactsPath -Filter "*.nupkg" |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
 
-    if (-not (Test-Path $nupkgPath)) {
-        Write-Error "The package for v$version was not found after packing: $nupkgPath"
+    if (-not $nupkg) {
+        Write-Error "No .nupkg file was found after packing."
     }
 
     $snupkgPath = Join-Path $artifactsPath "$ProjectName.$version.snupkg"
 
-    Write-Step "package built: $(Split-Path $nupkgPath -Leaf)"
+    Write-Step "package built: $($nupkg.Name)"
 
     if ($SkipPush) {
         Write-Step "SkipPush is set; packed only, not pushed."
-        Add-Summary "Push skipped (-SkipPush): $(Split-Path $nupkgPath -Leaf) left in $artifactsPath"
+        Add-Summary "Push skipped (-SkipPush): $($nupkg.Name) left in $artifactsPath"
         return
     }
 
     # ---------------------------------------------------------------
-    # Push (timeout; on failure, remove the artifacts we just built
+    # Push (15s timeout; on failure, remove the artifacts we just built
     # so the next run doesn't see a "used" version and bump for no reason)
     # ---------------------------------------------------------------
 
-    # The API key is needed ONLY for the push: pack-only runs (-SkipPush) work without it.
     Write-Action "pushing package to nuget ..."
-
-    $ApiKey = $env:NUGET_API_KEY
-    if ([string]::IsNullOrWhiteSpace($ApiKey)) {
-        Write-Error "Environment variable NUGET_API_KEY is not set. Run 'setx NUGET_API_KEY your-key' and restart your terminal."
-    }
 
     $pushTimeoutSeconds = 30
     $pushArgs = @(
-        'nuget', 'push', $nupkgPath,
+        'nuget', 'push', $nupkg.FullName,
         '--source', 'https://api.nuget.org/v3/index.json',
         '--api-key', $ApiKey,
         '--skip-duplicate',
@@ -301,10 +305,10 @@ try {
     if ($pushResult.TimedOut -or $pushResult.ExitCode -ne 0) {
         Write-Step "removing the artifacts just built for v$version so the version isn't wasted."
 
-        if (Test-Path $nupkgPath) {
-            Remove-Item $nupkgPath -Force
-            Write-Step "removed $(Split-Path $nupkgPath -Leaf)"
-            Add-Summary "Removed after failed push: $(Split-Path $nupkgPath -Leaf)"
+        if (Test-Path $nupkg.FullName) {
+            Remove-Item $nupkg.FullName -Force
+            Write-Step "removed $($nupkg.Name)"
+            Add-Summary "Removed after failed push: $($nupkg.Name)"
         }
         if (Test-Path $snupkgPath) {
             Remove-Item $snupkgPath -Force
@@ -316,8 +320,15 @@ try {
         Write-Error "Push failed."
     }
 
-    Write-Step "$(Split-Path $nupkgPath -Leaf) was successfully published to NuGet.org."
-    Add-Summary "Pushed to NuGet.org: $(Split-Path $nupkgPath -Leaf)"
+    Write-Step "$($nupkg.Name) was successfully published to NuGet.org."
+    Add-Summary "Pushed to NuGet.org: $($nupkg.Name)"
+
+    # NOTE: there is intentionally no "sync Directory.Packages.props" or "bump dependent
+    # projects" step here. Nothing in this repo consumes KeylessAgent packages via
+    # <PackageReference> — Core references Abstractions, and Cli references Core, both via
+    # <ProjectReference>. If that ever changes (e.g. Abstractions/Core get published too and
+    # something else in this repo takes a PackageReference on them), port that logic back in
+    # from publish.ps1 in ImanSoftware.Platform / ImanSoftware.DepLens.
 }
 finally {
     Show-Summary

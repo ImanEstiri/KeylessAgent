@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Physical-pixel screen metrics for the Chrome window geometry (see app.manifest). -->
   <PropertyGroup>
-    <OutputType>
-    <!-- Physical-pixel screen metrics for the Chrome window geometry (see app.manifest). -->Exe</OutputType>
+    <OutputType>Exe</OutputType>
     <!-- Commands and settings are instantiated by Spectre.Console.Cli through reflection. -->
     <NoWarn>$(NoWarn);CA1812;S6966</NoWarn>
       <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -29,6 +29,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>keyless</ToolCommandName>
     <PackageId>ImanSoftware.KeylessAgent.Cli</PackageId>
+    <!-- Version comes from Directory.Build.props (single source; publish.ps1 bumps it there). -->
     <Description>KeylessAgent: a coding agent that works through your own logged-in DeepSeek web chat instead of an API key. Applies model replies to your workspace using a strict command language, on a protected agent branch.</Description>
     <PackageTags>ai-agent;coding-agent;deepseek;playwright;cli;dotnet-tool;keyless</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
