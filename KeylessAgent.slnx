@@ -1,15 +1,18 @@
 <Solution>
   <Folder Name="/src/" />
-  <Folder Name="/src/Core/" />
+  <Folder Name="/src/Core/">
+    <Project Path="src\Core\ImanSoftware.KeylessAgent.Abstractions\ImanSoftware.KeylessAgent.Abstractions.csproj" />
+    <Project Path="src\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Playground/">
+    <Project Path="src\Playground\ImanSoftware.KeylessAgent.Playground\ImanSoftware.KeylessAgent.Playground.csproj" />
+  </Folder>
   <Folder Name="/src/tests/">
     <Project Path="src/tests/ImanSoftware.KeylessAgent.Wpf.Tests/ImanSoftware.KeylessAgent.Wpf.Tests.csproj" />
+    <Project Path="src\tests\ImanSoftware.KeylessAgent.Tests\ImanSoftware.KeylessAgent.Tests.csproj" />
   </Folder>
   <Folder Name="/src/UI/">
     <Project Path="src/UI/ImanSoftware.KeylessAgent.Wpf/ImanSoftware.KeylessAgent.Wpf.csproj" />
+    <Project Path="src\UI\ImanSoftware.KeylessAgent.Cli\ImanSoftware.KeylessAgent.Cli.csproj" />
   </Folder>
-  <Project Path="src\Core\ImanSoftware.KeylessAgent.Abstractions\ImanSoftware.KeylessAgent.Abstractions.csproj" />
-  <Project Path="src\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
-  <Project Path="src\UI\ImanSoftware.KeylessAgent.Cli\ImanSoftware.KeylessAgent.Cli.csproj" />
-  <Project Path="src\Playground\ImanSoftware.KeylessAgent.Playground\ImanSoftware.KeylessAgent.Playground.csproj" />
-  <Project Path="src\tests\ImanSoftware.KeylessAgent.Tests\ImanSoftware.KeylessAgent.Tests.csproj" />
 </Solution>
