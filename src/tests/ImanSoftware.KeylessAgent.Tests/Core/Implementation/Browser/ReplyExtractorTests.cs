@@ -11,7 +11,12 @@ public class ReplyExtractorTests
     /// A trimmed fragment of the real DOM sample: one assistant message containing a
     /// reasoning block and a final answer with paragraphs and a code block.
     /// </summary>
-    private const string RealSampleMessage =
+    // The raw string below embeds REAL newlines, so a CRLF checkout (gitattributes +
+    // autocrlf) puts CR inside the fixture and breaks the LF-expecting extractor
+    // assertions. Normalize once here, independent of the working-tree line endings.
+    private static string RealSampleMessage => RealSampleMessageRaw.Replace("\r\n", "\n");
+
+    private const string RealSampleMessageRaw =
         """
         <div class="ds-message _63c77b1"><div class="_74c0879"><div class="_245c867"><div class="_5ab5d64"><span class="_5255ff8">Thought for 3 seconds</span></div><div class="e1675d8b ds-think-content"><div class="ds-markdown"><p class="ds-markdown-paragraph"><span>reasoning paragraph one</span></p><p class="ds-markdown-paragraph"><span>reasoning paragraph two</span></p></div></div><div class="ds-markdown ds-assistant-message-main-content"><p class="ds-markdown-paragraph"><span>Final answer intro.</span></p><div class="md-code-block md-code-block-dark"><div class="md-code-block-banner-wrap"><div><span class="code-info-button-text">Copy</span></div></div><pre><span>@@say</span><span>
         </span><span>&lt;&lt;&lt;MSG</span><span>
