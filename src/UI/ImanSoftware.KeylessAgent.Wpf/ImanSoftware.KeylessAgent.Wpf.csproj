@@ -8,7 +8,8 @@
     <!-- Physical-pixel screen metrics for the Chrome window geometry (see app.manifest). -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <PackageIcon>icon.png</PackageIcon>
+    <!-- The WPF app is never published as a NuGet package: dotnet pack must fail fast. -->
+    <IsPackable>false</IsPackable>
     <AssemblyName>ImanSoftware.KeylessAgent.Wpf</AssemblyName>
     <RootNamespace>ImanSoftware.KeylessAgent.Wpf</RootNamespace>
     <!-- Targeted: generated XAML code and WPF types trigger these analyzer rules. Keep this list short. -->
@@ -19,12 +20,6 @@
     <ProjectReference Include="..\..\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="" />
-  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ImanSoftware.KeylessAgent.Wpf.Tests" />
   </ItemGroup>
