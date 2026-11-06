@@ -38,6 +38,9 @@ public class PlaywrightChatProviderTests
 
         public Task<Outcome> CloseAsync(BrowserOptions options, bool allowAttached = false, CancellationToken ct = default)
             => Task.FromResult(Outcome.Successful());
+
+        public Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)
+            => Task.FromResult(new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0));
     }
 
     private async Task<RecordingWindowController> RunLoginProbeAsync(FakeChatPage page)

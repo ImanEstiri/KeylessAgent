@@ -45,6 +45,16 @@ internal sealed class AgentLoop : IAgentLoop
     /// post-first-send update). Internal so unit tests can shorten the wall-clock wait.
     /// </summary>
     internal int ResumeProbeSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// Whether the process has already built its FIRST message context
+    /// (Snapshot.FirstMessageMode). False right after the app/process starts; also reset
+    /// when a NEW chat starts, so the first request of a fresh chat uses it again.
+    /// </summary>
+    private bool _firstContextBuilt;
+
+    /// <summary>The AI-selected context (from @@context) pending for the results message.</summary>
+    private NextContextSelection? _pendingContext;
     private readonly ILoggerAdapter<AgentLoop> _log;
 
     public AgentLoop(IChatProvider chat, ILoggerAdapter<AgentLoop>? log = null)
@@ -119,7 +129,7 @@ internal sealed class AgentLoop : IAgentLoop
         return numbered > 0 ? numbered : null;
     }
 
-    private static string BuildPerMessageReminder(string envSummary, bool noGitMode, AgentPace pace)
+    private static string BuildPerMessageReminder(string envSummary, bool noGitMode, AgentPace pace, ContextMode contextMode)
     {
         var gitNote = noGitMode
             ? "git is NOT installed — do not use @@commit or git commands."
@@ -137,6 +147,8 @@ internal sealed class AgentLoop : IAgentLoop
             $"Environment: {envSummary}",
             "Commands run in cmd.exe on Windows (built-ins like mkdir/dir/type and && chains work); for files and folders prefer @@newfile/@@editfile/@@movefile — a new file's parent folders are created automatically.",
             gitNote,
+            "[CONTEXT] This message carries: " + contextMode.ToString().ToLowerInvariant() + " workspace context. Change it for the NEXT message with @@context snapshot|changed|files|none (files needs <<<PATHS ... PATHS>>> with one path per line).",
+            $"[CONTEXT] This message carries: {contextMode.ToString().ToLowerInvariant()} workspace context. Change it for the NEXT message with @@context snapshot|changed|files|none (files needs <<<PATHS ... PATHS>>> with one path per line).",
             pace == AgentPace.Step
                 ? "Pace is STEP: send ONE command, then @@next, and verify the result (verification summary or readfile) before the next command."
                 : "Group at most 3 related commands, verify after each group.",
@@ -549,10 +561,40 @@ internal sealed class AgentLoop : IAgentLoop
             }
 
             // --- Step 7: Send the request (system prompt on the first message of a new chat) ---
+            // --- Context mode for the request message: session NextContext, else defaults ---
+            var requestedContext = session?.NextContext;
+            ContextMode contextMode;
+            IReadOnlyList<string> contextPaths = [];
+            if (requestedContext is not null
+                && Enum.TryParse<ContextMode>(requestedContext.Mode, ignoreCase: true, out var parsedMode))
+            {
+                contextMode = parsedMode;
+                contextPaths = requestedContext.Paths;
+            }
+            else if (!_firstContextBuilt)
+            {
+                contextMode = options.Snapshot.FirstMessageMode;
+            }
+            else
+            {
+                contextMode = options.Snapshot.DefaultMode;
+            }
+
             timings.Start("attachments");
-            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, request, (type, payload) => logger.AppendAsync(type, payload, cancellationToken));
+            var attachmentsOutcome = await _snapshot.BuildAttachmentsAsync(
+                workspaceRoot, options, contextMode, request, contextPaths,
+                (type, payload) => logger.AppendAsync(type, payload, cancellationToken));
             timings.Stop("attachments");
             var attachments = attachmentsOutcome.IsSuccess ? attachmentsOutcome.Data : [];
+            if (attachments.Count > 0)
+                await logger.AppendAsync("context-attached", new
+                {
+                    Turn = turn,
+                    Mode = contextMode.ToString(),
+                    Files = attachments.Count,
+                    Chars = attachments.Sum(a => (long)a.Content.Length),
+                    Source = _firstContextBuilt ? "default" : "first-message",
+                }, cancellationToken);
             if (attachmentsOutcome.IsFailure)
             {
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
@@ -560,14 +602,25 @@ internal sealed class AgentLoop : IAgentLoop
             }
             else
             {
-                // Before sending: what exactly is going to the chat (files, size, filtering).
+                _firstContextBuilt = true;
+                // Consume an explicit @@context choice once; the defaults take over again.
+                if (requestedContext is not null)
+                {
+                    savedSession = savedSession! with { NextContext = null };
+                    await _sessions.SaveAsync(workspaceRoot, savedSession);
+                }
+
                 var totalKb = attachments.Sum(a => (long)a.Content.Length) / 1024;
-                var marker = attachments.FirstOrDefault(a => a.Kind == SnapshotAttachmentKind.TreeView)
-                    ?.Content.Split('\n').FirstOrDefault();
-                var suffix = marker is ['[', ..] ? $" - {marker}" : string.Empty;
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.UploadingAttachments,
-                    $"Attachments: {attachments.Count} files, {totalKb} KB{suffix}"));
+                    $"Context: {contextMode.ToString().ToLowerInvariant()} ({totalKb} KB)"));
             }
+
+            // The changed mode may legitimately find nothing: say so in the message text.
+            var noChangesNote = contextMode == ContextMode.Changed
+                && attachmentsOutcome.IsSuccess
+                && attachments.Count == 0
+                ? "[no file changes since last message]\n\n"
+                : string.Empty;
 
             // Message 1 of a new chat: the AgentScript rules ALONE, with the instruction that
             // they apply to the whole conversation. Mixing them into the request made the model
@@ -577,6 +630,8 @@ internal sealed class AgentLoop : IAgentLoop
             var sendSystemPrompt = continuation is null
                 || !continuation.SystemPromptSent
                 || !chatUrlIsConversation;
+            if (sendSystemPrompt)
+                _firstContextBuilt = false; // a fresh chat's first request uses FirstMessageMode
             if (sendSystemPrompt)
             {
                 var prompt = SystemPromptBuilder.Build(options);
@@ -621,6 +676,12 @@ internal sealed class AgentLoop : IAgentLoop
                             ChatUrl = conversationUrl,
                             ChatUrlUpdatedUtc = _time.Now.ToUniversalTime().ToString("O"),
                         };
+                        await logger.AppendAsync("chat-url-persisted", new
+                        {
+                            Turn = turn,
+                            ChatUrl = conversationUrl,
+                            Source = "first-message",
+                        }, cancellationToken);
                     }
 
                     await _sessions.SaveAsync(workspaceRoot, savedSession);
@@ -630,8 +691,8 @@ internal sealed class AgentLoop : IAgentLoop
 
             // Message 2: the user's request + a compact AgentScript reminder + the workspace
             // snapshot attachments. The full system prompt stays on the first message only.
-            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed, pace);
-            var message = reminder + "\n\n" + request;
+            var reminder = BuildPerMessageReminder(envSummary, noGitModeUsed, pace, contextMode);
+            var message = noChangesNote + reminder + "\n\n" + request;
             if (!dryRun)
             {
                 timings.Start("upload");
@@ -789,6 +850,22 @@ internal sealed class AgentLoop : IAgentLoop
                         continue;
                     }
 
+                    // @@context selects the context mode of a FUTURE message. It has no
+                    // filesystem effect and never counts toward MaxCommandsPerResponse.
+                    if (command is ContextCommand contextSelection)
+                    {
+                        timings.Start("execute");
+                        var contextResult = await _executor.ExecuteAsync(command, Context());
+                        timings.Stop("execute");
+                        executed.Add(contextResult);
+                        _pendingContext = new NextContextSelection
+                        {
+                            Mode = contextSelection.Mode,
+                            Paths = contextSelection.Paths,
+                        };
+                        continue;
+                    }
+
                     if (usedSlots >= effectiveCommandLimit)
                     {
                         executed.Add(new CommandExecutionResult
@@ -922,13 +999,53 @@ internal sealed class AgentLoop : IAgentLoop
                 }
 
                 // --- Step 8c: Send the per-command results back ---
+                // An explicit @@context in THIS batch overrides AttachOnFeedback=false; the
+                // selection is consumed once (the next message falls back to the defaults).
+                ContextMode resultsMode;
+                IReadOnlyList<string> resultsPaths = [];
+                var explicitContext = _pendingContext is not null;
+                if (explicitContext)
+                {
+                    resultsMode = Enum.TryParse<ContextMode>(_pendingContext!.Mode, ignoreCase: true, out var parsed)
+                        ? parsed
+                        : ContextMode.None;
+                    resultsPaths = _pendingContext.Paths;
+                }
+                else
+                {
+                    resultsMode = options.Snapshot.AttachOnFeedback ? options.Snapshot.DefaultMode : ContextMode.None;
+                }
+
                 timings.Start("attachments");
-                var feedbackAttachments = options.Snapshot.AttachOnFeedback
-                    ? (await _snapshot.BuildAttachmentsAsync(workspaceRoot, options, requestText: null, logEvent: (type, payload) => logger.AppendAsync(type, payload, cancellationToken))).Data ?? []
-                    : [];
+                var feedbackAttachments = resultsMode == ContextMode.None
+                    ? []
+                    : (await _snapshot.BuildAttachmentsAsync(
+                        workspaceRoot, options, resultsMode, requestText: null, resultsPaths,
+                        (type, payload) => logger.AppendAsync(type, payload, CancellationToken.None))).Data ?? [];
                 timings.Stop("attachments");
+                if (feedbackAttachments.Count > 0)
+                    await logger.AppendAsync("context-attached", new
+                    {
+                        Turn = turn,
+                        Mode = resultsMode.ToString(),
+                        Files = feedbackAttachments.Count,
+                        Chars = feedbackAttachments.Sum(a => (long)a.Content.Length),
+                        Source = explicitContext ? "ai-request" : "default",
+                    }, CancellationToken.None);
+
+                if (explicitContext)
+                {
+                    _pendingContext = null;
+                    if (savedSession is not null)
+                    {
+                        savedSession = savedSession with { NextContext = null };
+                        await _sessions.SaveAsync(workspaceRoot, savedSession);
+                    }
+                }
 
                 var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits, workspaceRoot);
+                if (resultsMode == ContextMode.Changed && feedbackAttachments.Count == 0)
+                    resultsMessage += "\n\n[no file changes since last message]";
                 ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
                 await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)
@@ -1004,6 +1121,12 @@ internal sealed class AgentLoop : IAgentLoop
                             ChatUrl = liveUrl,
                             ChatUrlUpdatedUtc = _time.Now.ToUniversalTime().ToString("O"),
                         };
+                        await logger.AppendAsync("chat-url-persisted", new
+                        {
+                            Turn = turn,
+                            ChatUrl = liveUrl,
+                            Source = "turn-end",
+                        }, CancellationToken.None);
                     }
                 }
                 catch (Exception ex)
@@ -1012,9 +1135,15 @@ internal sealed class AgentLoop : IAgentLoop
                 }
             }
 
-            if (errorMessage is null && savedSession is not null)
+            if (savedSession is not null)
             {
                 savedSession = savedSession with { AgentChangedPaths = [.. agentPaths] };
+
+                // An @@context selection the turn never used (no results message followed)
+                // persists for the NEXT turn - it must survive an app restart.
+                if (_pendingContext is not null && errorMessage is null)
+                    savedSession = savedSession with { NextContext = _pendingContext };
+
                 await _sessions.SaveAsync(workspaceRoot, savedSession);
             }
         }

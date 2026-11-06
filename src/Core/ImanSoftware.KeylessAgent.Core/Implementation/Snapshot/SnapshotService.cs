@@ -67,26 +67,23 @@ internal sealed class SnapshotService : ISnapshotService
             }
         }
 
-        // The change STASH is what TreeAndChanged attaches: it must be computed BEFORE the
-        // baseline is overwritten, comparing the CURRENT state against the PREVIOUS refresh's
-        // baseline - that is the only diff that can ever contain the agent's real changes
-        // (the refresh runs right before the attachments are built). A failed stash only
-        // means the next BuildAttachments falls back to the budget-limited dump.
-        await StashChangesAsync(workspaceRoot);
-
-        // The baseline powers the NEXT stash; a failed capture only means the next stash is
-        // empty, so it must never fail the refresh.
-        await UpdateSnapshotBaselineAsync(workspaceRoot);
+        // The baseline powers the `changed` context mode: it is captured here ONLY when it
+        // does not exist yet (initial state), and afterwards refreshed by the context BUILD
+        // itself (diff-then-refresh, so a changed attachment always covers exactly the
+        // changes since the previous context build). A failed capture only means the next
+        // changed build reports nothing.
+        if (!_storage.FileExists(Path.Combine(workspaceRoot, BaselineRelativePath)))
+            await CaptureBaselineAsync(workspaceRoot);
 
         return Outcome.Successful();
     }
 
     /// <summary>
-    /// Captures the workspace state after a successful refresh and persists it under
-    /// <c>.agent/snapshot-baseline.json</c>: git porcelain when git answers, a path/size/mtime
-    /// index otherwise. Best-effort — baseline problems degrade to the full dump, never fail.
+    /// Captures the workspace state under <c>.agent/snapshot-baseline.json</c>: git porcelain
+    /// when git answers, a path/size/mtime index otherwise. Called when no baseline exists
+    /// (initial capture) and after a changed-context build (refresh after use). Best-effort.
     /// </summary>
-    private async Task UpdateSnapshotBaselineAsync(string workspaceRoot)
+    private async Task CaptureBaselineAsync(string workspaceRoot)
     {
         // git status "succeeds" with empty stdout even OUTSIDE a repository, which would make
         // every later diff vacuously empty — probe the workspace for real before trusting it.
@@ -133,11 +130,17 @@ internal sealed class SnapshotService : ISnapshotService
     /// <inheritdoc />
     public async Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(
         string workspaceRoot, KeylessOptions options,
-        string? requestText = null, Func<string, object, Task>? logEvent = null)
+        ContextMode mode, string? requestText = null,
+        IReadOnlyList<string>? explicitPaths = null,
+        Func<string, object, Task>? logEvent = null)
     {
+        if (mode == ContextMode.None)
+            return Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]);
+
+        var ceiling = Math.Min(options.Snapshot.MaxTotalAttachmentChars, MaxAttachmentChars);
+
         var treePath = Path.Combine(workspaceRoot, TreeResultName);
         var dumpPath = Path.Combine(workspaceRoot, CodeDumpResultName);
-
         if (!_storage.FileExists(treePath) || !_storage.FileExists(dumpPath))
         {
             return Outcome.Failure<IReadOnlyList<SnapshotAttachment>>(new OutcomeError(
@@ -149,78 +152,237 @@ internal sealed class SnapshotService : ISnapshotService
         if (treeText.IsFailure)
             return Outcome.Failure<IReadOnlyList<SnapshotAttachment>>(treeText.Error);
 
-        var dumpText = await _storage.ReadAllTextAsync(dumpPath);
-        if (dumpText.IsFailure)
-            return Outcome.Failure<IReadOnlyList<SnapshotAttachment>>(dumpText.Error);
-
         var filter = options.Snapshot.Filter;
         var tree = string.Join("\n", SnapshotFilter.FilterTreeLines(
             treeText.Data.Replace("\r\n", "\n").Split('\n'), filter.ExcludeTreePatterns)) + "\n";
 
-        // Sensitive content never reaches the chat: secret files are dropped from the attached
-        // dump and secret-looking values in the remaining sections are redacted — the copies
-        // only; code-dump-result.md and tree-view-result.txt on disk stay untouched.
-        var dump = SnapshotFilter.FilterDumpSections(dumpText.Data, filter.ExcludeDumpHeadings);
-        var (sanitizedDump, filesDropped, valuesMasked) =
-            SanitizeSensitiveContent(dump, filter.SensitiveFilePatterns, filter.MaskSensitiveLines);
-        if (filesDropped + valuesMasked > 0)
-            tree = $"[{filesDropped} files filtered and {valuesMasked} values masked as sensitive]\n" + tree;
+        var body = new System.Text.StringBuilder();
+        var fileCount = 0;
 
-        // Per-file cap + generated/vendored denylist (attachment copy only).
-        sanitizedDump = SnapshotFilter.CapDumpSectionSizes(sanitizedDump, options.Snapshot.MaxDumpedFileChars);
-        sanitizedDump = SnapshotFilter.FilterDumpSectionsByFileName(sanitizedDump, filter.ExcludeFilePatterns);
-
-        var attachments = new List<SnapshotAttachment>
+        if (mode == ContextMode.Snapshot)
         {
-            new(TreeResultName, SnapshotAttachmentKind.TreeView, tree),
-        };
+            var dumpText = await _storage.ReadAllTextAsync(dumpPath);
+            if (dumpText.IsFailure)
+                return Outcome.Failure<IReadOnlyList<SnapshotAttachment>>(dumpText.Error);
 
-        // TreeAndChanged: the tree plus what changed since the last refresh — the full dump is
-        // replaced; anything unchanged is one readfile away. WITHOUT a usable baseline (first
-        // run, unreadable file, failed diff) the attachment falls back to the same
-        // BUDGET-LIMITED dump as Full mode (never an unlimited full dump) — and because
-        // RefreshAsync captures the baseline on every refresh regardless of mode, the very
-        // next turn diffs normally.
-        string? changedFiles = null;
-        if (options.Snapshot.Mode == SnapshotMode.TreeAndChanged)
-            changedFiles = await BuildChangedFilesContentAsync(workspaceRoot);
+            var dump = SnapshotFilter.FilterDumpSections(dumpText.Data, filter.ExcludeDumpHeadings);
+            var sanitizedDump = SnapshotFilter.CapDumpSectionSizes(dump, options.Snapshot.MaxDumpedFileChars);
+            sanitizedDump = SnapshotFilter.FilterDumpSectionsByFileName(sanitizedDump, filter.ExcludeFilePatterns);
 
-        if (changedFiles is not null)
-        {
-            attachments.Add(new SnapshotAttachment("changed-files.txt", SnapshotAttachmentKind.ChangedFiles, changedFiles));
-            return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
-        }
-
-        // --- Total-size budget across EVERYTHING attached to this one turn ---
-        var total = tree.Length + sanitizedDump.Length;
-        if (total <= options.Snapshot.MaxTotalAttachmentChars)
-        {
-            AttachDumpParts(attachments, sanitizedDump);
-            return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
-        }
-
-        var reducedDump = BuildBudgetLimitedDump(sanitizedDump, requestText, out var omittedFiles, out var omittedChars);
-        if (logEvent is not null)
-            await logEvent("snapshot-budget-exceeded", new
+            var nonText = NonTextPaths(workspaceRoot, treePath, dumpPath);
+            body.AppendLine("## tree");
+            body.Append(tree);
+            body.AppendLine("## files");
+            body.AppendLine(sanitizedDump.Trim('\n'));
+            if (nonText.Count > 0)
             {
-                OriginalTotalChars = total,
-                Ceiling = options.Snapshot.MaxTotalAttachmentChars,
-                OmittedFiles = omittedFiles,
-                OmittedChars = omittedChars,
-            });
+                body.AppendLine("[non-text files (path only)]");
+                foreach (var p in nonText)
+                    body.AppendLine(p);
+            }
 
-        AttachDumpParts(attachments, reducedDump);
-        return Outcome.Successful((IReadOnlyList<SnapshotAttachment>)attachments);
+            fileCount = CountSections(sanitizedDump) + nonText.Count;
+        }
+        else if (mode == ContextMode.Changed)
+        {
+            var changes = await DiffAgainstBaselineAsync(workspaceRoot);
+            if (changes is null || changes.Count == 0)
+                return Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]); // nothing since the last build
+
+            fileCount = changes.Count;
+            body.AppendLine("## changes");
+            foreach (var line in changes)
+                body.AppendLine(line);
+
+            body.AppendLine("## files");
+            foreach (var (kind, relativePath) in ParseChangeLines(changes))
+            {
+                body.AppendLine($"### {relativePath.Replace('\\', '/')}");
+                if (kind == "deleted")
+                {
+                    body.AppendLine("[deleted since the last context build]");
+                }
+                else if (!IsTextFile(relativePath))
+                {
+                    body.AppendLine("[non-text file: path only]");
+                }
+                else
+                {
+                    var resolved = new PathSandbox(workspaceRoot).Resolve(relativePath);
+                    var fileContent = resolved.IsSuccess
+                        ? await _storage.ReadAllTextAsync(resolved.Data)
+                        : Outcome.Failure<string>(resolved.Error);
+
+                    if (fileContent.IsFailure)
+                        body.AppendLine(resolved.IsFailure
+                            ? $"[skipped: {resolved.Error?.Message}]"
+                            : "[unreadable]");
+                    else
+                    {
+                        body.AppendLine("```" + WorkspaceAnalyzer.LanguageFor(Path.GetExtension(relativePath)));
+                        body.AppendLine(fileContent.Data.TrimEnd('\r', '\n'));
+                        body.AppendLine("```");
+                    }
+                }
+
+                body.AppendLine();
+            }
+
+            // Refresh after use: the NEXT changed build covers exactly what changes from here.
+            await CaptureBaselineAsync(workspaceRoot);
+        }
+        else // ContextMode.Files
+        {
+            var sandbox = new PathSandbox(workspaceRoot);
+            var paths = (explicitPaths ?? []).Take(options.Snapshot.MaxContextFiles).ToList();
+            fileCount = paths.Count;
+            foreach (var relativePath in paths)
+            {
+                var resolved = sandbox.Resolve(relativePath);
+                if (resolved.IsFailure)
+                {
+                    // A rejected path is NEVER echoed back (the reason only, no path, no
+                    // content): nothing outside the workspace leaks into the attachment.
+                    body.AppendLine("[skipped: path rejected by the workspace sandbox]");
+                    body.AppendLine();
+                    continue;
+                }
+
+                body.AppendLine($"### {relativePath.Replace('\\', '/')}");
+                var fileContent = await _storage.ReadAllTextAsync(resolved.Data);
+                if (fileContent.IsFailure)
+                    body.AppendLine("[unreadable]");
+                else
+                {
+                    body.AppendLine("```" + WorkspaceAnalyzer.LanguageFor(Path.GetExtension(relativePath)));
+                    body.AppendLine(fileContent.Data.TrimEnd('\r', '\n'));
+                    body.AppendLine("```");
+                }
+
+                body.AppendLine();
+            }
+        }
+
+        // AppendLine writes CRLF on Windows while the tree/dump inputs are LF: normalize so
+        // the pipeline (budget sections, markers, masking) works on one consistent ending.
+        var rawBody = body.ToString().Replace("\r\n", "\n");
+        rawBody = SnapshotFilter.CapDumpSectionSizes(rawBody, options.Snapshot.MaxDumpedFileChars);
+        rawBody = SnapshotFilter.FilterDumpSectionsByFileName(rawBody, filter.ExcludeFilePatterns);
+        var (finalBody, droppedFiles, maskedValues) = SanitizeSensitiveContent(
+            rawBody, filter.SensitiveFilePatterns, filter.MaskSensitiveLines);
+
+        // ONE sanitize pass: a second pass would demask "ApiKey": "[redacted]" back to
+        // [redacted] through the generic value regex. The marker is inserted after the
+        // pass so the counts are final.
+        if (droppedFiles + maskedValues > 0)
+        {
+            var marker = $"[{droppedFiles} files filtered and {maskedValues} values masked as sensitive]\n";
+            var treeMarker = "## tree\n";
+            finalBody = finalBody.Contains(treeMarker, StringComparison.Ordinal)
+                ? finalBody.Replace(treeMarker, treeMarker + marker, StringComparison.Ordinal)
+                : marker + finalBody;
+        }
+
+        var header = $"[CONTEXT mode={mode.ToString().ToLowerInvariant()} files={fileCount} generated={DateTime.UtcNow:O}]\n\n";
+        var content = header + finalBody;
+
+        if (content.Length > ceiling)
+        {
+            var reduced = BuildBudgetLimitedDump(finalBody, requestText, out var omittedFiles, out var omittedChars);
+            content = header + reduced;
+            if (logEvent is not null)
+                await logEvent("context-budget-exceeded", new
+                {
+                    Mode = mode.ToString(),
+                    OriginalChars = content.Length,
+                    Ceiling = ceiling,
+                    OmittedFiles = omittedFiles,
+                    OmittedChars = omittedChars,
+                });
+        }
+
+        return Outcome.Successful<IReadOnlyList<SnapshotAttachment>>(
+            [new SnapshotAttachment("workspace-context.md", SnapshotAttachmentKind.WorkspaceContext, content)]);
     }
 
-    private void AttachDumpParts(List<SnapshotAttachment> attachments, string dump)
+    private static int CountSections(string dump)
+        => dump.Split('\n').Count(l => l.StartsWith("### ", StringComparison.Ordinal));
+
+    private static bool IsTextFile(string relativePath)
+        => WorkspaceAnalyzer.DumpExtensions.Contains(
+            Path.GetExtension(relativePath), StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyList<(string Kind, string Path)> ParseChangeLines(IReadOnlyList<string> lines)
     {
-        var parts = SnapshotFilter.ChunkDump(dump, MaxAttachmentChars);
-        for (var i = 0; i < parts.Count; i++)
+        var result = new List<(string Kind, string Path)>();
+        foreach (var line in lines)
         {
-            var name = parts.Count == 1 ? CodeDumpResultName : $"code-dump-result-part{i + 1}.md";
-            attachments.Add(new SnapshotAttachment(name, SnapshotAttachmentKind.CodeDump, parts[i]));
+            var space = line.IndexOf(' ');
+            if (space > 0)
+                result.Add((line[..space], line[(space + 1)..]));
         }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Non-dump workspace files (images, binaries outside excluded folders) listed as
+    /// path-only lines in the snapshot context. Mirrors EnumerateDumpFiles with the
+    /// extension filter inverted.
+    /// </summary>
+    private IReadOnlyList<string> NonTextPaths(string workspaceRoot, string treePath, string dumpPath)
+    {
+        var root = Path.GetFullPath(workspaceRoot);
+        var result = new List<string>();
+        foreach (var file in _analyzer.EnumerateNonTextFiles(root, treePath, dumpPath, CancellationToken.None))
+        {
+            var relative = Path.GetRelativePath(root, file);
+            result.Add(relative.Replace('\\', '/'));
+        }
+
+        result.Sort(StringComparer.OrdinalIgnoreCase);
+        return result;
+    }
+
+    /// <summary>
+    /// Diffs the CURRENT workspace state against the persisted baseline and returns the
+    /// "<kind> <path>" lines; null when there is no baseline or the diff failed.
+    /// </summary>
+    private async Task<List<string>?> DiffAgainstBaselineAsync(string workspaceRoot)
+    {
+        var baselinePath = Path.Combine(workspaceRoot, BaselineRelativePath);
+        if (!_storage.FileExists(baselinePath))
+            return null;
+
+        var read = await _storage.ReadAllTextAsync(baselinePath);
+        if (read.IsFailure)
+            return null;
+
+        BaselineFile? baseline;
+        try
+        {
+            baseline = System.Text.Json.JsonSerializer.Deserialize<BaselineFile>(read.Data);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (baseline is null)
+            return null;
+
+        object handle = baseline.GitAvailable
+            ? (object?)baseline.Porcelain ?? new List<string>()
+            : (baseline.Index ?? []).ToDictionary(
+                kv => kv.Key,
+                kv => (kv.Value[0], DateTime.FromFileTimeUtc(kv.Value[1])),
+                StringComparer.OrdinalIgnoreCase);
+
+        var diff = await _changeTracker.DiffAsync(workspaceRoot, handle, baseline.GitAvailable);
+        if (diff.IsFailure || diff.Data is null)
+            return null;
+
+        return diff.Data.Select(c => $"{c.Kind} {c.Path}").ToList();
     }
 
     /// <summary>
@@ -311,88 +473,6 @@ internal sealed class SnapshotService : ISnapshotService
     }
 
     private static readonly string StashRelativePath = Path.Combine(".agent", "snapshot-changes.json");
-
-    private sealed record ChangeStash(List<string> Lines);
-
-    /// <summary>
-    /// Diffs the CURRENT workspace against the PREVIOUS refresh's baseline and stashes the
-    /// "<kind> <path>" lines under .agent/snapshot-changes.json. Runs inside RefreshAsync
-    /// BEFORE the baseline is overwritten - afterwards the diff would always be vacuously
-    /// empty, which is why the old TreeAndChanged never showed real changes. Best-effort.
-    /// </summary>
-    private async Task StashChangesAsync(string workspaceRoot)
-    {
-        var baselinePath = Path.Combine(workspaceRoot, BaselineRelativePath);
-        if (!_storage.FileExists(baselinePath))
-            return; // no previous baseline: the next BuildAttachments takes the budget path
-
-        var read = await _storage.ReadAllTextAsync(baselinePath);
-        if (read.IsFailure)
-            return;
-
-        BaselineFile? baseline;
-        try
-        {
-            baseline = System.Text.Json.JsonSerializer.Deserialize<BaselineFile>(read.Data);
-        }
-        catch
-        {
-            return;
-        }
-
-        if (baseline is null)
-            return;
-
-        object handle = baseline.GitAvailable
-            ? (object?)baseline.Porcelain ?? new List<string>()
-            : (baseline.Index ?? []).ToDictionary(
-                kv => kv.Key,
-                kv => (kv.Value[0], DateTime.FromFileTimeUtc(kv.Value[1])),
-                StringComparer.OrdinalIgnoreCase);
-
-        var diff = await _changeTracker.DiffAsync(workspaceRoot, handle, baseline.GitAvailable);
-        if (diff.IsFailure || diff.Data is null)
-            return;
-
-        var stash = new ChangeStash(diff.Data.Select(c => $"{c.Kind} {c.Path}").ToList());
-        var stashPath = Path.Combine(workspaceRoot, StashRelativePath);
-        var mkdir = await _storage.CreateDirectoryAsync(Path.GetDirectoryName(stashPath)!);
-        if (mkdir.IsFailure)
-            return;
-        await _storage.WriteAllTextAsync(stashPath, System.Text.Json.JsonSerializer.Serialize(stash));
-    }
-
-    /// <summary>
-    /// The stashed change lines from the last refresh; null when there is no stash (first
-    /// run), it is unreadable, or it is EMPTY (nothing to show from diffs - the
-    /// budget-limited dump takes over instead, which is strictly more useful than
-    /// "(no changes since the last snapshot.)").
-    /// </summary>
-    private async Task<string?> BuildChangedFilesContentAsync(string workspaceRoot)
-    {
-        var stashPath = Path.Combine(workspaceRoot, StashRelativePath);
-        if (!_storage.FileExists(stashPath))
-            return null;
-
-        var read = await _storage.ReadAllTextAsync(stashPath);
-        if (read.IsFailure)
-            return null;
-
-        ChangeStash? stash;
-        try
-        {
-            stash = System.Text.Json.JsonSerializer.Deserialize<ChangeStash>(read.Data);
-        }
-        catch
-        {
-            return null;
-        }
-
-        if (stash is null || stash.Lines is not { Count: > 0 })
-            return null;
-
-        return string.Join("\n", stash.Lines) + "\n";
-    }
 
     private sealed record BaselineFile(
         bool GitAvailable,

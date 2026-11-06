@@ -79,6 +79,10 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
                     case MkdirCommand mkdirCommand:
                         CheckPath(mkdirCommand.Path, command, problems);
                         break;
+
+                    case ContextCommand context:
+                        ValidateContext(context, command, problems);
+                        break;
                 }
             }
 
@@ -88,6 +92,31 @@ internal sealed class AgentScriptValidator : IAgentScriptValidator
         {
             return Outcome.Failure<IReadOnlyList<FormatProblem>>(new OutcomeError(ex));
         }
+    }
+
+    /// <summary>
+    /// A @@context mode must be snapshot/changed/files/none; only the files mode carries
+    /// paths, and every path must pass the same shape checks as file-command paths.
+    /// </summary>
+    private static void ValidateContext(ContextCommand context, AgentScriptCommand command, List<FormatProblem> problems)
+    {
+        var mode = context.Mode.Trim().ToLowerInvariant();
+        if (mode is not ("snapshot" or "changed" or "files" or "none"))
+        {
+            problems.Add(new FormatProblem(command.Number, ErrorCodes.ParseBadOption,
+                "Unknown @@context mode '" + context.Mode + "\" (expected snapshot, changed, files or none)."));
+            return;
+        }
+
+        if (mode != "files" && context.Paths.Count > 0)
+        {
+            problems.Add(new FormatProblem(command.Number, ErrorCodes.ParseUnexpectedPayload,
+                "@@context " + mode + " does not accept paths; only @@context files carries <<<PATHS."));
+            return;
+        }
+
+        foreach (var path in context.Paths)
+            CheckPath(path, command, problems);
     }
 
     /// <summary>

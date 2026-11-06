@@ -40,7 +40,7 @@ internal sealed class ConfigCommand : AsyncCommand<ConfigSettings>
         table.AddRow("Mode", options.Mode.ToString());
         table.AddRow("Browser", $"port={options.Browser.ChromeDebugPort}, windowMode={options.Browser.WindowMode}, minimizeAfterLogin={options.Browser.MinimizeAfterLogin}, DeepThink={options.Browser.EnableDeepThink}, Search={options.Browser.EnableSearch}, selectors={options.Browser.SelectorsFile}, replyTimeout={options.Browser.ReplyTimeoutSeconds}s, rate={options.Browser.MaxMessagesPerMinute}/min, debug={options.Browser.Debug}");
         table.AddRow("Limits", $"commands/response={options.Limits.MaxCommandsPerResponse}, responseChars={options.Limits.MaxResponseChars}, fileChars={options.Limits.MaxFileContentChars}, outputChars={options.Limits.MaxCommandOutputChars}, formatRetries={options.Limits.MaxFormatRetries}, iterations={options.Limits.MaxIterationsPerTurn}");
-        table.AddRow("Snapshot", $"mode={options.Snapshot.Mode}, attachOnFeedback={options.Snapshot.AttachOnFeedback}, refreshAfterEachBatch={options.Snapshot.RefreshAfterEachBatch}");
+        table.AddRow("Snapshot", $"firstMode={options.Snapshot.FirstMessageMode}, defaultMode={options.Snapshot.DefaultMode}, maxTotal={options.Snapshot.MaxTotalAttachmentChars}, maxFile={options.Snapshot.MaxDumpedFileChars}, attachOnFeedback={options.Snapshot.AttachOnFeedback}, refreshAfterEachBatch={options.Snapshot.RefreshAfterEachBatch}");
         // Table cells render as Spectre markup: the bracket-joined lists MUST be escaped,
         // or "[main, master, release*]" parses as a (malformed) markup tag.
         table.AddRow("Git", $"prefix={options.Git.BranchPrefix}, protected=[{string.Join(", ", options.Git.ProtectedBranchPatterns)}]".EscapeMarkup());

@@ -316,6 +316,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             CommandKind.EditFile => [SectionNames.Find, SectionNames.Replace],
             CommandKind.RunCommand => [SectionNames.Cmd],
             CommandKind.MoveFile => [SectionNames.To],
+            CommandKind.Context when IsFilesMode(block.Argument) => [SectionNames.Paths],
             _ => [],
         };
 
@@ -351,7 +352,7 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
 
         var needsArgument = block.Kind is CommandKind.NewFile or CommandKind.UpdateFile
             or CommandKind.EditFile or CommandKind.DeleteFile or CommandKind.ReadFile
-            or CommandKind.MoveFile or CommandKind.Mkdir;
+            or CommandKind.MoveFile or CommandKind.Mkdir or CommandKind.Context;
 
         if (needsArgument && string.IsNullOrWhiteSpace(block.Argument))
         {
@@ -424,6 +425,9 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
             CommandKind.Next => new NextCommand(Payload(payload, SectionNames.Msg)),
             CommandKind.MoveFile => new MoveFileCommand(block.Argument, Payload(payload, SectionNames.To)),
             CommandKind.Mkdir => new MkdirCommand(block.Argument),
+            CommandKind.Context => new ContextCommand(
+                block.Argument.Trim().ToLowerInvariant(),
+                ParsePaths(Payload(payload, SectionNames.Paths))),
             _ => throw new NotSupportedException($"Unhandled command kind {block.Kind}."),
         };
 
@@ -608,6 +612,18 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         InPayload,
     }
 
+    /// <summary>Whether a @@context block requests the explicit-paths mode.</summary>
+    private static bool IsFilesMode(string argument)
+        => argument.Trim().Equals("files", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>One path per line; blank lines and surrounding whitespace are dropped.</summary>
+    private static IReadOnlyList<string> ParsePaths(string payload)
+        => payload.Replace("\r\n", "\n")
+            .Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+
     private static class SectionNames
     {
         public const string Msg = "MSG";
@@ -616,9 +632,10 @@ internal sealed partial class AgentScriptParser : IAgentScriptParser
         public const string Replace = "REPLACE";
         public const string Cmd = "CMD";
         public const string To = "TO";
+        public const string Paths = "PATHS";
 
         public static bool IsKnown(string name)
-            => name.ToUpperInvariant() is Msg or Content or Find or Replace or Cmd or To;
+            => name.ToUpperInvariant() is Msg or Content or Find or Replace or Cmd or To or Paths;
     }
 
     private sealed record BlockContext(CommandKind Kind, string Argument, int StartLine, int Number)

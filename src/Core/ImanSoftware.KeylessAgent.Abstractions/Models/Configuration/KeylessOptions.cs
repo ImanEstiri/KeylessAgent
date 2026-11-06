@@ -275,13 +275,23 @@ public sealed record LimitsOptions
 public sealed record SnapshotOptions
 {
     /// <summary>
-    /// What gets attached to a user request. Default <see cref="SnapshotMode.TreeAndChanged"/>:
-    /// the tree plus only files changed since the last baseline. Full remains fully supported
-    /// for anyone who explicitly wants it. When TreeAndChanged has no usable baseline (first
-    /// turn), the attachment falls back to the tree plus a BUDGET-LIMITED relevant-file dump
-    /// (see <see cref="MaxTotalAttachmentChars"/>), never an unlimited full dump.
+    /// The context mode of the FIRST user-request message after the app/process starts or in
+    /// a new chat. Default <see cref="ContextMode.Snapshot"/> (tree + full budgeted dump).
     /// </summary>
-    public SnapshotMode Mode { get; init; } = SnapshotMode.TreeAndChanged;
+    public ContextMode FirstMessageMode { get; init; } = ContextMode.Snapshot;
+
+    /// <summary>
+    /// The context mode of every later message. Default <see cref="ContextMode.Changed"/>
+    /// (files changed since the last context build, with content). When it finds nothing the
+    /// message carries no attachment and notes "no file changes since last message".
+    /// </summary>
+    public ContextMode DefaultMode { get; init; } = ContextMode.Changed;
+
+    /// <summary>
+    /// Maximum number of explicit paths one @@context files attachment may carry.
+    /// Default 20.
+    /// </summary>
+    public int MaxContextFiles { get; init; } = 20;
 
     /// <summary>
     /// Total character ceiling for everything attached to ONE turn (tree + dump + notes

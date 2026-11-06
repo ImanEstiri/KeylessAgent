@@ -26,6 +26,10 @@ internal sealed partial class WorkspaceAnalyzer
     internal static readonly IReadOnlyList<string> ExcludedDirectories =
         ["bin", "obj", "node_modules", ".git", ".vs", ".idea", "wwwroot\\lib", ".agent", "artifacts"];
 
+    /// <summary>The highlight language for one file extension ('text' when unknown).</summary>
+    internal static string LanguageFor(string extension)
+        => LanguageByExtension.GetValueOrDefault(extension, "text");
+
     private static readonly Dictionary<string, string> LanguageByExtension = new(StringComparer.OrdinalIgnoreCase)
     {
         [".cs"] = "csharp",
@@ -185,6 +189,51 @@ internal sealed partial class WorkspaceAnalyzer
                 if (!DumpExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 {
                     continue; // binaries, logs and other data do not belong in the dump
+                }
+
+                yield return file;
+            }
+
+            foreach (var directory in SafeEnumerate(current, p => Directory.EnumerateDirectories(p))
+                         .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                         .Reverse())
+            {
+                if (IsExcludedDirectory(directory))
+                    continue;
+
+                stack.Push(directory);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The mirror image of EnumerateDumpFiles: every workspace file that the dump SKIPS
+    /// (non-text extensions) but that is not in an excluded folder and not an output —
+    /// listed path-only in the snapshot context.
+    /// </summary>
+    internal IEnumerable<string> EnumerateNonTextFiles(
+        string root, string outputPath, string treeOutputPath, CancellationToken cancellationToken)
+    {
+        var stack = new Stack<string>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var current = stack.Pop();
+
+            foreach (var file in SafeEnumerate(current, p => Directory.EnumerateFiles(p))
+                         .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                if (file.Equals(outputPath, StringComparison.OrdinalIgnoreCase) ||
+                    file.Equals(treeOutputPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // the outputs themselves never enter the listing
+                }
+
+                if (DumpExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                {
+                    continue; // text files carry their content in the dump
                 }
 
                 yield return file;

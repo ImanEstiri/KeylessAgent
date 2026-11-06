@@ -146,25 +146,30 @@
                                     <Button Content="Start Chrome"
                                             Style="{DynamicResource PrimaryButton}"
                                             Command="{Binding StartCommand}"
+                                            ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Starts the dedicated Chrome (disabled while it is already running)"
                                             MinWidth="130" />
                                     <Button Content="Show Chrome"
                                             Style="{DynamicResource GhostButton}"
                                             Command="{Binding ShowChromeCommand}"
                                             MinWidth="130"
                                             Margin="8,0,0,0"
-                                            ToolTip="Bring the offscreen Chrome window into view" />
+                                            ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Bring the offscreen Chrome window into view (requires a running agent Chrome)" />
                                     <Button Content="Hide Chrome"
                                             Style="{DynamicResource GhostButton}"
                                             Command="{Binding HideChromeCommand}"
                                             MinWidth="130"
                                             Margin="8,0,0,0"
-                                            ToolTip="Send the Chrome window back offscreen" />
+                                            ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Send the Chrome window back offscreen (requires a running agent Chrome)" />
                                     <Button Content="Close Chrome"
                                             Style="{DynamicResource GhostButton}"
                                             Command="{Binding CloseChromeCommand}"
                                             MinWidth="130"
                                             Margin="8,0,0,0"
-                                            ToolTip="Close the KeylessAgent Chrome entirely (all tabs and the process)" />
+                                            ToolTipService.ShowOnDisabled="True"
+                                            ToolTip="Close the KeylessAgent Chrome entirely (requires a running agent Chrome)" />
                                     <TextBlock Text="{Binding StatusText}" Style="{DynamicResource BodyText}"
                                                Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
                                 </StackPanel>

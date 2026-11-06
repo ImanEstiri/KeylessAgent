@@ -11,8 +11,11 @@ public enum SnapshotAttachmentKind
     /// <summary>The filtered <c>code-dump-result.md</c> output, or one part of it.</summary>
     CodeDump,
 
-    /// <summary>The list of files changed since the last snapshot (TreeAndChanged mode).</summary>
+    /// <summary>The list of files changed since the last snapshot (legacy TreeAndChanged mode).</summary>
     ChangedFiles,
+
+    /// <summary>The SINGLE workspace-context attachment (one per message, all modes).</summary>
+    WorkspaceContext,
 }
 
 /// <summary>

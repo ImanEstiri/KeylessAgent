@@ -46,4 +46,7 @@ public enum CommandKind
 
     /// <summary>Creates a folder (and parents). Idempotent; never confirmed.</summary>
     [Description("mkdir")] Mkdir,
+
+    /// <summary>Selects the workspace-context mode of a future message. No filesystem effect.</summary>
+    [Description("context")] Context,
 }

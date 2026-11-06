@@ -20,6 +20,8 @@ public sealed class ChromeViewModel : ObservableObject
     private readonly Func<IAgentUserInterface> _uiFactory;
     private readonly IUiDispatcher _ui;
     private bool _isConnecting;
+    private bool _isChromeActive;
+    private bool _isForeignChrome;
     private string _note = string.Empty;
     private string _profile = string.Empty;
     private string _connectionKind = string.Empty;
@@ -41,37 +43,47 @@ public sealed class ChromeViewModel : ObservableObject
         _uiFactory = uiFactory ?? throw new ArgumentNullException(nameof(uiFactory));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
 
-        StartCommand = new AsyncRelayCommand(StartAsync, () => !IsBusy && _agent.HasWorkspace);
+        StartCommand = new AsyncRelayCommand(StartAsync, CanStart);
         StartCommand.IsRunningChanged += (_, running) =>
         {
             IsConnecting = running.IsRunning;
             StartCommand.NotifyCanExecuteChanged();
         };
 
-        ShowChromeCommand = new AsyncRelayCommand(ShowChromeAsync, () => !IsBusy && _agent.HasWorkspace);
+        ShowChromeCommand = new AsyncRelayCommand(ShowChromeAsync, CanUseWindow);
         ShowChromeCommand.IsRunningChanged += (_, running) =>
         {
             IsShowing = running.IsRunning;
             ShowChromeCommand.NotifyCanExecuteChanged();
         };
 
-        HideChromeCommand = new AsyncRelayCommand(HideChromeAsync, () => !IsBusy && _agent.HasWorkspace);
+        HideChromeCommand = new AsyncRelayCommand(HideChromeAsync, CanUseWindow);
         HideChromeCommand.IsRunningChanged += (_, running) =>
         {
             IsHiding = running.IsRunning;
             HideChromeCommand.NotifyCanExecuteChanged();
         };
 
-        CloseChromeCommand = new AsyncRelayCommand(CloseChromeAsync, () => !IsBusy && _agent.HasWorkspace);
+        CloseChromeCommand = new AsyncRelayCommand(CloseChromeAsync, CanUseWindow);
         CloseChromeCommand.IsRunningChanged += (_, running) =>
         {
             IsClosing = running.IsRunning;
             CloseChromeCommand.NotifyCanExecuteChanged();
         };
+
+        // Re-probe the Chrome state whenever the workspace selection changes.
+        _agent.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(AgentViewModel.WorkspaceRoot) or nameof(AgentViewModel.HasWorkspace))
+                _ = RefreshChromeStateAsync();
+        };
     }
 
     /// <summary>Whether ANY window/connect/close action is running (all four commands cross-disable).</summary>
     private bool IsBusy => IsConnecting || IsShowing || IsHiding || IsClosing;
+
+    private bool CanStart() => !IsBusy && _agent.HasWorkspace && !IsChromeActive && !IsForeignChrome;
+    private bool CanUseWindow() => !IsBusy && _agent.HasWorkspace && IsChromeActive;
 
     /// <summary>Starts or attaches to the dedicated Chrome (disabled while busy or without a workspace).</summary>
     public AsyncRelayCommand StartCommand { get; }
@@ -97,6 +109,28 @@ public sealed class ChromeViewModel : ObservableObject
     }
 
     private bool _isShowing;
+
+    /// <summary>Whether OUR Chrome (port + profile) is currently running.</summary>
+    public bool IsChromeActive
+    {
+        get => _isChromeActive;
+        private set
+        {
+            if (SetProperty(ref _isChromeActive, value))
+                NotifyAllCommands();
+        }
+    }
+
+    /// <summary>Whether the debug port is held by a Chrome WITHOUT the KeylessAgent profile.</summary>
+    public bool IsForeignChrome
+    {
+        get => _isForeignChrome;
+        private set
+        {
+            if (SetProperty(ref _isForeignChrome, value))
+                NotifyAllCommands();
+        }
+    }
 
     /// <summary>Whether a hide attempt is running.</summary>
     public bool IsHiding
@@ -133,6 +167,74 @@ public sealed class ChromeViewModel : ObservableObject
             if (SetProperty(ref _isConnecting, value))
                 NotifyAllCommands();
         }
+    }
+
+    private System.Timers.Timer? _statePollTimer;
+    private int _stateProbeGeneration;
+
+    /// <summary>
+    /// Re-probes the Chrome state off the UI thread. Called on workspace change, when the
+    /// Doctor page opens, after every action completes, and on a ~2 s poll while the page
+    /// is visible. Best-effort. Overlapping probes are allowed, but a probe's result is
+    /// only applied when it is still the LATEST one (a stale probe that started before a
+    /// close/show/hide must never overwrite the post-action state).
+    /// </summary>
+    public async Task RefreshChromeStateAsync()
+    {
+        if (!_agent.HasWorkspace)
+            return;
+
+        var generation = Interlocked.Increment(ref _stateProbeGeneration);
+        try
+        {
+            var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
+            if (options.IsFailure || options.Data is null)
+            {
+                if (generation == Volatile.Read(ref _stateProbeGeneration))
+                    _ui.Post(() => { IsChromeActive = false; IsForeignChrome = false; });
+                return;
+            }
+
+            var state = await _windowController.GetStateAsync(options.Data.Browser);
+            if (generation != Volatile.Read(ref _stateProbeGeneration))
+                return; // a newer probe superseded this one — never apply a stale state
+
+            System.Console.WriteLine($"[probe] gen={generation} active={state.Active} posting");
+            _ui.Post(() =>
+            {
+                System.Console.WriteLine($"[apply] active={state.Active}");
+                IsChromeActive = state.Active;
+                IsForeignChrome = state.DebugPortOpen && !state.OwnedByAgent;
+                if (IsForeignChrome)
+                    StatusText = "Port in use by a Chrome that is not the agent's profile";
+                else if (IsChromeActive && StatusText == "Ready")
+                    StatusText = "Chrome running";
+                else if (!IsChromeActive && StatusText == "Chrome running")
+                    StatusText = "Chrome not running";
+            });
+        }
+        catch
+        {
+            // State probing is best-effort; failures leave the last known state.
+        }
+    }
+
+    /// <summary>Starts the ~2 s state poll (Doctor page visible). Idempotent.</summary>
+    public void StartStatePoll()
+    {
+        if (_statePollTimer is not null)
+            return;
+        _statePollTimer = new System.Timers.Timer(2000) { AutoReset = true };
+        _statePollTimer.Elapsed += (_, _) => _ = RefreshChromeStateAsync();
+        _statePollTimer.Start();
+    }
+
+    /// <summary>Stops the ~2 s state poll (Doctor page hidden).</summary>
+    public void StopStatePoll()
+    {
+        _statePollTimer?.Stop();
+        _statePollTimer?.Dispose();
+        _statePollTimer = null;
     }
 
     private void NotifyAllCommands()
@@ -358,10 +460,12 @@ public sealed class ChromeViewModel : ObservableObject
                     Note = outcome.Error?.Message ?? "Chrome could not be closed.";
                     return;
                 }
-
                 // No stale "Chrome ready/visible" status may survive a real close.
                 ConnectionKind = string.Empty;
                 Profile = string.Empty;
+                IsChromeActive = false;
+                IsForeignChrome = false;
+                System.Console.WriteLine("[close-handler] IsChromeActive=false");
                 StatusText = "Ready";
                 Note = "Chrome closed. Use Start Chrome to open it again.";
             });
@@ -398,6 +502,9 @@ public sealed class ChromeViewModel : ObservableObject
 
         ConnectionKind = connection.Data.Attachment.Kind.ToString();
         Profile = connection.Data.Attachment.UserDataDir;
+        // Deterministic post-action state: we JUST started/attached to our Chrome.
+        IsChromeActive = true;
+        IsForeignChrome = false;
         StatusText = $"Chrome ready ({ConnectionKind})";
         Note = "Chrome is ready. Log in to DeepSeek in that window once — the login persists in the dedicated profile. This command does not automate the page.";
     }

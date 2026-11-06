@@ -55,7 +55,9 @@ public static class SettingsGroupMapper
             ]),
             new SettingsGroup("Snapshot",
             [
-                Row("Mode", options.Snapshot.Mode.ToString()),
+                Row("FirstMessageMode", options.Snapshot.FirstMessageMode.ToString()),
+                Row("DefaultMode", options.Snapshot.DefaultMode.ToString()),
+                Row("MaxTotalAttachmentChars", options.Snapshot.MaxTotalAttachmentChars),
                 Row("AttachOnFeedback", options.Snapshot.AttachOnFeedback),
                 Row("RefreshAfterEachBatch", options.Snapshot.RefreshAfterEachBatch),
             ]),

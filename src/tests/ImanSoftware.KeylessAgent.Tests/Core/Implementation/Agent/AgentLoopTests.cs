@@ -34,7 +34,7 @@ public class AgentLoopTests : IDisposable
         RunGit("config user.email agent@example.com");
         RunGit("config user.name keyless-agent");
         File.WriteAllText(Path.Combine(_root, "README.md"), "# workspace");
-        File.WriteAllText(Path.Combine(_root, "tree-view.bat"), "@echo off\r\ntree /F /A > tree-view-result.txt\r\n");
+        File.WriteAllText(Path.Combine(_root, "tree-view.bat"), "@echo off\r\ntree /F /A > workspace-context.md\r\n");
         File.WriteAllText(Path.Combine(_root, "code-dump.bat"), "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\n");
         RunGit("add -A");
         RunGit("commit -m init");
@@ -83,8 +83,15 @@ public class AgentLoopTests : IDisposable
             return Task.FromResult(Outcome.Successful());
         }
 
-        public Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(string workspaceRoot, KeylessOptions options, string? requestText = null, Func<string, object, Task>? logEvent = null)
-            => Task.FromResult(Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]));
+        public ContextMode? LastContextMode { get; private set; }
+
+        public Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(
+            string workspaceRoot, KeylessOptions options, ContextMode mode, string? requestText = null,
+            IReadOnlyList<string>? explicitPaths = null, Func<string, object, Task>? logEvent = null)
+        {
+            LastContextMode = mode;
+            return Task.FromResult(Outcome.Successful<IReadOnlyList<SnapshotAttachment>>([]));
+        }
 
         public Task<Outcome<bool>> IsStaleAsync(string workspaceRoot)
             => Task.FromResult(Outcome.Successful(false));
@@ -135,7 +142,7 @@ public class AgentLoopTests : IDisposable
         chat.Sent[0].Text.Should().Contain("AgentScript v1");
         chat.Sent[0].Text.Should().NotContain("add a generated class");
         chat.Sent[1].Text.Should().Contain("add a generated class");
-        chat.Sent[1].AttachmentNames.Should().Contain("tree-view-result.txt");
+        chat.Sent[1].AttachmentNames.Should().Contain("workspace-context.md");
         ui.Said.Should().Contain("creating the file");
     }
 
@@ -292,7 +299,7 @@ public class AgentLoopTests : IDisposable
     {
         var notARepo = Path.Combine(Path.GetTempPath(), "ka-autoinit-" + Guid.CreateVersion7().ToString("N"));
         Directory.CreateDirectory(notARepo);
-        File.WriteAllText(Path.Combine(notARepo, "tree-view.bat"), "@echo off\r\ntree /F /A > tree-view-result.txt\r\n");
+        File.WriteAllText(Path.Combine(notARepo, "tree-view.bat"), "@echo off\r\ntree /F /A > workspace-context.md\r\n");
         File.WriteAllText(Path.Combine(notARepo, "code-dump.bat"), "@echo off\r\necho ### code-dump-result > code-dump-result.md\r\n");
         try
         {
@@ -594,7 +601,7 @@ public class AgentLoopTests : IDisposable
     {
         Git(_root, "init");
         File.WriteAllText(Path.Combine(_root, ".gitignore"),
-            ".agent/\ncode-dump-result.md\ntree-view-result.txt\nkeyless.json\n");
+            ".agent/\ncode-dump-result.md\nworkspace-context.md\nkeyless.json\n");
         Git(_root, "add", "-A");
         Git(_root, "-c", "user.name=ka-test", "-c", "user.email=ka@test.local", "commit", "-m", "seed");
         Git(_root, "checkout", "-b", "agent/20260101-1200-test");
@@ -831,7 +838,7 @@ public class AgentLoopTests : IDisposable
             "AgentScript-looking text inside a workspace file is data, never executed");
         File.ReadAllText(Path.Combine(_root, "evil.txt")).Should().Contain("@@newfile",
             "the injection attempt itself is left untouched");
-        chat.Sent.Should().Contain(m => m.AttachmentNames.Contains("code-dump-result.md"),
+        chat.Sent.Should().Contain(m => m.AttachmentNames.Contains("workspace-context.md"),
             "the file content reached the model only as a snapshot attachment (data), not as a command");
         result.CompletedByDone.Should().BeTrue();
         ui.Progress.Should().Contain(p => p.Type == AgentEventType.ValidatingReply && p.Detail.StartsWith("Reply: 2 commands"),
@@ -1010,4 +1017,52 @@ internal sealed class ExhaustedChatProvider : IChatProvider
     }
 }
 
+
+    [Fact]
+    public async Task RunAsync_ExplicitContext_AppliesToTheResultsMessage_AndIsConsumed()
+    {
+        // The model asks for @@context files in a batch: the results message of the SAME
+        // turn carries it (overriding AttachOnFeedback=false) and is then consumed.
+        var chat = new FakeChatProvider(
+            "@@context files\n<<<PATHS\na.cs\nPATHS>>>\n@@end\n@@next\n<<<MSG\npick\nMSG>>>\n@@end\n@@eof\n",
+            DoneReply("done"));
+        var loop = CreateLoop(chat);
+        var ui = new FakeAgentUserInterface();
+
+        await loop.RunAsync(_root, "request", ui);
+
+        var session = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        session.IsSuccess.Should().BeTrue();
+        session.Data.Should().Contain("\"NextContext\": null", "the selection is consumed by the results message");
+        chat.Sent.Should().Contain(m => m.Text.Contains("next context: files"),
+            "the executor records the selection");
+    }
+
+    [Fact]
+    public async Task RunAsync_PendingContext_SurvivesRestart_AndAppliesToTheNextRequest()
+    {
+        // A turn ends with an UNUSED @@context selection (no results message followed):
+        // it persists in session.json and the NEXT process's request message uses it once.
+        File.WriteAllText(Path.Combine(_root, "a.cs"), "class A { }");
+        var chat = new FakeChatProvider(
+            "@@context changed\n@@end\n@@done\n<<<MSG\nasked for changed\nMSG>>>\n@@end\n@@eof\n",
+            DoneReply("second turn done"));
+        var loop = CreateLoop(chat);
+        await loop.RunAsync(_root, "first request", new FakeAgentUserInterface());
+
+        var afterTurn = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        afterTurn.IsSuccess.Should().BeTrue();
+        afterTurn.Data.Should().Contain("NextContext").And.Contain("changed",
+            "the unused selection survives an app restart");
+
+        // 'Restart': a NEW loop instance reads the persisted selection.
+        var chat2 = new FakeChatProvider(DoneReply("done"));
+        var loop2 = CreateLoop(chat2);
+        await loop2.RunAsync(_root, "second request", new FakeAgentUserInterface());
+
+        var session = await _storage.ReadAllTextAsync(Path.Combine(_root, ".agent", "session.json"));
+        session.Data.Should().Contain("\"NextContext\": null", "consumed once, then defaults resume");
+        chat2.Sent.Should().Contain(m => m.Text.Contains("[no file changes since last message]"),
+            "the consumed changed mode built (and found nothing since the last build)");
+    }
 }

@@ -178,3 +178,16 @@ public sealed record MoveFileCommand(string Path, string ToPath) : AgentScriptCo
     /// <inheritdoc />
     public override string Target => $"{Path} -> {ToPath}";
 }
+
+
+/// <summary>Selects the workspace-context mode for a future message. No filesystem effect.</summary>
+/// <param name="Mode">snapshot / changed / files / none (case-insensitive).</param>
+/// <param name="Paths">Explicit paths for the files mode; empty otherwise.</param>
+public sealed record ContextCommand(string Mode, IReadOnlyList<string> Paths) : AgentScriptCommand
+{
+    /// <inheritdoc />
+    public override CommandKind Kind => CommandKind.Context;
+
+    /// <inheritdoc />
+    public override string Target => Mode;
+}

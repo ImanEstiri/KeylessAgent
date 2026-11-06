@@ -92,9 +92,16 @@ public sealed class FakeChromeWindowController : IChromeWindowController
 
     public int CloseCalls;
 
+    public ChromeProfileState? State { get; set; }
+
+    public Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)
+        => Task.FromResult(State ?? new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0));
+
     public Task<Outcome> CloseAsync(BrowserOptions options, bool allowAttached = false, CancellationToken ct = default)
     {
         CloseCalls++;
+        if (!Fail)
+            State = new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0); // a real close stops Chrome
         return Task.FromResult(Fail
             ? Outcome.Failure(new OutcomeError("close failed", "KA_BROWSER_CONNECTION_FAILED", OutcomeErrorType.Failure))
             : Outcome.Successful());

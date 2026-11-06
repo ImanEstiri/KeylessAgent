@@ -50,9 +50,11 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
   },
 
   "Snapshot": {
-    "Mode": "TreeAndChanged",       // TreeAndChanged (default) | Full
-    "MaxTotalAttachmentChars": 400000, // total ceiling for ONE turn's attachments (tree + dump)
-    "MaxDumpedFileChars": 50000,    // per-file cap in the attached dump (placeholder beyond it)
+    "FirstMessageMode": "Snapshot", // Snapshot (default) | Changed | Files | None - first request
+    "DefaultMode": "Changed",       // Changed (default) | Snapshot | Files | None - later messages
+    "MaxTotalAttachmentChars": 400000, // total ceiling for ONE turn's context attachment
+    "MaxDumpedFileChars": 50000,    // per-file cap in the attached context (placeholder beyond it)
+    "MaxContextFiles": 20,          // max explicit paths in one @@context files attachment
     "AttachOnFeedback": false,      // also attach the snapshot to result messages
     "RefreshAfterEachBatch": false,
     "Filter": {
@@ -137,7 +139,7 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - The snapshots are **generated natively in C#** — no `.bat` files need to exist in the workspace. `tree-view-result.txt` and `code-dump-result.md` are written into the workspace root (and excluded from git via `.git/info/exclude`).
 - Filtering applies to the **attached copy only** — `tree-view-result.txt` and `code-dump-result.md` on disk are never modified.
 - Oversized dumps are split at `### heading` boundaries into `code-dump-result-part1.md`, `-part2.md`, … and uploaded as consecutive files.
-- **Snapshot.Mode** is `TreeAndChanged` by default: the tree plus the files changed since the previous refresh (the diff is stashed BEFORE the baseline is overwritten, so it really contains the agent's changes). `Full` attaches everything, for anyone who explicitly wants it.
+- **Context modes**: the FIRST user-request message after the app starts or in a new chat uses `Snapshot.FirstMessageMode` (default Snapshot: full tree + budgeted dump with paths; non-text files path-only). Every later message uses `Snapshot.DefaultMode` (default Changed: files changed since the last context build with their current content, path-only for deleted/non-text, plus a change-list/tree-delta). An explicit `@@context` overrides once. There is exactly ONE attachment per message: `workspace-context.md`.
 - **First turn / no usable baseline / empty diff**: the attachment falls back to the tree plus a BUDGET-LIMITED dump — never an unlimited full dump. The next turn has a real baseline and diffs normally.
 - **Snapshot.MaxTotalAttachmentChars** (default 400,000 ≈ chars/4 tokens) caps EVERYTHING attached to one turn. When exceeded: the tree stays complete, the dump keeps only files referenced by the turn's request text, and every other file becomes a per-folder note (`[omitted: N files under …/ (N KB) — use the file-read tool …]`). A `snapshot-budget-exceeded` turn event records the original total, the ceiling and the omissions.
 - **Snapshot.MaxDumpedFileChars** (default 50,000) caps each file's fenced content in the dump: oversized files keep their `###` heading plus `[file too large to attach: N KB — use the file-read tool …]`.

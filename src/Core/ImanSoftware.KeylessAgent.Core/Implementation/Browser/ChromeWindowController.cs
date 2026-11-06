@@ -24,8 +24,18 @@ public interface IChromeWindowController
     /// </summary>
     Task<Outcome> ShowAsync(BrowserOptions options, int peekSeconds, CancellationToken ct = default);
 
-    /// <summary>Moves the chat window offscreen (-32000,-32000), still "normal" so Chrome keeps rendering.</summary>
+    /// <summary>
+    /// Moves the chat window to the tiny corner square (bottom-right of the work area,
+    /// windowState normal) — invisible-but-on-screen, so Chrome does not occlusion-throttle it.
+    /// </summary>
     Task<Outcome> HideAsync(BrowserOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// Probes the CURRENT Chrome state WITHOUT touching anything: whether the debug port is
+    /// open, whether the chrome.exe processes on it carry OUR profile directory (ownership),
+    /// and how many of our processes are running.
+    /// </summary>
+    Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default);
 
     /// <summary>
     /// CLOSES the KeylessAgent Chrome entirely (all tabs, the whole process tree) so the
@@ -42,6 +52,16 @@ public interface IChromeWindowController
     /// <param name="allowAttached">Also close a Chrome that merely sits on our debug port
     /// without the KeylessAgent profile. Default false (refuse).</param>
     Task<Outcome> CloseAsync(BrowserOptions options, bool allowAttached = false, CancellationToken ct = default);
+}
+
+/// <summary>The observed Chrome state for one BrowserOptions (port + profile).</summary>
+public sealed record ChromeProfileState(
+    bool DebugPortOpen,
+    bool OwnedByAgent,
+    int ProcessCount)
+{
+    /// <summary>DebugPortOpen AND the processes carry OUR profile directory.</summary>
+    public bool Active => DebugPortOpen && OwnedByAgent;
 }
 
 /// <summary>CDP-backed implementation: connect over the debug port, resolve the window, move it.</summary>
@@ -206,6 +226,29 @@ internal sealed class ChromeWindowController : IChromeWindowController
             : Outcome.Failure(new OutcomeError(
                 "Chrome window could not be located or moved - it may have been closed.",
                 ErrorCodes.BrowserConnectionFailed, OutcomeErrorType.Problem));
+    }
+
+    /// <inheritdoc />
+    public async Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)
+    {
+        var debugPortOpen = await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct);
+        if (!debugPortOpen)
+            return new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0);
+
+        var userDataDir = BrowserConnector.ResolveUserDataDir(options);
+        var infos = ProcessInfosOverride is not null
+            ? ProcessInfosOverride()
+            : ChromeWindowMover.GetChromeProcessInfos();
+        var owned = infos
+            .Where(p => p.CommandLine is not null
+                && p.CommandLine.Contains(userDataDir, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // The port may be held by a foreign Chrome (no KeylessAgent profile in any command line).
+        return new ChromeProfileState(
+            DebugPortOpen: true,
+            OwnedByAgent: owned.Count > 0,
+            ProcessCount: owned.Count);
     }
 
     /// <inheritdoc />

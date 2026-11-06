@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Snapshot;
 using ImanSoftware.Outcomes;
 
@@ -27,14 +28,18 @@ public interface ISnapshotService : IService
     /// <param name="options">The effective configuration.</param>
     /// <returns>One tree attachment plus one or more code-dump parts.</returns>
     /// <summary>
-    /// Builds the attachments for one turn. <paramref name="requestText"/> (the turn's
-    /// request) drives the size-budget selection: referenced files keep full content,
-    /// everything else becomes an omission note. <paramref name="logEvent"/> receives the
-    /// snapshot-budget-exceeded event.
+    /// Builds the SINGLE workspace-context attachment for one outgoing message
+    /// (workspace-context.md, kind WorkspaceContext). <paramref name="requestText"/> drives
+    /// the size-budget selection (referenced files keep full content, everything else
+    /// becomes a per-folder omission note). <paramref name="logEvent"/> receives the
+    /// context-budget-exceeded event. Returns an EMPTY list for ContextMode.None and for a
+    /// changed mode with no changes since the last build.
     /// </summary>
     Task<Outcome<IReadOnlyList<SnapshotAttachment>>> BuildAttachmentsAsync(
         string workspaceRoot, KeylessOptions options,
-        string? requestText = null, Func<string, object, Task>? logEvent = null);
+        ContextMode mode, string? requestText = null,
+        IReadOnlyList<string>? explicitPaths = null,
+        Func<string, object, Task>? logEvent = null);
 
     /// <summary>
     /// Whether the outputs are missing or older than the newest workspace source file

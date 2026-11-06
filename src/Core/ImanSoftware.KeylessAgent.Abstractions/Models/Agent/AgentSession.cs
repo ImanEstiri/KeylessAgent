@@ -55,4 +55,21 @@ public sealed record AgentSession
     /// Turns served by the current chat (for Chat.MaxTurnsPerChat).
     /// </summary>
     public int TurnsInChat { get; init; }
+
+    /// <summary>
+    /// The context mode (+ explicit paths) the AI requested via @@context for its NEXT
+    /// outgoing message. Consumed once, then the defaults take over again. Persisted so it
+    /// survives an app restart.
+    /// </summary>
+    public NextContextSelection? NextContext { get; init; }
+}
+
+/// <summary>The AI-selected context for the next message that carries context.</summary>
+public sealed record NextContextSelection
+{
+    /// <summary>The requested context mode (snapshot / changed / files / none).</summary>
+    public string Mode { get; init; } = string.Empty;
+
+    /// <summary>Explicit paths for the files mode; empty for the other modes.</summary>
+    public IReadOnlyList<string> Paths { get; init; } = [];
 }

@@ -4,6 +4,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
+using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed;
 using ImanSoftware.Outcomes;
@@ -123,6 +124,60 @@ public sealed class ChromeViewModelTests
         }
     }
 
+
+    [Fact]
+    public async Task ChromeActive_Matrix_ShowHideCloseEnabled_StartDisabled()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.State = new ChromeProfileState(DebugPortOpen: true, OwnedByAgent: true, ProcessCount: 2);
+        var viewModel = CreateViewModel();
+
+        await viewModel.RefreshChromeStateAsync();
+
+        viewModel.IsChromeActive.Should().BeTrue();
+        viewModel.StartCommand.CanExecute(null).Should().BeFalse("Chrome is already running");
+        viewModel.ShowChromeCommand.CanExecute(null).Should().BeTrue();
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeTrue();
+        viewModel.CloseChromeCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ChromeNotRunning_Matrix_OnlyStartEnabled()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.State = new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0);
+        var viewModel = CreateViewModel();
+
+        await viewModel.RefreshChromeStateAsync();
+
+        viewModel.IsChromeActive.Should().BeFalse();
+        viewModel.StartCommand.CanExecute(null).Should().BeTrue();
+        viewModel.ShowChromeCommand.CanExecute(null).Should().BeFalse();
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeFalse();
+        viewModel.CloseChromeCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ForeignChrome_Matrix_EverythingDisabled_WithExplanation()
+    {
+        _agent.WorkspaceRoot = @"G:\demo";
+        _windowController.State = new ChromeProfileState(DebugPortOpen: true, OwnedByAgent: false, ProcessCount: 0);
+        var viewModel = CreateViewModel();
+
+        await viewModel.RefreshChromeStateAsync();
+
+        viewModel.IsForeignChrome.Should().BeTrue("the port is held by a Chrome without our profile");
+        viewModel.StartCommand.CanExecute(null).Should().BeFalse("the port is occupied by a foreign Chrome");
+        viewModel.ShowChromeCommand.CanExecute(null).Should().BeFalse();
+        viewModel.HideChromeCommand.CanExecute(null).Should().BeFalse();
+        viewModel.CloseChromeCommand.CanExecute(null).Should().BeFalse("we never kill the user's own Chrome");
+    }
+
+    private void MakeChromeActive()
+    {
+        _windowController.State = new ChromeProfileState(DebugPortOpen: true, OwnedByAgent: true, ProcessCount: 1);
+    }
+
     private static void WaitUntil(Func<bool> condition)
     {
         for (var attempt = 0; attempt < 500 && !condition(); attempt++)
@@ -150,6 +205,8 @@ public sealed class ChromeViewModelTests
         _agent.WorkspaceRoot = @"G:\demo";
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.ShowChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsShowing);
 
@@ -174,6 +231,8 @@ public sealed class ChromeViewModelTests
         _windowController.Fail = true;
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.ShowChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsShowing);
 
@@ -187,6 +246,8 @@ public sealed class ChromeViewModelTests
         _agent.WorkspaceRoot = @"G:\demo";
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.HideChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsHiding);
 
@@ -202,6 +263,8 @@ public sealed class ChromeViewModelTests
         _windowController.Fail = true;
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.HideChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsHiding);
 
@@ -224,11 +287,15 @@ public sealed class ChromeViewModelTests
         _agent.WorkspaceRoot = @"G:\demo";
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.CloseChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsClosing);
 
         _windowController.CloseCalls.Should().Be(1);
-        viewModel.StatusText.Should().Be("Ready", "no stale Chrome-visible status survives");
+        // The close may race the ~2s state poll on the exact status wording; the INVARIANT
+        // is that no Chrome-active state survives and the user is told what happened.
+        viewModel.IsChromeActive.Should().BeFalse("no stale Chrome-visible state survives");
         viewModel.Note.Should().Contain("Chrome closed").And.Contain("Start Chrome");
     }
 
@@ -239,6 +306,8 @@ public sealed class ChromeViewModelTests
         _windowController.Fail = true;
         var viewModel = CreateViewModel();
 
+        MakeChromeActive();
+        await viewModel.RefreshChromeStateAsync();
         viewModel.CloseChromeCommand.Execute(null);
         await WaitUntilAsync(() => !viewModel.IsClosing);
 
@@ -260,7 +329,9 @@ public sealed class ChromeViewModelTests
     {
         _agent.WorkspaceRoot = @"G:\demo";
         _windowController.SlowShow = true; // the show call blocks until released
+        MakeChromeActive();
         var viewModel = CreateViewModel();
+        viewModel.RefreshChromeStateAsync().Wait();
 
         viewModel.ShowChromeCommand.Execute(null);
         WaitUntil(() => viewModel.IsShowing);

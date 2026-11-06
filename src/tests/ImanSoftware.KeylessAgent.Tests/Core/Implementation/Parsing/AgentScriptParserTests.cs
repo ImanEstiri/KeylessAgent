@@ -637,4 +637,110 @@ public class AgentScriptParserTests
         var command = result.Commands.OfType<DeleteFileCommand>().Single();
         command.Target.Should().Be("on_error=continue");
     }
+
+// --- @@context: parsing, validation and shapes ---
+
+[Fact]
+public void Parse_ContextModes_MapsTheArgumentToTheCommand()
+{
+    foreach (var mode in new[] { "snapshot", "changed", "none" })
+    {
+        var script = ParseOk($"""
+            @@context {mode}
+            @@end
+            @@eof
+            """);
+        var context = script.Commands.OfType<ContextCommand>().Should().ContainSingle().Subject;
+        context.Mode.Should().Be(mode);
+        context.Paths.Should().BeEmpty();
+        context.Target.Should().Be(mode);
+    }
+}
+
+[Fact]
+public void Parse_ContextFiles_CarriesOnePathPerLine()
+{
+    var script = ParseOk("""
+        @@context files
+        <<<PATHS
+        src/Program.cs
+        docs/notes.md
+
+        README.md
+        PATHS>>>
+        @@end
+        @@eof
+        """);
+    var context = script.Commands.OfType<ContextCommand>().Should().ContainSingle().Subject;
+    context.Mode.Should().Be("files");
+    context.Paths.Should().BeEquivalentTo(["src/Program.cs", "docs/notes.md", "README.md"],
+        "one path per line; blank lines are dropped");
+}
+
+[Fact]
+public void Parse_ContextFiles_WithoutPathsPayload_IsRejected()
+{
+    var problems = ParseBad("""
+        @@context files
+        @@end
+        @@eof
+        """);
+    problems.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseMissingPayload);
+}
+
+[Fact]
+public void Parse_ContextNonFilesMode_WithPathsPayload_IsRejected()
+{
+    var problems = ParseBad("""
+        @@context
+        snapshot
+        <<<PATHS
+        src/Program.cs
+        PATHS>>>
+        @@end
+        @@eof
+        """);
+    problems.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseUnexpectedPayload);
+}
+
+[Fact]
+public void Parse_Context_WithoutModeArgument_IsRejected()
+{
+    var problems = ParseBad("""
+        @@context
+        @@end
+        @@eof
+        """);
+    problems.Problems.Should().Contain(p => p.Code == ErrorCodes.ParseMissingArgument);
+}
+
+[Fact]
+public void Parse_Context_UnknownMode_IsRejectedByTheValidator()
+{
+    var outcome = _parser.Parse("""
+        @@context
+        everything
+        @@end
+        @@eof
+        """);
+    outcome.IsSuccess.Should().BeTrue();
+    outcome.Data.IsValid.Should().BeFalse();
+    outcome.Data.Problems.Should().Contain(p => p.ToDisplayString().Contains("everything"));
+}
+
+[Fact]
+public void Parse_ContextFiles_RejectsEscapingPaths()
+{
+    var outcome = _parser.Parse("""
+        @@context
+        files
+        <<<PATHS
+        ../../secrets.txt
+        PATHS>>>
+        @@end
+        @@eof
+        """);
+    outcome.IsSuccess.Should().BeTrue();
+    outcome.Data.IsValid.Should().BeFalse("paths must stay inside the workspace");
+}
 }

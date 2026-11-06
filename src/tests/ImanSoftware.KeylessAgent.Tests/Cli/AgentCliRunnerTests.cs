@@ -29,7 +29,7 @@ public class AgentCliRunnerTests
                 cancellationToken: CancellationToken.None, timing: true, chatProvider: chat);
 
             exitCode.Should().Be(0);
-            console.Output.Should().Contain("Attachments: ", "the size report travels in the progress stream");
+            console.Output.Should().Contain("Context: ", "the size report travels in the progress stream");
             console.Output.Should().Contain(" KB");
             console.Output.Should().Contain("Timing Summary");
             console.Output.Should().Contain("reply-wait");
