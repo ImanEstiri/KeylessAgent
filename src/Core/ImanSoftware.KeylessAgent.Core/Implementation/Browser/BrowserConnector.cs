@@ -313,16 +313,36 @@ internal sealed class BrowserConnector : IBrowserConnector
                 // A browser-level CDP session opens a TAB in the existing window when one exists.
                 var anchorPage = context.Pages.Count > 0 ? context.Pages[0] : await context.NewPageAsync();
                 var openSession = await context.NewCDPSessionAsync(anchorPage);
-                await openSession.SendAsync("Target.createTarget", ComposeCreateTargetParams(targetUrl));
+                var created = await openSession.SendAsync("Target.createTarget", ComposeCreateTargetParams(targetUrl));
+                var createdTargetId = ((System.Text.Json.JsonElement)created)
+                    .GetProperty("targetId").GetString() ?? string.Empty;
+
+                // One-time wake-up pulse: a tab created with background:true that is never
+                // activated sits in Chrome's most aggressive throttling bucket (background +
+                // occluded + never-user-activated) for its whole life, which can kill
+                // timing-sensitive operations like attachment uploads while chat-completion
+                // requests survive. ONE activateTarget right here — in the same tick as the
+                // create and BEFORE the hide step — un-sticks that class for the renderer's
+                // lifetime without a visible focus steal. Never done for reused tabs (those
+                // were activated at some point already).
+                await openSession.SendAsync("Target.activateTarget", new Dictionary<string, object>
+                {
+                    ["targetId"] = createdTargetId,
+                });
                 await openSession.DetachAsync();
+
+                ui.ShowProgress(new AgentProgressEvent(
+                    AgentEventType.OpeningChat, "Opened and activated a new DeepSeek tab (one-time throttling wake-up)."));
+                _ = LogEventSink?.Invoke("tab-activated-once", new
+                {
+                    TargetId = createdTargetId,
+                    Url = targetUrl,
+                });
 
                 var resumeId = ChatUrl.ConversationId(targetUrl);
                 page = resumeId is null
                     ? await WaitForPageAsync(context, ChatBaseUrl, cancellationToken)
                     : await WaitForConversationPageAsync(context, resumeId, cancellationToken);
-
-                ui.ShowProgress(new AgentProgressEvent(
-                    AgentEventType.OpeningChat, "Opened a new DeepSeek tab."));
                 break;
             }
         }

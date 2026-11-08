@@ -6,6 +6,7 @@ using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Core.Implementation.Workspace;
 using Microsoft.Playwright;
+using NSubstitute;
 using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Tests.Core.Implementation.Browser;
@@ -81,6 +82,9 @@ public class BrowserConnectorTests
         /// <summary>When true, AttachCdpAsync throws (the port answers but CDP attach fails).</summary>
         public bool FailAttach { get; set; }
 
+        /// <summary>When set, the attach returns THIS context (for tab-open path tests).</summary>
+        public object? AttachContext { get; set; }
+
         public Task<(object? Browser, object Context)> AttachCdpAsync(IPlaywright playwright, int port, CancellationToken cancellationToken = default)
         {
             AttachAttempts++;
@@ -88,8 +92,8 @@ public class BrowserConnectorTests
                 throw new InvalidOperationException("cdp attach refused");
 
             // Real Playwright context is impossible in a unit test; the tab-open is overridden,
-            // so a plain object carries the role.
-            return Task.FromResult<(object? Browser, object Context)>((new object(), new object()));
+            // so a plain object carries the role — unless a substitute context is provided.
+            return Task.FromResult<(object? Browser, object Context)>((new object(), AttachContext ?? new object()));
         }
 
         public Action<string>? LastOnCommandLine { get; private set; }
@@ -422,6 +426,118 @@ public class BrowserConnectorTests
         outcome.IsFailure.Should().BeTrue();
         outcome.Error.Code.Should().Be("KA_BROWSER_CONNECTION_FAILED");
         environment.StartedChrome.Should().BeFalse();
+    }
+
+    /// <summary>Fake environment whose attach returns a scripted Playwright context.</summary>
+    private static (BrowserConnector Connector, FakeEnvironment Environment, ICDPSession Session, List<(string Method, object? Args)> CdpCalls)
+        CreateConnectorWithFakeBrowser()
+    {
+        var calls = new List<(string Method, object? Args)>();
+        var session = Substitute.For<ICDPSession>();
+        session.SendAsync("Target.createTarget", Arg.Any<Dictionary<string, object>?>())
+            .Returns(ci =>
+            {
+                calls.Add(("Target.createTarget", ci.ArgAt<Dictionary<string, object>?>(1)));
+                return System.Text.Json.JsonSerializer.SerializeToElement(new { targetId = "NEW-TARGET" });
+            });
+        session
+            .SendAsync(Arg.Any<string>(), Arg.Any<Dictionary<string, object>?>())
+            .Returns(ci =>
+            {
+                var method = ci.ArgAt<string>(0);
+                if (method == "Target.createTarget")
+                    return System.Text.Json.JsonSerializer.SerializeToElement(new { targetId = "NEW-TARGET" });
+                calls.Add((method, ci.ArgAt<Dictionary<string, object>?>(1)));
+                return System.Text.Json.JsonSerializer.SerializeToElement(new { });
+            });
+
+        var chatPage = Substitute.For<IPage>();
+        chatPage.Url.Returns(BrowserConnector.ChatBaseUrl);
+        chatPage.Context.Returns(Substitute.For<IBrowserContext>());
+        chatPage.Context.NewCDPSessionAsync(chatPage).Returns(session);
+
+        var context = Substitute.For<IBrowserContext>();
+        context.Pages.Returns([chatPage]);
+        context.NewCDPSessionAsync(chatPage).Returns(session);
+
+        var browser = Substitute.For<IBrowser>();
+        browser.Contexts.Returns([context]);
+
+        var chromium = Substitute.For<IBrowserType>();
+        chromium.ConnectOverCDPAsync(Arg.Any<string>(), Arg.Any<BrowserTypeConnectOverCDPOptions>())
+            .Returns(browser);
+        var playwright = Substitute.For<IPlaywright>();
+        playwright.Chromium.Returns(chromium);
+
+        var environment = new FakeEnvironment { PortOpen = true, AttachContext = context };
+        var connector = new BrowserConnector(environment, null);
+        return (connector, environment, session, calls);
+    }
+
+    [Fact]
+    public async Task BrandNewTab_IsActivatedOnce_WithATurnEvent()
+    {
+        // A brand-new Target.createTarget tab is created background:true and would sit in
+        // Chrome's most aggressive throttling bucket forever: ONE activateTarget fires right
+        // after the create (before the hide), recorded as a tab-activated-once turn event.
+        var (connector, _, session, cdpCalls) = CreateConnectorWithFakeBrowser();
+        var events = new List<(string Type, object Payload)>();
+        connector.LogEventSink = (type, payload) =>
+        {
+            lock (events)
+                events.Add((type, payload));
+            return Task.CompletedTask;
+        };
+
+        var outcome = await connector.ConnectAsync(Options(), Ui(), resumeChatUrl: null);
+
+        outcome.IsSuccess.Should().BeTrue();
+        cdpCalls.Should().ContainSingle(c => c.Method == "Target.activateTarget",
+            "exactly ONE activation pulse for a brand-new target");
+        var activate = cdpCalls.First(c => c.Method == "Target.activateTarget").Args!
+            .Should().BeOfType<Dictionary<string, object>>().Which;
+        activate["targetId"].Should().Be("NEW-TARGET");
+
+        lock (events)
+        {
+            var activated = events.Where(e => e.Type == "tab-activated-once").ToList();
+            activated.Should().HaveCount(1, "the turn log records that the pulse fired");
+            var payload = System.Text.Json.JsonSerializer.SerializeToElement(activated[0].Payload);
+            payload.GetProperty("TargetId").GetString().Should().Be("NEW-TARGET");
+            payload.GetProperty("Url").GetString().Should().Contain("chat.deepseek.com");
+        }
+    }
+
+    [Fact]
+    public async Task ReusedConversationTab_DoesNotFireTheActivation()
+    {
+        // An existing conversation tab was activated at some point already — no extra pulse.
+        var (connector, _, session, cdpCalls) = CreateConnectorWithFakeBrowser();
+        var conversationUrl = "https://chat.deepseek.com/a/chat/s/abc123";
+        var conversationPage = Substitute.For<IPage>();
+        conversationPage.Url.Returns(conversationUrl);
+        conversationPage.Context.Returns(Substitute.For<IBrowserContext>());
+        conversationPage.Context.NewCDPSessionAsync(conversationPage).Returns(session);
+        // Rewire the fake browser to expose BOTH tabs (chat base + conversation).
+        var chatPage = Substitute.For<IPage>();
+        chatPage.Url.Returns(BrowserConnector.ChatBaseUrl);
+        chatPage.Context.Returns(Substitute.For<IBrowserContext>());
+        chatPage.Context.NewCDPSessionAsync(chatPage).Returns(session);
+        var context = Substitute.For<IBrowserContext>();
+        context.Pages.Returns([chatPage, conversationPage]);
+        context.NewCDPSessionAsync(Arg.Any<IPage>()).Returns(session);
+        var browser = Substitute.For<IBrowser>();
+        browser.Contexts.Returns([context]);
+        var chromium = Substitute.For<IBrowserType>();
+        chromium.ConnectOverCDPAsync(Arg.Any<string>(), Arg.Any<BrowserTypeConnectOverCDPOptions>())
+            .Returns(browser);
+        var outcome = await connector.ConnectAsync(Options(), Ui(), resumeChatUrl: conversationUrl);
+
+        outcome.IsSuccess.Should().BeTrue();
+        cdpCalls.Should().NotContain(c => c.Method == "Target.activateTarget",
+            "a reused conversation tab is never re-activated");
+        cdpCalls.Should().NotContain(c => c.Method == "Target.createTarget",
+            "and no new tab is created for a saved conversation");
     }
 
     [Fact]
