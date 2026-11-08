@@ -93,6 +93,33 @@ internal sealed class RunCommandExecutor : ICommandExecutor
         var autoApproved = false;
         var needsConfirmation = false;
         var tierName = assessment.Data.Tier.ToString();
+
+        // ApprovalMode.Auto runs everything with zero prompts — but ONLY within the
+        // workspace. A command whose tokens reach outside the workspace (absolute path
+        // outside the root, or a '..' that resolves outside) is HARD-REFUSED here, before
+        // the mode switch can auto-approve it: Auto has no confirmation branch, so the only
+        // safe outcome is an outright deny. Ask/AutoSafe intentionally keep their
+        // confirmation flow, where the user can knowingly approve such a command.
+        if (context.Options.Mode == ApprovalMode.Auto)
+        {
+            var escape = CommandRiskClassifier.FindWorkspaceEscape(run.CommandLine, context.WorkspaceRoot);
+            if (escape is not null)
+            {
+                return new CommandExecutionResult
+                {
+                    Number = command.Number,
+                    Kind = command.Kind,
+                    Target = command.Target,
+                    Status = CommandStatus.Error,
+                    ErrorCode = ErrorCodes.CommandDenied,
+                    Tier = CommandRiskTier.Denied,
+                    ErrorMessage = $"refused: '{escape}' reaches outside the workspace. " +
+                        "ApprovalMode.Auto only runs commands confined to the workspace — " +
+                        "switch to Ask or AutoSafe to approve workspace-escaping commands consciously.",
+                };
+            }
+        }
+
         switch (context.Options.Mode)
         {
             case ApprovalMode.Ask:

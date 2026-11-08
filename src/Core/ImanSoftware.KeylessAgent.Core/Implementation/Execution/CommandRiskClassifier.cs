@@ -285,6 +285,26 @@ internal sealed partial class CommandRiskClassifier : ICommandRiskClassifier
         return args.Any(a => a.Equals("-c", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// The FIRST token of the command line that reaches outside the workspace (absolute path
+    /// outside the root, or a '..' that resolves outside), or null when the line stays
+    /// confined. Shared with the classifier's Risky tier so the approval policy and the tier
+    /// never disagree about what "outside the workspace" means.
+    /// </summary>
+    internal static string? FindWorkspaceEscape(string commandLine, string workspaceRoot)
+    {
+        foreach (var segment in SplitSegments(commandLine))
+        {
+            foreach (var token in Tokenize(segment))
+            {
+                if (IsPathEscapingWorkspace(token, workspaceRoot))
+                    return token;
+            }
+        }
+
+        return null;
+    }
+
     private static bool IsPathEscapingWorkspace(string token, string workspaceRoot)
     {
         // Skip -flags and known cmd.exe-style /flags; a /token that is NOT a known flag is a

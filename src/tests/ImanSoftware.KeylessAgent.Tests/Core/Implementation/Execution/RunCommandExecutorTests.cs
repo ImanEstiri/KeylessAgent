@@ -92,6 +92,81 @@ public class RunCommandExecutorTests
             Ui = new ImanSoftware.KeylessAgent.Tests.Fakes.FakeAgentUserInterface(),
         };
 
+    // --- ApprovalMode.Auto: workspace-escape hard deny + in-workspace auto-run ---
+
+    [Fact]
+    public async Task AutoMode_AbsolutePathOutsideWorkspace_IsHardDenied_WithNoPromptAndNoExecution()
+    {
+        Directory.CreateDirectory(_root);
+        var executor = CreateExecutor(ApprovalMode.Auto);
+        var context = Context(ApprovalMode.Auto);
+        var ui = (ImanSoftware.KeylessAgent.Tests.Fakes.FakeAgentUserInterface)context.Ui;
+
+        var result = await executor.ExecuteAsync(
+            new RunCommandCommand("type C:\\Windows\\win.ini") { Number = 1 }, context);
+
+        result.Status.Should().Be(CommandStatus.Error, "an escaping command must never execute");
+        result.ErrorCode.Should().Be("KA_COMMAND_DENIED");
+        result.ErrorMessage.Should().Contain("C:\\Windows\\win.ini").And.Contain("outside the workspace");
+        ui.Confirmations.Should().BeEmpty("Auto mode has no confirmation branch — the deny is outright");
+        _runner.LastFileName.Should().BeNull("the process is never started");
+    }
+
+    [Fact]
+    public async Task AutoMode_RelativeDotDotEscape_IsHardDenied_WithNoPromptAndNoExecution()
+    {
+        Directory.CreateDirectory(_root);
+        Directory.CreateDirectory(Path.Combine(_root, "src"));
+        var executor = CreateExecutor(ApprovalMode.Auto);
+        var context = Context(ApprovalMode.Auto);
+        var ui = (ImanSoftware.KeylessAgent.Tests.Fakes.FakeAgentUserInterface)context.Ui;
+
+        var result = await executor.ExecuteAsync(
+            new RunCommandCommand("type ..\\..\\secret.txt") { Number = 1 }, context);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_COMMAND_DENIED");
+        result.ErrorMessage.Should().Contain("outside the workspace");
+        ui.Confirmations.Should().BeEmpty("no confirmation prompt in Auto mode");
+        _runner.LastFileName.Should().BeNull("the process is never started");
+    }
+
+    [Fact]
+    public async Task AutoMode_InWorkspaceCommand_StillAutoRunsWithZeroPrompts()
+    {
+        Directory.CreateDirectory(_root);
+        var executor = CreateExecutor(ApprovalMode.Auto);
+        var context = Context(ApprovalMode.Auto);
+        var ui = (ImanSoftware.KeylessAgent.Tests.Fakes.FakeAgentUserInterface)context.Ui;
+        _runner.Result = new ProcessResult(0, "build output", string.Empty, 1.0, TimedOut: false);
+
+        var result = await executor.ExecuteAsync(
+            new RunCommandCommand("dotnet build") { Number = 1 }, context);
+
+        result.Status.Should().Be(CommandStatus.Ok,
+            "a legitimate in-workspace command must not be affected by the escape deny");
+        result.ErrorMessage.Should().BeNull();
+        ui.Confirmations.Should().BeEmpty("Auto mode runs in-workspace work with zero prompts");
+        _runner.LastFileName.Should().NotBeNull("the command actually executed");
+    }
+
+    [Fact]
+    public async Task AskMode_WorkspaceEscape_StillRoutesToConfirmation()
+    {
+        // The intentional Ask/AutoSafe behavior: an escaping command can be knowingly
+        // approved by the user — it routes to confirmation, not to the hard deny.
+        Directory.CreateDirectory(_root);
+        var executor = CreateExecutor(ApprovalMode.Ask);
+        var context = Context(ApprovalMode.Ask);
+        var ui = (ImanSoftware.KeylessAgent.Tests.Fakes.FakeAgentUserInterface)context.Ui;
+
+        await executor.ExecuteAsync(
+            new RunCommandCommand("type C:\\Windows\\win.ini") { Number = 1 }, context);
+
+        ui.Confirmations.Should().ContainSingle(c => c.Title.Contains("Run command"),
+            "Ask mode asks, and the user may knowingly approve");
+    }
+
     [Fact]
     public async Task ShellWrapsTheLine_InCmdOnWindows()
     {

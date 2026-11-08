@@ -61,7 +61,11 @@ internal sealed class DeleteFileExecutor : ICommandExecutor
         if (context.DryRun)
             return NewFileExecutor.DryRunResult(command);
 
-        // Deletion is confirmed in Ask AND AutoSafe; only Auto skips it. A backup is always made.
+        // Confirmation matrix for deletefile: Ask and AutoSafe ALWAYS confirm the deletion;
+        // Auto is the only mode that skips that confirmation (deleting without a prompt).
+        // "The only confirmation Auto skips" refers to this command alone among the
+        // always-confirmed set — the deny list still applies in every mode, and a backup is
+        // made BEFORE the deletion here regardless of mode (Auto deletes are recoverable).
         if (context.Options.Mode != ApprovalMode.Auto)
         {
             context.Ui.ShowDiff(new FileChange(delete.Path, FileChangeKind.Delete, null, null));

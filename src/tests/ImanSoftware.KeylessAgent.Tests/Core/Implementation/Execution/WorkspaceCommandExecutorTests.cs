@@ -51,6 +51,52 @@ public class WorkspaceCommandExecutorTests : IDisposable
     private async Task<CommandExecutionResult> Run(AgentScriptCommand command, ApprovalMode mode = ApprovalMode.Ask, bool dryRun = false)
         => await _executor.ExecuteAsync(command, Context(mode, dryRun));
 
+    // --- PathSandbox regression: file-command sandbox escapes fail in EVERY approval mode ---
+    // The parser's CheckPath rejects '..' and absolute paths at parse time; these tests prove
+    // the EXECUTOR-level PathSandbox is a second, mode-independent wall (a hand-crafted
+    // command record bypassing the parser still fails, even in ApprovalMode.Auto).
+
+    [Fact]
+    public async Task Sandbox_ReadFile_ParentEscape_Fails_EvenInAutoMode()
+    {
+        var result = await Run(new ReadFileCommand("../../secret.txt") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_PATH_OUTSIDE",
+            "the PathSandbox wall is completely independent of ApprovalMode");
+    }
+
+    [Fact]
+    public async Task Sandbox_NewFile_AbsolutePath_Fails_EvenInAutoMode()
+    {
+        var result = await Run(
+            new NewFileCommand("C:\\Windows\\Temp\\evil.cs", "class Evil {}") { Number = 1 },
+            mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_PATH_OUTSIDE");
+        _storage.FileExists(@"C:\\Windows\\Temp\\evil.cs").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Sandbox_DeleteFile_ParentEscape_Fails_EvenInAutoMode()
+    {
+        var result = await Run(new DeleteFileCommand("..\\..\\victim.txt") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_PATH_OUTSIDE");
+    }
+
+    [Fact]
+    public async Task Sandbox_MoveFile_ParentEscape_Fails_EvenInAutoMode()
+    {
+        var result = await Run(
+            new MoveFileCommand("a.txt", "..\\..\\moved.txt") { Number = 1 }, mode: ApprovalMode.Auto);
+
+        result.Status.Should().Be(CommandStatus.Error);
+        result.ErrorCode.Should().Be("KA_PATH_OUTSIDE");
+    }
+
     [Fact]
     public async Task NewFile_CreatesFileIncludingMissingParentFolders()
     {
