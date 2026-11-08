@@ -109,6 +109,11 @@ public sealed class FakeChromeWindowController : IChromeWindowController
 
     public int CloseCalls;
 
+    public bool PortOpenAfterClose { get; set; }
+
+    public Task<bool> IsDebugPortOpenAsync(BrowserOptions options, CancellationToken ct = default)
+        => Task.FromResult(!PortOpenAfterClose);
+
     public ChromeProfileState? State { get; set; }
 
     public Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)

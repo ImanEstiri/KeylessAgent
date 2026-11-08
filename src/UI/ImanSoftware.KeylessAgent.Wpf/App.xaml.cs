@@ -48,31 +48,63 @@ public partial class App : Application
     /// </summary>
     protected override void OnExit(ExitEventArgs e)
     {
+        // EVERY outcome is logged to the crash-log file (%LOCALAPPDATA%\KeylessAgent\
+        // wpf-crash.log), which survives shutdown — so a silent failure is debuggable from
+        // the log alone without external Task Manager checks.
         try
         {
             // The close runs on a worker (CloseAsync is async; production code must never
             // block on tasks - the NoSyncOverAsync rule). Shutdown is bounded by a
-            // ManualResetEventSlim wait (a plain synchronization primitive, NOT Task.Wait)
-            // for the same 4s the worker's own cancellation token allows, so the process
-            // never lingers longer than that even if Chrome is unresponsive.
+            // ManualResetEventSlim wait (a plain synchronization primitive, NOT Task.Wait).
+            // BUDGET: the worker's own cancellation allows 6s and the wait allows 6.5s —
+            // deliberately LONGER than the close internals (graceful race 2.5s + confirm
+            // poll ~1.5s + kill poll ~1.5s) so the wait can never truncate a close that is
+            // still making progress. The old 4s == 4s pairing was the flaky race.
             using var completed = new System.Threading.ManualResetEventSlim(false);
+            var workerStatus = "worker did not finish within the shutdown wait";
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(4));
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(6));
                     var controller = KeylessAgentServiceFactory.CreateChromeWindowController();
+                    WriteCrashLog("chrome-exit: controller created");
 
-                    // Ownership comes from the RUNNING processes' command lines (profile dir +
-                    // debug port in BrowserOptions), so the default options suffice even
-                    // without a selected workspace; allowAttached=false never touches a
-                    // user-launched Chrome.
-                    var options = new Abstractions.Models.Configuration.BrowserOptions();
+                    // Ownership matches the RUNNING processes' command lines against the
+                    // options of the LAST successful connect (ChromeLaunchTracker) — falling
+                    // back to defaults when this app run never connected.
+                    var options = Core.Implementation.Browser.ChromeLaunchTracker.Last
+                        ?? new Abstractions.Models.Configuration.BrowserOptions();
+                    WriteCrashLog($"chrome-exit: closing port={options.ChromeDebugPort} " +
+                        $"profile={Core.Implementation.Browser.ChromeLaunchTracker.LastUserDataDir}");
+
                     await controller.CloseAsync(options, allowAttached: false, cts.Token);
+                    WriteCrashLog("chrome-exit: CloseAsync completed");
+
+                    // Explicit confirmation within the remaining budget: the log must state
+                    // definitively whether the port went down on this exact run.
+                    var confirmWatch = System.Diagnostics.Stopwatch.StartNew();
+                    while (confirmWatch.Elapsed < TimeSpan.FromSeconds(2)
+                           && !cts.IsCancellationRequested)
+                    {
+                        if (!await controller.IsDebugPortOpenAsync(options, cts.Token))
+                        {
+                            WriteCrashLog("chrome-exit: confirmed — the debug port is closed");
+                            return;
+                        }
+
+                        await Task.Delay(200, cts.Token);
+                    }
+
+                    WriteCrashLog("chrome-exit: the debug port was STILL OPEN after the close");
                 }
-                catch
+                catch (OperationCanceledException)
                 {
-                    // Chrome cleanup must never make application shutdown fail.
+                    WriteCrashLog("chrome-exit: the 6s budget was exhausted before the close finished");
+                }
+                catch (Exception ex)
+                {
+                    WriteCrashLog($"chrome-exit: CloseAsync threw {ex.GetType().Name}: {ex.Message}");
                 }
                 finally
                 {
@@ -80,11 +112,23 @@ public partial class App : Application
                 }
             });
 
-            completed.Wait(TimeSpan.FromSeconds(4));
+            if (!completed.Wait(TimeSpan.FromSeconds(6.5)))
+            {
+                WriteCrashLog("chrome-exit: the shutdown wait timed out after 6.5s — " +
+                    "the close worker was still running when the process exited");
+                workerStatus = "wait timed out after 6.5s";
+            }
+            else
+            {
+                workerStatus = "worker finished";
+            }
+
+            WriteCrashLog("chrome-exit: " + workerStatus);
         }
-        catch
+        catch (Exception ex)
         {
             // Chrome cleanup must never make application shutdown fail or hang.
+            WriteCrashLog("chrome-exit: OnExit itself threw " + ex.GetType().Name + ": " + ex.Message);
         }
 
         base.OnExit(e);
@@ -104,12 +148,23 @@ public partial class App : Application
     /// <param name="exception">The exception to record.</param>
     /// <param name="baseDirectory">Overrides the base directory (used by tests).</param>
     internal static void WriteCrashLog(Exception exception, string? baseDirectory = null)
+        => WriteCrashLogLine(exception?.ToString() ?? "null exception", baseDirectory);
+
+    /// <summary>
+    /// Appends a single diagnostic line to the crash log. Used by the shutdown Chrome-close
+    /// safety net, which runs AFTER normal logging may already be torn down — the crash log
+    /// file survives shutdown, so late diagnostics stay readable.
+    /// </summary>
+    internal static void WriteCrashLog(string message, string? baseDirectory = null)
+        => WriteCrashLogLine(message, baseDirectory);
+
+    private static void WriteCrashLogLine(string line, string? baseDirectory)
     {
         try
         {
-            var line = $"{DateTime.UtcNow:O} {exception}{Environment.NewLine}{Environment.NewLine}";
+            var entry = $"{DateTime.UtcNow:O} {line}{Environment.NewLine}{Environment.NewLine}";
             Directory.CreateDirectory(GetCrashLogDirectory(baseDirectory));
-            File.AppendAllText(GetCrashLogPath(baseDirectory), line);
+            File.AppendAllText(GetCrashLogPath(baseDirectory), entry);
         }
         catch
         {

@@ -55,6 +55,11 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             if (connected.IsFailure)
                 return Outcome.Failure<IChatSession>(connected.Error);
 
+            // Remember the REAL options this session connected with (port + profile dir) so
+            // the App.OnExit Chrome-close safety net matches ownership against what was
+            // actually used, even if keyless.json changed afterwards.
+            ChromeLaunchTracker.Remember(options.Browser, BrowserConnector.ResolveUserDataDir(options.Browser));
+
             var (attachment, rawPage) = connected.Data;
             var page = (IPage)rawPage;
             var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);

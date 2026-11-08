@@ -37,6 +37,9 @@ public interface IChromeWindowController
     /// </summary>
     Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default);
 
+    /// <summary>Whether the debug port is currently answering (read-only probe).</summary>
+    Task<bool> IsDebugPortOpenAsync(BrowserOptions options, CancellationToken ct = default);
+
     /// <summary>
     /// CLOSES the KeylessAgent Chrome entirely (all tabs, the whole process tree) so the
     /// invisible tiny-corner window cannot outlive the session: a graceful CDP Browser.close
@@ -229,6 +232,10 @@ internal sealed class ChromeWindowController : IChromeWindowController
     }
 
     /// <inheritdoc />
+    public async Task<bool> IsDebugPortOpenAsync(BrowserOptions options, CancellationToken ct = default)
+        => await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct);
+
+    /// <inheritdoc />
     public async Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)
     {
         var debugPortOpen = await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct);
@@ -299,15 +306,22 @@ internal sealed class ChromeWindowController : IChromeWindowController
             killTargets.AddRange(oursByPortOnly);
 
         // --- 1. Graceful: CDP Browser.close (flushes the profile, closes every tab) ---
+        // RACED against a 2.5s sub-budget: Playwright.CreateAsync + ConnectOverCDPAsync can
+        // be slow (driver spawn, AV scanning) and an unbounded graceful phase is what made
+        // the shutdown close flaky. If the race is lost we fall through to the kill
+        // fallback, which is fast and deterministic. The abandoned task is orphaned on
+        // purpose: it gets GC'd / fails harmlessly when the process or browser goes away.
         try
         {
             if (await _environment.IsDebugPortOpenAsync(debugPort, ct))
             {
-                var playwright = await PlaywrightFactory(ct);
-                var browser = await ConnectAsync(playwright, options);
-                var context = browser.Contexts.FirstOrDefault();
-                if (context is not null)
+                var graceful = Task.Run(async () =>
                 {
+                    var playwright = await PlaywrightFactory(ct);
+                    var browser = await ConnectAsync(playwright, options);
+                    var context = browser.Contexts.FirstOrDefault()
+                        ?? throw new InvalidOperationException(
+                            "The Chrome on the debug port exposes no browser context (is it still starting?).");
                     var page = ChromeWindowMover.PickChatPage(context) ?? await context.NewPageAsync();
                     var session = await page.Context.NewCDPSessionAsync(page);
                     try
@@ -320,6 +334,17 @@ internal sealed class ChromeWindowController : IChromeWindowController
                         try { await session.DetachAsync(); }
                         catch { /* the browser may already be gone - that is the goal */ }
                     }
+                }, CancellationToken.None); // orphan on budget expiry instead of cancelling mid-close
+
+                var gracefulWon = await Task.WhenAny(graceful, Task.Delay(2_500, ct)) == graceful;
+                if (gracefulWon)
+                {
+                    try { await graceful; }
+                    catch (Exception ex) { debug($"graceful close threw: {ex.Message}"); }
+                }
+                else
+                {
+                    debug("graceful phase exceeded its 2.5s sub-budget; falling back to the kill fallback.");
                 }
             }
         }
@@ -328,8 +353,8 @@ internal sealed class ChromeWindowController : IChromeWindowController
             debug($"CDP close failed: {ex.Message}; falling back to process termination.");
         }
 
-        // --- 2. Confirm the port actually went down (a few seconds) ---
-        for (var attempt = 0; attempt < 10; attempt++)
+        // --- 2. Confirm the port actually went down (bounded: 5 x 300 ms) ---
+        for (var attempt = 0; attempt < 5; attempt++)
         {
             if (!await _environment.IsDebugPortOpenAsync(debugPort, ct))
             {
@@ -364,7 +389,8 @@ internal sealed class ChromeWindowController : IChromeWindowController
             }
         }
 
-        for (var attempt = 0; attempt < 10; attempt++)
+        // --- 4. Confirm: bounded poll (5 x 300 ms) for port down AND processes gone ---
+        for (var attempt = 0; attempt < 5; attempt++)
         {
             var anyLeft = (ProcessInfosOverride is not null ? ProcessInfosOverride() : ChromeWindowMover.GetChromeProcessInfos())
                 .Any(p => killTargets.Contains(p.Pid));
