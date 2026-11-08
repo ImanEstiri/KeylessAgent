@@ -14,7 +14,12 @@ public sealed record ApprovalModeOption(
     ApprovalMode Mode,
     string Label,
     string Tooltip,
-    bool IsDangerous);
+    bool IsDangerous)
+{
+    // The ComboBox selection box falls back to ToString when a template does not apply;
+    // returning the plain label guarantees the user never sees record internals.
+    public override string ToString() => Label;
+}
 
 /// <summary>
 /// View model of the approval-mode dropdown on the chat page: reads/writes the workspace's
@@ -26,22 +31,24 @@ public sealed class ApprovalModeSelectorViewModel : ObservableObject
     private readonly IConfigurationService _configuration;
     private readonly AgentViewModel _agent;
     private readonly IUiDispatcher _ui;
-    private readonly Func<ConfirmRequest, Task<bool>> _confirm;
+    private readonly Func<Task<bool>> _confirmFullAccess;
     private bool _suppressSelectionWrite; // programmatic selection during load
-    private bool _autoWarningShownThisSession; // once per app session (one VM per window)
 
     /// <summary>The three selectable modes, in display order.</summary>
     public ReadOnlyCollection<ApprovalModeOption> Options { get; }
 
-    /// <summary>Creates the selector. <paramref name="confirm"/> backs the one-time Full-access warning.</summary>
+    /// <summary>
+    /// Creates the selector. <paramref name="confirmFullAccess"/> backs the Full-access
+    /// modal (warning + "I understand" tick + OK); it runs on EVERY Full-access selection.
+    /// </summary>
     public ApprovalModeSelectorViewModel(
         IConfigurationService configuration, AgentViewModel agent, IUiDispatcher ui,
-        Func<ConfirmRequest, Task<bool>>? confirm = null)
+        Func<Task<bool>>? confirmFullAccess = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _agent = agent ?? throw new ArgumentNullException(nameof(agent));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
-        _confirm = confirm ?? (_ => Task.FromResult(true));
+        _confirmFullAccess = confirmFullAccess ?? FullAccessModal.ConfirmAsync;
 
         Options =
         [
@@ -122,19 +129,13 @@ public sealed class ApprovalModeSelectorViewModel : ObservableObject
         if (_suppressSelectionWrite || !_agent.HasWorkspace)
             return;
 
-        // One-time-per-session warning before applying Full access (least safe of the three).
-        if (option.Mode == ApprovalMode.Auto && !_autoWarningShownThisSession)
+        // Full access is the least safe mode: confirm through the modal (tick + OK) on
+        // EVERY selection. A declined modal reverts the selection without persisting.
+        if (option.Mode == ApprovalMode.Auto)
         {
-            _autoWarningShownThisSession = true;
-            var confirmed = await _confirm(new ConfirmRequest(
-                "Full access (workspace only)",
-                "Commands will run automatically WITHOUT asking — including ones that modify or delete files. "
-                + "They are still refused if they would touch anything outside this workspace folder. "
-                + "Switch back to 'Ask' or 'Auto-run safe commands' at any time."));
+            var confirmed = await _confirmFullAccess();
             if (!confirmed)
             {
-                // Revert the visual selection to the previous mode WITHOUT persisting:
-                // field assignment + notification only (no save, no recursion).
                 _selectedOption = Options.First(o => o.Mode != ApprovalMode.Auto);
                 OnPropertyChanged(nameof(SelectedOption));
                 OnPropertyChanged(nameof(SelectedMode));

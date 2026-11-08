@@ -3,9 +3,9 @@ using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
-using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
+using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels.Feed;
@@ -42,13 +42,13 @@ public class ApprovalModeSelectorViewModelTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch { }
     }
 
-    private Task<bool> RecordingConfirm(ConfirmRequest request)
+    private Task<bool> RecordingConfirmFullAccess()
     {
         _confirmCalls++;
         return Task.FromResult(_confirmAnswer);
     }
 
-    private ApprovalModeSelectorViewModel Create() => new(_configuration, _agent, _dispatcher, RecordingConfirm);
+    private ApprovalModeSelectorViewModel Create() => new(_configuration, _agent, _dispatcher, confirmFullAccess: RecordingConfirmFullAccess);
 
     [Fact]
     public async Task Reload_LoadsTheWorkspacesSavedMode()
@@ -76,23 +76,24 @@ public class ApprovalModeSelectorViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task SelectingFullAccess_ShowsTheOneTimeWarning_ThenApplies()
+    public async Task SelectingFullAccess_ShowsTheModal_EveryTime_ThenApplies()
     {
         var viewModel = Create();
 
         viewModel.SelectedOption = viewModel.Options.First(o => o.Mode == ApprovalMode.Auto);
         await Task.Yield();
 
-        _confirmCalls.Should().Be(1, "the one-time-per-session warning is shown before applying");
+        _confirmCalls.Should().Be(1, "the Full-access modal is shown before applying");
         _configuration.SavedApprovalMode.Should().Be(ApprovalMode.Auto);
 
-        // A later Auto selection in the same session does NOT re-prompt.
+        // The modal is shown on EVERY Full-access selection, not once per session.
         viewModel.SelectedOption = viewModel.Options.First(o => o.Mode == ApprovalMode.Ask);
         await Task.Yield();
         viewModel.SelectedOption = viewModel.Options.First(o => o.Mode == ApprovalMode.Auto);
         await Task.Yield();
 
-        _confirmCalls.Should().Be(1, "the warning fires once per app session");
+        _confirmCalls.Should().Be(2, "each Full-access selection goes through the modal");
+        _configuration.SavedApprovalMode.Should().Be(ApprovalMode.Auto);
     }
 
     [Fact]

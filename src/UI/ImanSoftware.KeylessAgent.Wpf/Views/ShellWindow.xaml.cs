@@ -50,7 +50,7 @@ public partial class ShellWindow : Window
         agentViewModel.Undo = new UndoViewModel(KeylessAgentServiceFactory.CreateBackupService(), dialogs, agentViewModel, _dispatcher);
         agentViewModel.Approval = new ApprovalModeSelectorViewModel(
             configuration, agentViewModel, _dispatcher,
-            request => dialogs.ConfirmAsync(request));
+            confirmFullAccess: () => FullAccessModal.ConfirmAsync());
 
         var workspaceViewModel = new WorkspaceViewModel(
             agentViewModel,

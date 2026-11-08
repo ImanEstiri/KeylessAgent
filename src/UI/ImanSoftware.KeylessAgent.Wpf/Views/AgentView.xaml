@@ -119,13 +119,18 @@
                     <!-- WrapPanel: on narrow windows the buttons wrap to a second line
                          instead of being pushed out of view (Send stays reachable). -->
                     <WrapPanel Grid.Row="1" Margin="0,12,0,0">
-                        <ComboBox MinWidth="170"
+                        <ComboBox Width="180"
                                   Margin="0,0,12,0"
                                   VerticalAlignment="Center"
                                   ItemsSource="{Binding Approval.Options}"
                                   SelectedItem="{Binding Approval.SelectedOption}"
                                   ToolTipService.ShowOnDisabled="True"
                                   ToolTip="{Binding Approval.SelectedTooltip}">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                                    <Setter Property="ToolTip" Value="{Binding Tooltip}" />
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
