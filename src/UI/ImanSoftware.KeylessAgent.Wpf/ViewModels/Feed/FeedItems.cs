@@ -21,6 +21,12 @@ public sealed record CommandItem(int Number, string Kind, string Target) : IFeed
 /// <summary>An error shown in the feed (turn failure, cancellation, unexpected exception).</summary>
 public sealed record ErrorItem(string Message) : IFeedItem;
 
+/// <summary>
+/// A muted one-line note that a command ran WITHOUT a confirmation prompt (AutoSafe/Auto
+/// approval modes), so auto-approved work still leaves a visible trace in the transcript.
+/// </summary>
+public sealed record AutoRanItem(string CommandText, string Tier) : IFeedItem;
+
 // DiffItem lives in its own file (Phase 7): a collapsible diff card view model.
 
 /// <summary>The end-of-turn summary card (branch, commits, stop reason, command counts).</summary>

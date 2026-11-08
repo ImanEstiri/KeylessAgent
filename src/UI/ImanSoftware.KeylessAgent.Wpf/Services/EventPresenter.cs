@@ -63,6 +63,25 @@ public static class EventPresenter
     }
 
     /// <summary>
+    /// Extracts the tier from an auto-approval detail ("Running: cmd (auto-approved: tier)");
+    /// empty when the detail is not an auto-approval.
+    /// </summary>
+    public static string AutoApprovedTier(string? detail)
+    {
+        if (detail is null)
+            return string.Empty;
+
+        var marker = "(auto-approved:";
+        var start = detail.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0)
+            return string.Empty;
+
+        var valueStart = start + marker.Length;
+        var close = detail.IndexOf(')', valueStart);
+        return close > valueStart ? detail[valueStart..close].Trim() : string.Empty;
+    }
+
+    /// <summary>
     /// Parses the ExecutingCommand detail "#1 RunCommand mkdir y" into number, kind and target.
     /// Returns null when the text does not match (the raw text is shown instead).
     /// </summary>

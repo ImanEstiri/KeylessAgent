@@ -29,11 +29,24 @@ public sealed class ActivityFeed
     public void AddStep(AgentProgressEvent progressEvent)
     {
         ArgumentNullException.ThrowIfNull(progressEvent);
-        if (progressEvent.Type == AgentEventType.ExecutingCommand
-            && EventPresenter.TryParseCommandDetail(progressEvent.Detail) is { } command)
+        if (progressEvent.Type == AgentEventType.ExecutingCommand)
         {
-            Items.Add(new CommandItem(command.Number, command.Kind, command.Target));
-            return;
+            // Auto-approved runcommands surface as muted one-line notes (tier included) so
+            // prompt-less execution still leaves a visible trace in the transcript.
+            if (progressEvent.Detail is not null
+                && progressEvent.Detail.Contains("(auto-approved:", StringComparison.Ordinal))
+            {
+                Items.Add(new AutoRanItem(
+                    progressEvent.Detail.Replace("Running: ", string.Empty),
+                    EventPresenter.AutoApprovedTier(progressEvent.Detail)));
+                return;
+            }
+
+            if (EventPresenter.TryParseCommandDetail(progressEvent.Detail) is { } command)
+            {
+                Items.Add(new CommandItem(command.Number, command.Kind, command.Target));
+                return;
+            }
         }
 
         var presented = EventPresenter.Present(progressEvent);

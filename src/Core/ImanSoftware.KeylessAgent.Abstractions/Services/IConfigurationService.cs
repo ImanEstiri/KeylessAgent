@@ -1,4 +1,5 @@
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.Outcomes;
 
 namespace ImanSoftware.KeylessAgent.Abstractions.Services;
@@ -24,4 +25,10 @@ public interface IConfigurationService : IService
     /// keyless.json to the current defaults. Reset by every LoadAsync call.
     /// </summary>
     bool LastLoadMigratedSchema { get; }
+
+    /// <summary>
+    /// Persists the approval mode (<c>Options.Mode</c>) into the workspace's keyless.json —
+    /// the same field the CLI reads. Every other loaded value is preserved.
+    /// </summary>
+    Task<Outcome> SaveApprovalModeAsync(string workspaceRoot, ApprovalMode mode);
 }

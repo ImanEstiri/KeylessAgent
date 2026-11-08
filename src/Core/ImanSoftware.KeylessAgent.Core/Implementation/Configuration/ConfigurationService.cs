@@ -228,6 +228,49 @@ internal sealed class ConfigurationService : IConfigurationService
         return (fresh, true);
     }
 
+    /// <inheritdoc />
+    public async Task<Outcome> SaveApprovalModeAsync(string workspaceRoot, ApprovalMode mode)
+    {
+        var path = Path.Combine(workspaceRoot, ConfigFileName);
+        if (!_storage.FileExists(path))
+        {
+            // No file yet: write the defaults with the requested mode applied.
+            var fresh = KeylessOptions.CreateDefault() with { Mode = mode };
+            var mkdir = await _storage.CreateDirectoryAsync(workspaceRoot);
+            if (mkdir.IsFailure)
+                return Outcome.Failure(mkdir.Error);
+            return await _storage.WriteAllTextAsync(path, CreateSerializer().Serialize(fresh));
+        }
+
+        var read = await _storage.ReadAllTextAsync(path);
+        if (read.IsFailure)
+            return Outcome.Failure(read.Error);
+
+        KeylessOptions? options;
+        try
+        {
+            options = CreateSerializer().Deserialize<KeylessOptions>(read.Data);
+        }
+        catch (JsonException ex)
+        {
+            return Outcome.Failure(new OutcomeError(
+                $"{path} is not valid JSON: {ex.Message}", ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Validation));
+        }
+
+        if (options is null)
+            return Outcome.Failure(new OutcomeError(
+                $"{path} is empty.", ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Validation));
+
+        if (options.Mode == mode)
+            return Outcome.Successful(); // nothing to change
+
+        var updated = options with { Mode = mode };
+        var write = await _storage.WriteAllTextAsync(path, CreateSerializer().Serialize(updated));
+        return write.IsSuccess
+            ? Outcome.Successful()
+            : Outcome.Failure(write.Error);
+    }
+
     /// <summary>
     /// Range and consistency checks with precise messages.
     /// </summary>

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Configuration;
+using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
 using ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
@@ -45,15 +46,31 @@ public sealed class FakeConfigurationService : IConfigurationService
         _fail = fail;
     }
 
+    private readonly Dictionary<string, ApprovalMode> _savedModes = new(StringComparer.OrdinalIgnoreCase);
+
     public KeylessOptions Options { get; }
 
-    public bool LastLoadMigratedSchema => false;
+    public ApprovalMode? SavedApprovalMode { get; private set; }
 
     public Task<Outcome<KeylessOptions>> LoadAsync(string workspaceRoot)
-        => Task.FromResult(_fail
-            ? Outcome.Failure<KeylessOptions>(new OutcomeError(
-                ErrorCodes.ConfigurationInvalid, ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Failure))
+    {
+        if (_fail)
+            return Task.FromResult(Outcome.Failure<KeylessOptions>(new OutcomeError(
+                ErrorCodes.ConfigurationInvalid, ErrorCodes.ConfigurationInvalid, OutcomeErrorType.Failure)));
+
+        return Task.FromResult(_savedModes.TryGetValue(workspaceRoot, out var mode)
+            ? Outcome.Successful(Options with { Mode = mode })
             : Outcome.Successful(Options));
+    }
+
+    public Task<Outcome> SaveApprovalModeAsync(string workspaceRoot, ApprovalMode mode)
+    {
+        _savedModes[workspaceRoot] = mode;
+        SavedApprovalMode = mode;
+        return Task.FromResult(Outcome.Successful());
+    }
+
+    public bool LastLoadMigratedSchema => false;
 }
 
 /// <summary>Fake IBrowserConnector; never launches a real Chrome.</summary>

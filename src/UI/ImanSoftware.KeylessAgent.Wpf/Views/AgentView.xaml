@@ -117,6 +117,25 @@
                         </TextBox.InputBindings>
                     </TextBox>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+                        <ComboBox MinWidth="210"
+                                  Margin="0,0,16,0"
+                                  VerticalAlignment="Center"
+                                  ItemsSource="{Binding Approval.Options}"
+                                  SelectedItem="{Binding Approval.SelectedOption}"
+                                  ToolTipService.ShowOnDisabled="True"
+                                  ToolTip="{Binding Approval.SelectedTooltip}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#9888;"
+                                                   Foreground="{DynamicResource Gold}"
+                                                   Margin="0,0,6,0"
+                                                   Visibility="{Binding IsDangerous, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Text="{Binding Label}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                         <Ellipse Width="10"
                                  Height="10"
                                  Fill="{DynamicResource Gold}"

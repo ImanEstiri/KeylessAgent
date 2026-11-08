@@ -63,6 +63,9 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     /// <summary>The undo section of the Changes panel; assigned at composition time.</summary>
     public UndoViewModel? Undo { get; set; }
 
+    /// <summary>The approval-mode selector bound to the chat page toolbar (set by the shell).</summary>
+    public ApprovalModeSelectorViewModel? Approval { get; set; }
+
     /// <summary>Whether the feed has entries (drives the feed empty state).</summary>
     public bool HasFeedItems => _feed.Items.Count > 0;
 
