@@ -66,6 +66,28 @@ public sealed class AgentViewModel : ObservableObject, IDisposable
     /// <summary>The approval-mode selector bound to the chat page toolbar (set by the shell).</summary>
     public ApprovalModeSelectorViewModel? Approval { get; set; }
 
+    /// <summary>
+    /// Whether plain Enter sends the request (Shift+Enter inserts a newline). Persisted in
+    /// wpf-settings.json; Ctrl+Enter always works regardless of this setting.
+    /// </summary>
+    public bool SendWithEnter
+    {
+        get => _sendWithEnter;
+        set
+        {
+            if (SetProperty(ref _sendWithEnter, value))
+            {
+                var latest = (Settings ?? new Infrastructure.SettingsService()).Load() with { SendWithEnter = value };
+                (Settings ?? new Infrastructure.SettingsService()).Save(latest);
+            }
+        }
+    }
+
+    private bool _sendWithEnter;
+
+    /// <summary>The UI-settings service (assigned by the shell alongside Approval/Undo).</summary>
+    public Infrastructure.SettingsService? Settings { get; set; }
+
     /// <summary>Whether the feed has entries (drives the feed empty state).</summary>
     public bool HasFeedItems => _feed.Items.Count > 0;
 

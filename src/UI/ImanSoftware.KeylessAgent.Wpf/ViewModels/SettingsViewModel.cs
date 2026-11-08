@@ -46,6 +46,7 @@ public sealed class SettingsViewModel : ObservableObject
         var saved = _settings.Load();
         _reduceEffects = saved.ReduceEffects;
         _dryRunDefault = saved.DryRunDefault;
+        _sendWithEnter = saved.SendWithEnter;
         _verbose = false;
         _backdropPreference = saved.BackdropPreference;
 
@@ -118,6 +119,21 @@ public sealed class SettingsViewModel : ObservableObject
             var latest = _settings.Load() with { DryRunDefault = value };
             _settings.Save(latest);
             SetProperty(ref _dryRunDefault, value);
+        }
+    }
+
+    private bool _sendWithEnter;
+
+    /// <summary>Sends the request with plain Enter (Shift+Enter inserts a newline).</summary>
+    public bool SendWithEnter
+    {
+        get => _sendWithEnter;
+
+        set
+        {
+            var latest = _settings.Load() with { SendWithEnter = value };
+            _settings.Save(latest);
+            SetProperty(ref _sendWithEnter, value);
         }
     }
 

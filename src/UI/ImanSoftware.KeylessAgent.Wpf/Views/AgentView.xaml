@@ -116,9 +116,11 @@
                             <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding SendCommand}" />
                         </TextBox.InputBindings>
                     </TextBox>
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
-                        <ComboBox MinWidth="210"
-                                  Margin="0,0,16,0"
+                    <!-- WrapPanel: on narrow windows the buttons wrap to a second line
+                         instead of being pushed out of view (Send stays reachable). -->
+                    <WrapPanel Grid.Row="1" Margin="0,12,0,0">
+                        <ComboBox MinWidth="170"
+                                  Margin="0,0,12,0"
                                   VerticalAlignment="Center"
                                   ItemsSource="{Binding Approval.Options}"
                                   SelectedItem="{Binding Approval.SelectedOption}"
@@ -163,7 +165,7 @@
                                 MinWidth="90"
                                 Margin="12,0,0,0"
                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
-                    </StackPanel>
+                    </WrapPanel>
                 </Grid>
             </Border>
         </Grid>

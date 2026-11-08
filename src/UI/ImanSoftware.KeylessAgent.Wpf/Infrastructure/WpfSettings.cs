@@ -21,6 +21,9 @@ public sealed record WpfSettings
     /// <summary>Pre-ticks the dry-run checkbox on the agent page.</summary>
     public bool DryRunDefault { get; init; }
 
+    /// <summary>Sends the request with plain Enter (Shift+Enter inserts a newline).</summary>
+    public bool SendWithEnter { get; init; }
+
     /// <summary>Restored window placement from the last session.</summary>
     public WindowSettings Window { get; init; } = new();
 }

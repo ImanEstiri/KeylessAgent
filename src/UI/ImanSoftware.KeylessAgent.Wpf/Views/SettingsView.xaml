@@ -28,6 +28,10 @@
                               Style="{DynamicResource ToggleSwitch}"
                               IsChecked="{Binding DryRunDefault}"
                               Margin="0,6,0,0" />
+                    <CheckBox Content="Send with Enter (Shift+Enter for a new line)"
+                              Style="{DynamicResource ToggleSwitch}"
+                              IsChecked="{Binding SendWithEnter}"
+                              Margin="0,6,0,0" />
                     <CheckBox Content="Verbose diagnostics for turns"
                               Style="{DynamicResource ToggleSwitch}"
                               IsChecked="{Binding Verbose}"

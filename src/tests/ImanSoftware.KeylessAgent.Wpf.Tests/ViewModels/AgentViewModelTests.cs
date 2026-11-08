@@ -1,7 +1,9 @@
+using System.IO;
 using FluentAssertions;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Enums;
 using ImanSoftware.KeylessAgent.Abstractions.Services;
+using ImanSoftware.KeylessAgent.Wpf.Infrastructure;
 using ImanSoftware.KeylessAgent.Wpf.Services;
 using ImanSoftware.KeylessAgent.Wpf.Tests.Fakes;
 using ImanSoftware.KeylessAgent.Wpf.ViewModels;
@@ -76,6 +78,34 @@ public sealed class AgentViewModelTests
         ConfirmedCommands = 1,
         DiffStat = " src/a.cs | 2 +-",
     };
+
+    [Fact]
+    public async Task SendWithEnter_PersistsThroughTheSettingsService()
+    {
+        var settings = new SettingsService(Path.Combine(Path.GetTempPath(), "ka-sendenter-" + Guid.CreateVersion7().ToString("N")));
+        var dispatcher = new ImmediateDispatcher();
+        var feed = new ActivityFeed();
+        var runner = new AgentRunner(dispatcher, feed, () => throw new NotSupportedException(), (_, _) => throw new NotSupportedException());
+        var viewModel = new AgentViewModel(runner, dispatcher, feed) { Settings = settings };
+
+        viewModel.SendWithEnter = true;
+
+        settings.Load().SendWithEnter.Should().BeTrue("the toggle persists for the next session");
+        viewModel.SendWithEnter.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SendWithEnter_DefaultsToFalse()
+    {
+        var settings = new SettingsService(Path.Combine(Path.GetTempPath(), "ka-sendenter-def-" + Guid.CreateVersion7().ToString("N")));
+        var dispatcher = new ImmediateDispatcher();
+        var feed = new ActivityFeed();
+        var runner = new AgentRunner(dispatcher, feed, () => throw new NotSupportedException(), (_, _) => throw new NotSupportedException());
+        var viewModel = new AgentViewModel(runner, dispatcher, feed) { Settings = settings };
+
+        viewModel.SendWithEnter.Should().BeFalse("Ctrl+Enter remains the default send gesture");
+        settings.Load().SendWithEnter.Should().BeFalse();
+    }
 
     [Fact]
     public void StepByStep_Toggle_MapsToThePaceOverride()

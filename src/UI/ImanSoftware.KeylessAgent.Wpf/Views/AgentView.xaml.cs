@@ -24,7 +24,27 @@ public partial class AgentView : UserControl
             previous.FocusComposerRequested -= OnFocusComposerRequested;
 
         if (e.NewValue is AgentViewModel current)
+        {
             current.FocusComposerRequested += OnFocusComposerRequested;
+
+            // Optional "Send with Enter" mode: plain Enter sends, Shift+Enter inserts a
+            // newline. Ctrl+Enter always sends regardless of the setting.
+            ComposerBox.PreviewKeyDown -= OnComposerKeyDown;
+            ComposerBox.PreviewKeyDown += OnComposerKeyDown;
+        }
+    }
+
+    private void OnComposerKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter
+            || e.KeyboardDevice.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift))
+            return;
+
+        if (DataContext is AgentViewModel viewModel && viewModel.SendWithEnter)
+        {
+            e.Handled = true;
+            viewModel.SendCommand.Execute(null);
+        }
     }
 
     private void OnFocusComposerRequested(object? sender, EventArgs e) => ComposerBox.Focus();

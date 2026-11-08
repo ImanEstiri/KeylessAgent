@@ -45,6 +45,8 @@ public partial class ShellWindow : Window
 
         var runner = new AgentRunner(_dispatcher, _feed, uiFactory, AgentLoopFactory.Create);
         var agentViewModel = new AgentViewModel(runner, _dispatcher, _feed);
+        agentViewModel.Settings = _wpfSettings;
+        agentViewModel.SendWithEnter = _wpfSettings.Load().SendWithEnter;
         agentViewModel.Undo = new UndoViewModel(KeylessAgentServiceFactory.CreateBackupService(), dialogs, agentViewModel, _dispatcher);
         agentViewModel.Approval = new ApprovalModeSelectorViewModel(
             configuration, agentViewModel, _dispatcher,
