@@ -1,0 +1,118 @@
+{
+  "SchemaVersion": 2,
+  "Mode": "Auto",
+  "Browser": {
+    "ChromeDebugPort": 9222,
+    "UserDataDir": "",
+    "AutoLaunchChrome": true,
+    "ChromePath": "",
+    "ReuseExistingTab": true,
+    "MaxTurnsPerChat": 20,
+    "AllowPlaywrightLaunch": false,
+    "CloseChromeOnExit": false,
+    "EnableDeepThink": true,
+    "EnableSearch": true,
+    "SelectorsFile": "selectors.json",
+    "ReplySource": "Auto",
+    "ReplyTimeoutSeconds": 180,
+    "SendConfirmSeconds": 8,
+    "UploadWaitSeconds": 15,
+    "WaitForNetworkSeconds": 0,
+    "MinDelayMs": 400,
+    "MaxDelayMs": 1500,
+    "MaxMessagesPerMinute": 6,
+    "Debug": false,
+    "HumanDelay": false,
+    "WindowMode": "TinyCorner",
+    "MinimizeAfterLogin": true,
+    "AutoFocusOnTruncation": false,
+    "TruncationBudgetSeconds": 20,
+    "LoginProbeSeconds": 15
+  },
+  "Limits": {
+    "MaxCommandsPerResponse": 5,
+    "MaxResponseChars": 60000,
+    "MaxFileContentChars": 40000,
+    "MaxCommandOutputChars": 8000,
+    "MaxFormatRetries": 3,
+    "MaxIterationsPerTurn": 25
+  },
+  "Snapshot": {
+    "FirstMessageMode": "Snapshot",
+    "DefaultMode": "Changed",
+    "MaxContextFiles": 20,
+    "MaxTotalAttachmentChars": 400000,
+    "MaxDumpedFileChars": 50000,
+    "AttachOnFeedback": false,
+    "RefreshAfterEachBatch": false,
+    "Filter": {
+      "ExcludeTreePatterns": [
+        "bin",
+        "obj",
+        ".git",
+        "node_modules",
+        ".agent",
+        "artifacts"
+      ],
+      "ExcludeDumpHeadings": [
+        "tree-view-result",
+        "code-dump-result"
+      ],
+      "ExcludeFilePatterns": [
+        "*.min.js",
+        "*.min.css",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "*.designer.cs",
+        "*.g.cs",
+        "*.g.i.cs",
+        "*ModelSnapshot.cs"
+      ],
+      "SensitiveFilePatterns": [
+        ".env",
+        ".env.*",
+        "*.pem",
+        "*.key",
+        "*.pfx",
+        "*.p12",
+        "id_rsa*",
+        "*.keystore",
+        "secrets.json",
+        "*secret*",
+        "*password*",
+        "*credential*",
+        "appsettings.Production.json",
+        "appsettings.*.Production.json"
+      ],
+      "MaskSensitiveLines": true
+    }
+  },
+  "Git": {
+    "AutoInit": true,
+    "BranchPrefix": "agent/",
+    "ProtectedBranchPatterns": [
+      "main",
+      "master",
+      "release*"
+    ]
+  },
+  "Commands": {
+    "Allowlist": [
+      "dotnet",
+      "git",
+      "npm",
+      "node",
+      "python"
+    ],
+    "AutoApprove": [
+      "ReadOnly",
+      "Build"
+    ],
+    "BatchFailureMode": "StopOnMutationFailure",
+    "TimeoutSeconds": 180
+  },
+  "Agent": {
+    "Pace": "Balanced"
+  }
+}

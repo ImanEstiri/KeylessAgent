@@ -1,0 +1,98 @@
+{
+  // Bump whenever the embedded default selectors change: older workspace files are
+  // merged (never-customized keys refreshed, user customizations preserved) and backed
+  // up as selectors.json.v<old>.bak. See SelectorsCatalog.ShippedValues.
+  "CatalogVersion": 2,
+
+  "InputBox": [
+    "textarea[placeholder=\"Message DeepSeek\"]",
+    "textarea#chat-input",
+    "textarea[name=\"search\"]"
+  ],
+  "SendButton": [
+    "div:has(> input[type=\"file\"]) ~ div [role=\"button\"].ds-button--filled",
+    "div:has(> input[type=\"file\"]) ~ * [role=\"button\"].ds-button--primary",
+    "[role=\"button\"].ds-button--primary.ds-button--filled",
+    "[role=\"button\"].ds-button--filled.ds-button--circle",
+    "button[type=\"submit\"]"
+  ],
+  "NewChatButton": [
+    "[role=\"button\"]:has-text(\"New chat\")",
+    ".ds-button:has-text(\"New chat\")",
+    "a[href=\"/\"]"
+  ],
+  "MessageItems": [
+    "[data-virtual-list-item-key]",
+    ".ds-message"
+  ],
+  "AssistantMessage": [
+    ".ds-message:has(.ds-markdown.ds-assistant-message-main-content)",
+    ".ds-message"
+  ],
+  "FinalAnswer": [
+    ".ds-markdown.ds-assistant-message-main-content",
+    ".ds-message .ds-markdown:not(.ds-think-content .ds-markdown)"
+  ],
+  "Reasoning": [
+    ".ds-think-content"
+  ],
+  "MessageCopyButton": [
+    "[role=\"button\"][aria-label=\"copy\" i]",
+    "[role=\"button\"][title=\"copy\" i]",
+    ".ds-message [role=\"button\"][aria-label*=\"copy\" i]",
+    ".ds-message .ds-flex [role=\"button\"]:first-child",
+    ".ds-message [role=\"button\"]:has-text(\"Copy\")"
+  ],
+  "StopIndicator": [
+    "div:has(textarea) [role=\"button\"][aria-label=\"Stop\"]",
+    "[role=\"button\"][aria-label=\"Stop\"]",
+    ".ds-button--filled[aria-label=\"Stop\"]"
+  ],
+  "FileInput": [
+    "input[type=\"file\"][multiple]",
+    "input[type=\"file\"]"
+  ],
+  "AttachmentChips": [
+    "[class*='file-chip']",
+    "[class*='chips']",
+    "[data-testid='file-chip']"
+  ],
+  "AttachmentRemove": [
+    "[class*='file-chip'] button",
+    "[class*='file-chip'] [role=\"button\"]",
+    "[class*='chip'] [aria-label*='remove' i]",
+    "[class*='chip'] [aria-label*='delete' i]",
+    "[class*='chip'] [aria-label*='close' i]",
+    "[class*='chip'] [aria-label*='cancel' i]",
+    "[class*='chip'] [class*='close']",
+    "[class*='chip'] svg[class*='close']"
+  ],
+  "AttachmentFailed": [
+    "[class*='file-chip'][class*='error']",
+    "[class*='file-chip'][class*='failed']",
+    "[class*='chip'][class*='error']",
+    "[class*='chip'][class*='failed']",
+    "[class*='chip'] [aria-label*='failed' i]",
+    "[class*='chip'] [aria-label*='retry' i]"
+  ],
+  "ChatLimitNotice": [
+    "[class*='conversation-limit']",
+    "[class*='chat-limit']",
+    "div:has-text('conversation has reached')"
+  ],
+  "DeepThinkToggle": [
+    ".ds-toggle-button:has(span)",
+    "[role=\"button\"][aria-pressed]",
+    ".ds-toggle-button:has-text(\"DeepThink\")"
+  ],
+  "SearchToggle": [
+    ".ds-toggle-button:has(span)",
+    "[role=\"button\"][aria-pressed]",
+    ".ds-toggle-button:has-text(\"Search\")"
+  ],
+  "LoginIndicator": [
+    "input[type=\"password\"]",
+    ".ds-button:has-text(\"Log in\")",
+    "button:has-text(\"Sign in\")"
+  ]
+}

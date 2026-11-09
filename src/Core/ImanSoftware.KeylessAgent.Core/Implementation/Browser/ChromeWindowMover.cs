@@ -26,6 +26,13 @@ internal static class ChromeWindowMover
     internal const int SwShownoactivate = 4;
     internal const int SwRestore = 9;
 
+/// <summary>
+/// Position tolerance (px) for the CDP read-back: Chrome silently clamps small window sizes
+/// (an 80x80 TinyCorner request comes back ~516x95), so width/height are ignored and only
+/// the LEFT/TOP edges are compared, within this tolerance.
+/// </summary>
+internal const int PositionTolerancePx = 10;
+
     /// <summary>Test seam: replaces the Win32 pass (so unit tests never touch real windows).</summary>
     internal static Func<int, string, int, Func<IntPtr, bool>, string, Action<string>?, bool>? Win32ShowWindowsOverride { get; set; }
 
@@ -93,8 +100,12 @@ internal static class ChromeWindowMover
             ["bounds"] = new Dictionary<string, object> { ["windowState"] = windowState },
         });
 
-    /// <summary>True when the read-back bounds match the target exactly, windowState "normal".</summary>
-    private static async Task<bool> ReadBackMatchesAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
+    /// <summary>
+/// True when the read-back state is "normal" and its LEFT/TOP edges are within
+/// <see cref="PositionTolerancePx"/> of the target. Width/height are ignored on purpose:
+/// Chrome clamps small sizes (an 80x80 request comes back ~516x95).
+/// </summary>
+    internal static async Task<bool> ReadBackMatchesAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
     {
         var response = await session.SendAsync("Browser.getWindowBounds",
             new Dictionary<string, object> { ["windowId"] = windowId });
@@ -103,10 +114,10 @@ internal static class ChromeWindowMover
             return false;
         return shape.TryGetProperty("windowState", out var state) &&
                string.Equals(state.GetString(), "normal", StringComparison.OrdinalIgnoreCase) &&
-               shape.TryGetProperty("left", out var left) && left.GetInt32() == bounds.Left &&
-               shape.TryGetProperty("top", out var top) && top.GetInt32() == bounds.Top &&
-               shape.TryGetProperty("width", out var width) && width.GetInt32() == bounds.Width &&
-               shape.TryGetProperty("height", out var height) && height.GetInt32() == bounds.Height;
+               shape.TryGetProperty("left", out var left) && Math.Abs(left.GetInt32() - bounds.Left) <= PositionTolerancePx &&
+               shape.TryGetProperty("top", out var top) && Math.Abs(top.GetInt32() - bounds.Top) <= PositionTolerancePx;
+               // width/height are deliberately NOT compared: Chrome clamps small sizes.
+               // Only the LEFT/TOP edges decide a successful move (see PositionTolerancePx).
     }
 
     /// <summary>
