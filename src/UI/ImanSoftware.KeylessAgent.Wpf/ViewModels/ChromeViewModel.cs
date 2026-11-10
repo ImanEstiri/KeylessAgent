@@ -189,10 +189,10 @@ private int _probeInFlight;
 // running (a slow probe would otherwise be superseded mid-flight and the UI would flap
 // while a turn is streaming). The generation guard stays the source of truth for stale
 // writes; this only stops needless overlapping probes.
-if (Interlocked.CompareExchange(ref _probeInFlight, 1, 0) != 0)
-return;
+        if (Interlocked.CompareExchange(ref _probeInFlight, 1, 0) != 0)
+            return;
 
-var generation = Interlocked.Increment(ref _stateProbeGeneration);
+        var generation = Interlocked.Increment(ref _stateProbeGeneration);
         try
         {
             var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
@@ -224,10 +224,10 @@ var generation = Interlocked.Increment(ref _stateProbeGeneration);
         catch
         {
             // State probing is best-effort; failures leave the last known state.
-}
-finally
-{
-Volatile.Write(ref _probeInFlight, 0);
+        }
+        finally
+        {
+            Volatile.Write(ref _probeInFlight, 0);
         }
     }
 

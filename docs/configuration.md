@@ -37,6 +37,7 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "MinDelayMs": 400,              // random delay between actions (default: event-driven only)
     "MaxDelayMs": 1500,
     "MaxMessagesPerMinute": 6,      // local rate limiter
+    "MinMessageSpacingSeconds": 5,  // min wall-clock gap between two consecutive sends (anti-captcha)
     "Debug": false                  // screenshots on errors
   },
 
@@ -126,6 +127,9 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - **WindowMode**: `TinyCorner` (default), `EdgePeek`, `Offscreen`, `Minimized` (backward-compatibility alias of offscreen), or `Normal`. Affects auto-launched Chrome only and the hide geometry. The window must be visible-on-screen (at least 80x80 pixels) to prevent Chrome's occlusion throttling: fully offscreen positions do NOT work on Chrome 130+ / Windows 11 24H2 even with `--disable-features=CalculateNativeWinOcclusion` — the renderer throttles and truncates the DeepSeek stream (turn-17/18 evidence). TinyCorner keeps an 80x80 square in the bottom-right corner (primary screen bounds, not hardcoded); EdgePeek uses a 10x10 sliver in the corner (may still be throttled if Chrome's heuristic rejects it). Anti-throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling`) are always passed; verify the running Chrome with `keyless diagnostics chrome`.
 - **TruncationBudgetSeconds** (default 20): wall-clock budget for a throttled reply stream - the wait keeps polling (spaced by the normal poll delay) while the stream may still resume, and fails with KA_REPLY_TRUNCATED only when the time since the FIRST truncation detection exceeds this. The reply-truncated turn event carries ElapsedSeconds so the logs show real timing.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
+
+- 
+MinMessageSpacingSeconds (default 5): a minimum wall-clock gap between two consecutive outgoing chat messages, enforced on top of MaxMessagesPerMinute and the jitter delays. This stops a burst of quick batches from tripping the provider's anti-abuse captcha. If a captcha still appears, raise it to 10-15, or lower MaxMessagesPerMinute (which caps the burst). A value below 2 s combined with a rate above 6/min logs a warning but is allowed.
 
 ### Snapshot — sensitive content never reaches the chat
 

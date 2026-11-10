@@ -76,7 +76,7 @@ public class ComposerSuspectTests : IDisposable
                 Browser = browserOptions,
             },
             new ReplyExtractor(),
-            new RateLimiter(1000, 0, 0, new FakeDateTimeProvider()),
+            new RateLimiter(1000, 0, 0, TimeSpan.Zero, new FakeDateTimeProvider()),
             new LoggerAdapter<PlaywrightChatSession>(NullLoggerFactory.Instance),
             ImanFileStorageFactory.CreateStorage(),
             pollDelayMs: 20);

@@ -152,6 +152,7 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                     options.Browser.MaxMessagesPerMinute,
                     options.Browser.MinDelayMs,
                     options.Browser.MaxDelayMs,
+TimeSpan.FromSeconds(options.Browser.MinMessageSpacingSeconds),
                     _time),
                 new LoggerAdapter<PlaywrightChatSession>(_loggerFactory),
                 ImanSoftware.FileStorage.ImanFileStorageFactory.CreateStorage());

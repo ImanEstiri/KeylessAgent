@@ -183,6 +183,19 @@ public sealed record BrowserOptions
     /// </summary>
     public int MaxMessagesPerMinute { get; init; } = 6;
 
+/// <summary>
+/// Minimum wall-clock spacing between two consecutive outgoing chat messages,
+/// enforced ON TOP of MaxMessagesPerMinute and the jitter delays. Protects
+/// against the provider's anti-abuse captcha when the model replies quickly and
+/// the agent fires several batches inside one turn. The jitter (MinDelayMs /
+/// MaxDelayMs) is added on top of this floor, so the effective gap is
+/// MinMessageSpacingSeconds + 0.4..1.5 s. Default 5 seconds.
+/// If the captcha still appears, raise this to 10-15, or lower
+/// MaxMessagesPerMinute (which caps the burst: 6 in 60 s with a 5 s floor
+/// means a burst of 6 in ~30 s is still allowed).
+/// </summary>
+public int MinMessageSpacingSeconds { get; init; } = 5;
+
     /// <summary>
     /// Debug mode: saves screenshots on errors and writes a diagnostics log. Default false.
     /// </summary>

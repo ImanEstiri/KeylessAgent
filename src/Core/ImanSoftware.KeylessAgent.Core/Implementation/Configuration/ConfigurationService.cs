@@ -98,6 +98,13 @@ internal sealed class ConfigurationService : IConfigurationService
         if (validation.IsFailure)
             return Outcome.Failure<KeylessOptions>(validation.Error);
 
+// Soft warning (never a failure): a sub-2s message spacing with a >6/min burst cap can
+// still fire hard. Private/local chat backends may legitimately want that, so it only logs.
+if (options.Browser.MinMessageSpacingSeconds < 2 && options.Browser.MaxMessagesPerMinute > 6)
+_log?.LogWarning(
+"Browser.MinMessageSpacingSeconds is {Spacing}s with MaxMessagesPerMinute {Max}: this combination can still burst. Raise the spacing (10-15) or lower the rate to avoid the anti-abuse captcha.",
+options.Browser.MinMessageSpacingSeconds, options.Browser.MaxMessagesPerMinute);
+
         var (migratedOptions, migrated) = await MigrateIfStaleAsync(path, read.Data, options);
         LastLoadMigratedSchema = migrated;
 
@@ -307,6 +314,8 @@ internal sealed class ConfigurationService : IConfigurationService
             problems.Add("Browser delays must satisfy 0 <= MinDelayMs <= MaxDelayMs.");
         if (options.Browser.MaxMessagesPerMinute < 1)
             problems.Add("Browser.MaxMessagesPerMinute must be at least 1.");
+if (options.Browser.MinMessageSpacingSeconds is < 0 or > 300)
+problems.Add("Browser.MinMessageSpacingSeconds must be between 0 and 300.");
         if (string.IsNullOrWhiteSpace(options.Browser.SelectorsFile))
             problems.Add("Browser.SelectorsFile must not be empty.");
 
