@@ -46,6 +46,17 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
 {
     private readonly ImanSoftware.Logging.ILoggerAdapter<BrowserEnvironment>? _log;
 
+// ONE keep-alive client for every port probe: constructing a fresh HttpClient per probe
+// (and its socket) was the slow path on first-run-after-launch.
+private static readonly HttpClient ProbeClient = CreateProbeClient();
+
+private static HttpClient CreateProbeClient()
+{
+var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+client.DefaultRequestHeaders.ConnectionClose = false; // keep-alive
+return client;
+}
+
     public BrowserEnvironment() : this(null)
     {
     }
@@ -63,8 +74,8 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
-            using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+            var client = ProbeClient;
             using var response = await client.GetAsync(
                 $"http://127.0.0.1:{port}/json/version", timeoutCts.Token);
             return response.IsSuccessStatusCode;
@@ -253,13 +264,24 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
     /// forced). Used by the post-launch verification that compares the requested
     /// position/size against the real GetWindowRect of the launched window.
     /// </summary>
-    internal static (int Left, int Top, int Width, int Height)? RequestedWindowBounds(string windowMode, (int Width, int Height)? screen = null)
+    /// <summary>
+/// The TOP-LEFT corner of the tiny corner (no size). Chrome enforces its own minimum
+/// window size, so the requested window is larger than 80x80; only the sliver that
+/// overlaps the screen's bottom-right is visible, and that sliver defeats occlusion.
+/// </summary>
+internal static (int Left, int Top, int? Width, int? Height) TinyCornerPosition((int Width, int Height)? screen = null)
+{
+var (width, height) = screen ?? PrimaryScreenSize();
+return (width - 80, height - 80, null, null);
+}
+
+internal static (int Left, int Top, int? Width, int? Height)? RequestedWindowBounds(string windowMode, (int Width, int Height)? screen = null)
         => windowMode.Trim().ToLowerInvariant() switch
         {
             "normal" => null,
-            "tinycorner" => TinyCornerBounds(screen),
+            "tinycorner" => TinyCornerPosition(screen),
             "edgepeek" => screen is { } s
-                ? ((int Left, int Top, int Width, int Height)?)(s.Width - 10, s.Height - 10, 10, 10)
+                ? ((int Left, int Top, int? Width, int? Height)?)(s.Width - 10, s.Height - 10, null, null)
                 : null,
             _ => (-32000, -32000, 1280, 900),
         };
@@ -268,8 +290,8 @@ internal sealed class BrowserEnvironment : IBrowserEnvironment
         => windowMode.Trim().ToLowerInvariant() switch
         {
             "normal" => "",
-            "tinycorner" => $"--window-position={workAreaWidth - 80},{workAreaHeight - 80} --window-size=80,80",
-            "edgepeek" => $"--window-position={workAreaWidth - 10},{workAreaHeight - 10} --window-size=10,10",
+            "tinycorner" => $"--window-position={workAreaWidth - 80},{workAreaHeight - 80} ",
+            "edgepeek" => $"--window-position={workAreaWidth - 10},{workAreaHeight - 10} ",
             // Minimized is kept for backward compatibility: it means offscreen as well.
             _ => "--window-position=-32000,-32000 --window-size=1280,900",
         };

@@ -171,6 +171,7 @@ public sealed class ChromeViewModel : ObservableObject
 
     private System.Timers.Timer? _statePollTimer;
     private int _stateProbeGeneration;
+private int _probeInFlight;
 
     /// <summary>
     /// Re-probes the Chrome state off the UI thread. Called on workspace change, when the
@@ -184,7 +185,14 @@ public sealed class ChromeViewModel : ObservableObject
         if (!_agent.HasWorkspace)
             return;
 
-        var generation = Interlocked.Increment(ref _stateProbeGeneration);
+        // Debounce: the 2s poll must not start a second probe while the previous one is still
+// running (a slow probe would otherwise be superseded mid-flight and the UI would flap
+// while a turn is streaming). The generation guard stays the source of truth for stale
+// writes; this only stops needless overlapping probes.
+if (Interlocked.CompareExchange(ref _probeInFlight, 1, 0) != 0)
+return;
+
+var generation = Interlocked.Increment(ref _stateProbeGeneration);
         try
         {
             var options = await _configuration.LoadAsync(_agent.WorkspaceRoot);
@@ -216,6 +224,10 @@ public sealed class ChromeViewModel : ObservableObject
         catch
         {
             // State probing is best-effort; failures leave the last known state.
+}
+finally
+{
+Volatile.Write(ref _probeInFlight, 0);
         }
     }
 

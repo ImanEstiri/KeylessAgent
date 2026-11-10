@@ -196,7 +196,11 @@ public sealed record BrowserOptions
     /// <summary>
     /// Browser window behavior. Accepted values: "Offscreen", "Minimized", "TinyCorner",
     /// "EdgePeek", "Normal". Default "TinyCorner": a visible-but-imperceptible 80x80 window
-    /// in the bottom-right corner of the primary screen. The window MUST be visible-on-screen
+    /// in the bottom-right corner of the primary screen. The window's TOP-LEFT corner is
+/// placed inside the bottom-right corner of the work area, so only a tiny sliver overlaps
+/// the screen. Chrome's own minimum window size still applies (it clamps --window-size);
+/// the sliver is what matters for occlusion, not the requested --window-size. The window
+/// MUST be visible-on-screen
     /// (at least 80x80 pixels) to prevent Chrome's occlusion throttling — fully offscreen
     /// positions (-32000,-32000, "Offscreen"/"Minimized") and truly minimized windows are
     /// treated as occluded by Chrome 130+ on Windows 11 24H2 regardless of the

@@ -1,3 +1,20 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using ImanSoftware.Logging;
 using Microsoft.Playwright;
 
@@ -12,7 +29,7 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 /// (turn-17: 20 truncations; turn-18: visible window succeeded, hidden again truncated) —
 /// so the hide geometry is tiny-but-on-screen. A truly minimized window is equally
 /// throttled and never used.
-/// The move mechanics (CDP read-back verification + the Win32 fallback for both directions)
+/// The move mechanics (CDP read-back verification + the Win32 fallbacks for both directions)
 /// live in <see cref="ChromeWindowMover"/>; this class only orchestrates them with the
 /// five-second CDP race. Recover the window with 'keyless show' or the WPF Show button.
 /// </summary>
@@ -77,8 +94,10 @@ internal static class ChromeWindowMinimizer
             debug?.Invoke("CDP hide was not verified; falling back to Win32.");
 
         // Best-effort, as before: the turn never fails because the window could not be moved.
-        ChromeWindowMover.ShowWindowsViaWin32(
-            launchedProcessId, userDataDir, debugPort, ChromeWindowMover.SwHide,
-            hwnd => !ChromeWindowMover.IsWindowVisibleWin32(hwnd), "Hide", debug);
+        // The fallback MOVES the window to the tiny corner and keeps it VISIBLE — it must
+        // NEVER call ShowWindow(SW_HIDE), which would make Chrome occlusion-throttle it.
+        ChromeWindowMover.MoveWindowsViaWin32(
+            launchedProcessId, userDataDir, debugPort,
+            (bounds.Left, bounds.Top), "Hide", debug);
     }
 }

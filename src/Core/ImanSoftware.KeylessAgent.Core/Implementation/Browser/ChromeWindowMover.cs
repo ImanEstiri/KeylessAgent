@@ -1,3 +1,20 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Playwright;
@@ -8,15 +25,15 @@ namespace ImanSoftware.KeylessAgent.Core.Implementation.Browser;
 /// The ONE shared window-move engine, used by both ChromeWindowMinimizer (during a turn)
 /// and ChromeWindowController (keyless show/hide, WPF buttons, login flow):
 /// 1. CDP move with READ-BACK VERIFICATION: Browser.setWindowBounds, then Browser.getWindowBounds
-///    must report exactly the target bounds and windowState — with a forced-normal recovery
-///    between attempts, up to 3 tries. True = verified; false = CDP could not confirm.
-/// 2. Win32 fallback for BOTH directions: enumerate the top-level Chrome windows of OUR
-///    chrome.exe processes (the launched PID's descendant tree, or — when attached — the
-///    processes whose command line carries our --user-data-dir / --remote-debugging-port)
-///    and ShowWindow them, then verify the expected visibility state by reading the windows
-///    back (IsWindowVisible / IsIconic). The launcher PID often has MainWindowHandle == 0,
-///    which is why the naive fallback missed.
-/// 3. Chat-window picking: prefer the page whose URL is the chat host, so with several tabs
+///    must report a NORMAL window whose LEFT/TOP edges are within tolerance of the target — with
+///    a forced-normal recovery between attempts, up to 3 tries. True = verified; false = CDP
+///    could not confirm.
+/// 2. Win32 fallback for the SHOW direction: enumerate the top-level Chrome windows of OUR
+///    chrome.exe processes and ShowWindow them (never in the hide direction).
+/// 3. Win32 move-and-keep-visible fallback for the HIDE direction: SetWindowPos the windows to
+///    the tiny corner WITHOUT ever calling ShowWindow(SW_HIDE) — the window must stay VISIBLE
+///    so Chrome does not occlusion-throttle the renderer.
+/// 4. Chat-window picking: prefer the page whose URL is the chat host, so with several tabs
 ///    open the WINDOW THAT OWNS THE CHAT TAB is the one that gets moved.
 /// Logging flows through simple delegates so both call sites keep their own typed loggers.
 /// </summary>
@@ -26,19 +43,29 @@ internal static class ChromeWindowMover
     internal const int SwShownoactivate = 4;
     internal const int SwRestore = 9;
 
-/// <summary>
-/// Position tolerance (px) for the CDP read-back: Chrome silently clamps small window sizes
-/// (an 80x80 TinyCorner request comes back ~516x95), so width/height are ignored and only
-/// the LEFT/TOP edges are compared, within this tolerance.
-/// </summary>
-internal const int PositionTolerancePx = 10;
+    // SetWindowPos flags for the move-and-keep-visible hide fallback: never hide the window,
+    // never resize it, never steal focus or z-order.
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpShowWindow = 0x0040;
 
-    /// <summary>Test seam: replaces the Win32 pass (so unit tests never touch real windows).</summary>
+    /// <summary>
+    /// Position tolerance (px) for the read-back checks. Chrome silently clamps small window
+    /// sizes (an 80x80 TinyCorner request comes back ~516x95) and can nudge positions a few
+    /// pixels, so width/height are ignored and left/top are compared with this tolerance.
+    /// </summary>
+    internal const int PositionTolerancePx = 10;
+
+    /// <summary>Test seam: replaces the Win32 SHOW pass (so unit tests never touch real windows).</summary>
     internal static Func<int, string, int, Func<IntPtr, bool>, string, Action<string>?, bool>? Win32ShowWindowsOverride { get; set; }
+
+    /// <summary>Test seam: replaces the Win32 move-and-keep-visible pass (unit tests never touch real windows).</summary>
+    internal static Func<int, string, int, (int Left, int Top), string, Action<string>?, bool>? Win32MoveWindowsOverride { get; set; }
 
     /// <summary>
     /// One CDP move + read-back verification loop: setWindowBounds, then getWindowBounds must
-    /// match the target exactly; on mismatch force normal first and retry, up to 3 attempts.
+    /// verify the target; on mismatch force normal first and retry, up to 3 attempts.
     /// </summary>
     internal static async Task<bool> TryMoveViaCdpAsync(
         ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds, string label,
@@ -101,10 +128,10 @@ internal const int PositionTolerancePx = 10;
         });
 
     /// <summary>
-/// True when the read-back state is "normal" and its LEFT/TOP edges are within
-/// <see cref="PositionTolerancePx"/> of the target. Width/height are ignored on purpose:
-/// Chrome clamps small sizes (an 80x80 request comes back ~516x95).
-/// </summary>
+    /// True when the read-back state is "normal" and its LEFT/TOP edges are within
+    /// <see cref="PositionTolerancePx"/> of the target. Width/height are ignored on purpose:
+    /// Chrome clamps small sizes (an 80x80 request comes back ~516x95).
+    /// </summary>
     internal static async Task<bool> ReadBackMatchesAsync(ICDPSession session, long windowId, (int Left, int Top, int Width, int Height) bounds)
     {
         var response = await session.SendAsync("Browser.getWindowBounds",
@@ -116,14 +143,14 @@ internal const int PositionTolerancePx = 10;
                string.Equals(state.GetString(), "normal", StringComparison.OrdinalIgnoreCase) &&
                shape.TryGetProperty("left", out var left) && Math.Abs(left.GetInt32() - bounds.Left) <= PositionTolerancePx &&
                shape.TryGetProperty("top", out var top) && Math.Abs(top.GetInt32() - bounds.Top) <= PositionTolerancePx;
-               // width/height are deliberately NOT compared: Chrome clamps small sizes.
-               // Only the LEFT/TOP edges decide a successful move (see PositionTolerancePx).
+        // Width/height are deliberately NOT compared: Chrome clamps small sizes, and only the
+        // LEFT/TOP edges decide whether the window sits in the requested corner.
     }
 
     /// <summary>
-    /// The Win32 pass for BOTH directions: ShowWindow our Chrome windows with
-    /// <paramref name="showCommand"/>, then verify at least one window reached the expected
-    /// state (<paramref name="verifyWindow"/>) within ~500 ms. True = verified.
+    /// The Win32 SHOW fallback: ShowWindow our Chrome windows with <paramref name="showCommand"/>,
+    /// then verify at least one window reached the expected state within ~500 ms. True = verified.
+    /// Never used for the hide direction (see <see cref="MoveWindowsViaWin32"/>).
     /// </summary>
     internal static bool ShowWindowsViaWin32(
         int launchedProcessId, string userDataDir, int debugPort, int showCommand,
@@ -166,10 +193,102 @@ internal const int PositionTolerancePx = 10;
     }
 
     /// <summary>
+    /// The Win32 MOVE-AND-KEEP-VISIBLE fallback for the HIDE direction: enumerate our Chrome
+    /// windows, restore a minimized one, then SetWindowPos them to <paramref name="position"/>
+    /// with SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_SHOWWINDOW — NEVER ShowWindow(SW_HIDE).
+    /// The window stays VISIBLE in the tiny corner so Chrome does not occlusion-throttle the
+    /// renderer. True = at least one window is visible and within tolerance of the position.
+    /// </summary>
+    internal static bool MoveWindowsViaWin32(
+        int launchedProcessId, string userDataDir, int debugPort,
+        (int Left, int Top) position, string label, Action<string>? debug = null)
+    {
+        if (Win32MoveWindowsOverride is not null)
+            return Win32MoveWindowsOverride(launchedProcessId, userDataDir, debugPort, position, label, debug);
+
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            var handles = FindChromeWindowHandles(launchedProcessId, userDataDir, debugPort);
+            if (handles.Count == 0)
+            {
+                debug?.Invoke($"Win32 {label}: no Chrome window of our chrome.exe processes was found.");
+                return false;
+            }
+
+            foreach (var handle in handles)
+            {
+                // A minimized window cannot be "visible-but-tiny": restore it first.
+                if (IsIconic(handle))
+                    ShowWindow(handle, SwRestore);
+
+                SetWindowPos(handle, IntPtr.Zero, position.Left, position.Top, 0, 0,
+                    SwpNoZOrder | SwpNoActivate | SwpNoSize | SwpShowWindow);
+            }
+
+            // Read-back: the window must be VISIBLE and on the requested corner.
+            var verified = false;
+            for (var attempt = 0; attempt < 5 && !verified; attempt++)
+            {
+                Thread.Sleep(100);
+                verified = handles.Any(hwnd =>
+                    IsWindowVisible(hwnd) &&
+                    GetWindowBoundsWin32(hwnd) is { } actual &&
+                    Math.Abs(actual.Left - position.Left) <= PositionTolerancePx &&
+                    Math.Abs(actual.Top - position.Top) <= PositionTolerancePx);
+            }
+
+            debug?.Invoke($"Win32 {label}: SetWindowPos sent to {handles.Count} Chrome window(s); visible+on-position: {verified}.");
+            return verified;
+        }
+        catch (Exception ex)
+        {
+            debug?.Invoke($"Win32 {label} failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The window to move: prefer the page whose URL is the chat host (with several tabs open
     /// the FIRST page is often not the chat), falling back to the first page, else null.
     /// </summary>
-    internal static IPage? PickChatPage(IBrowserContext context)
+    /// <summary>
+/// The pure move loop shared by the real fallback and the tests: restore a minimized window
+/// (a minimized window is never "visible-but-tiny"), move it to <paramref name="position"/>
+/// WITHOUT hiding it, then verify at least one window is visible and on-position within
+/// ~500 ms. Every OS call arrives as a delegate so no real window is ever touched in a test.
+/// </summary>
+internal static bool MoveHandles(
+IReadOnlyList<IntPtr> handles, (int Left, int Top) position,
+Func<IntPtr, bool> isIconic, Action<IntPtr> restore, Action<IntPtr, int, int> move,
+Func<IntPtr, bool> verify)
+{
+foreach (var handle in handles)
+{
+// A minimized window cannot be "visible-but-tiny": restore it first.
+if (isIconic(handle))
+restore(handle);
+
+move(handle, position.Left, position.Top);
+}
+
+for (var attempt = 0; attempt < 5; attempt++)
+{
+Thread.Sleep(100);
+if (handles.Any(verify))
+return true;
+}
+
+return false;
+}
+
+/// <summary>
+/// The window to move: prefer the page whose URL is the chat host (with several tabs open
+/// the FIRST page is often not the chat), falling back to the first page, else null.
+/// </summary>
+internal static IPage? PickChatPage(IBrowserContext context)
         => context.Pages.FirstOrDefault(p => p.Url.Contains("chat.deepseek.com", StringComparison.OrdinalIgnoreCase))
            ?? context.Pages.FirstOrDefault();
 
@@ -296,6 +415,10 @@ internal const int PositionTolerancePx = 10;
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

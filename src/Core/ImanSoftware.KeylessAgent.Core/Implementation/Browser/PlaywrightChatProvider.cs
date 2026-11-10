@@ -1,3 +1,20 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using ImanSoftware.KeylessAgent.Abstractions.Models;
 using ImanSoftware.KeylessAgent.Abstractions.Models.Agent;
 using ImanSoftware.Extensions;
@@ -64,16 +81,6 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             var page = (IPage)rawPage;
             var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);
 
-            // Hide the window IMMEDIATELY after the tab is open: Target.createTarget now opens
-            // the tab in the background, but Chrome can still move the window while the tab
-            // loads. The post-login hide below stays. Both Minimized and Offscreen mean
-            // offscreen; Normal is never forced.
-            if (options.Browser.MinimizeAfterLogin &&
-                !string.Equals(options.Browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase))
-            {
-                await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
-            }
-
             // Resume safety net: the connector already selected/navigated the tab by
             // CONVERSATION ID; navigate here only when the picked tab is still not on the
             // saved conversation (e.g. the connector's navigation failed). Commit returns as
@@ -127,9 +134,13 @@ internal sealed class PlaywrightChatProvider : IChatProvider
                     "The post-StartSession composer reset failed best-effort: {Message}", ex.Message);
             }
 
-            // Logged in (or just logged in): hide the window again — the login probe or the
-            // user's own interaction may have moved it back into view.
-            if (options.Browser.MinimizeAfterLogin)
+            // Logged in (or just logged in): hide the window — the login probe may have shown
+            // it. This is the ONLY hide call: an earlier identical hide right after connect was
+            // removed because, with a tolerant CDP read-back, both land in the tiny corner, so
+            // the first was pure waste (two CDP races + two Win32 attempts per session).
+            // "Normal" means never force the window, so it skips the hide entirely.
+            if (options.Browser.MinimizeAfterLogin &&
+                !string.Equals(options.Browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase))
                 await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
 
             IChatSession session = new PlaywrightChatSession(
@@ -220,16 +231,13 @@ internal sealed class PlaywrightChatProvider : IChatProvider
     }
 
     /// <summary>
-    /// Hides the chat window OFFSCREEN so a successful launch does not steal the user's
-    /// focus: CDP Browser.setWindowBounds {left:-32000, top:-32000, width:1280, height:900,
-    /// windowState:normal} with a read-back verification and a normal→offscreen recovery,
-    /// then a Win32 fallback that finds the real Chrome top-level windows of our chrome.exe
-    /// processes and ShowWindow(SW_HIDE)s them (the launched launcher PID often has
-    /// MainWindowHandle == 0). Previously this used windowState:minimized, which throttles
-    /// Chrome's renderer and truncates DeepSeek streaming replies; the window is now MOVED
-    /// offscreen with normal state — the user cannot see it, Chrome does not throttle it.
-    /// Recover with 'keyless show' or the WPF Show Chrome button. Best-effort: every
-    /// failure is swallowed.
+    /// Hides the chat window into the tiny VISIBLE corner so a successful launch does not
+    /// steal the user's focus: the move mechanics (CDP read-back verification with a
+    /// normal-state recovery, then a Win32 move-and-keep-visible fallback that never calls
+    /// ShowWindow(SW_HIDE)) live in <see cref="ChromeWindowMinimizer"/>. A fully hidden or
+    /// minimized window is occlusion-throttled by Chrome and truncates the DeepSeek stream;
+    /// the tiny visible corner avoids that. Recover with 'keyless show' or the WPF Show
+    /// button. Best-effort: every failure is swallowed.
     /// </summary>
     internal static async Task HideWindowAsync(
         IPage page, BrowserOptions browserOptions, int launchedProcessId,

@@ -279,7 +279,7 @@ public class BrowserConnectorTests
         var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "TinyCorner", (1920, 1080));
 
         arguments.Should().Contain("--window-position=1840,1000", "the primary screen's bottom-right corner");
-        arguments.Should().Contain("--window-size=80,80",
+        arguments.Should().NotContain("--window-size",
             "visible-on-screen so Chrome does not occlude-throttle; 80x80 is the recommended minimum");
         arguments.Should().NotContain("-32000");
     }
@@ -290,7 +290,7 @@ public class BrowserConnectorTests
         var arguments = BrowserEnvironment.ComposeChromeArguments(9222, @"C:\ka-profile", "EdgePeek", (1920, 1080));
 
         arguments.Should().Contain("--window-position=1910,1070");
-        arguments.Should().Contain("--window-size=10,10");
+        arguments.Should().NotContain("--window-size");
     }
 
     [Fact]
@@ -335,16 +335,17 @@ public class BrowserConnectorTests
     }
 
     [Theory]
-    [InlineData("TinyCorner", 1840, 952, 80, 80)]
-    [InlineData("EdgePeek", 1910, 1022, 10, 10)]
+    // TinyCorner and EdgePeek are position-only now (Chrome clamps --window-size).
+    [InlineData("TinyCorner", 1840, 952, null, null)]
+[InlineData("EdgePeek", 1910, 1022, null, null)]
     [InlineData("Offscreen", -32000, -32000, 1280, 900)]
     [InlineData("Minimized", -32000, -32000, 1280, 900)]
-    public void RequestedWindowBounds_MapsEveryForcedMode(string mode, int left, int top, int width, int height)
+    public void RequestedWindowBounds_MapsEveryForcedMode(string mode, int left, int top, int? width, int? height)
     {
         // What the launch ASKS for, against which the real GetWindowRect is compared later.
         var bounds = BrowserEnvironment.RequestedWindowBounds(mode, (1920, 1032));
 
-        bounds.Should().Be(((left, top, width, height)));
+        bounds.Should().Be(((int Left, int Top, int? Width, int? Height)?)(left, top, width, height));
     }
 
     [Fact]

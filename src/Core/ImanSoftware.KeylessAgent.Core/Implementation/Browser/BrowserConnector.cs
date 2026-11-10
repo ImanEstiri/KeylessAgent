@@ -369,7 +369,16 @@ internal sealed class BrowserConnector : IBrowserConnector
     /// (e.g. enforce a minimum size) - a root cause distinct from work-area/DPI issues that
     /// previously had zero visibility. Read-only: never moves or closes anything.
     /// </summary>
-    private void VerifyLaunchedWindowBounds(
+    /// <summary>
+/// "L,T WxH" when a size was requested, else "L,T": the tiny modes request only a
+/// position (Chrome clamps --window-size), so claiming a size mismatch there is false.
+/// </summary>
+private static string DescribeRequested((int Left, int Top, int? Width, int? Height) requested)
+=> requested.Width is { } w && requested.Height is { } h
+? requested.Left + "," + requested.Top + " " + w + "x" + h
+: requested.Left + "," + requested.Top;
+
+private void VerifyLaunchedWindowBounds(
         int launchedProcessId, string userDataDir, BrowserOptions options, (int Width, int Height) workArea)
     {
         if (OpenTabOverride is not null)
@@ -408,20 +417,20 @@ internal sealed class BrowserConnector : IBrowserConnector
 
             var matches = Math.Abs(actual.Left - requested.Value.Left) <= 8 &&
                 Math.Abs(actual.Top - requested.Value.Top) <= 8 &&
-                Math.Abs(actual.Width - requested.Value.Width) <= 8 &&
-                Math.Abs(actual.Height - requested.Value.Height) <= 8;
+                (requested.Value.Width is not { } rw || Math.Abs(actual.Width - rw) <= 8) &&
+                (requested.Value.Height is not { } rh || Math.Abs(actual.Height - rh) <= 8);
 
             var level = matches ? LogLevel.Information : LogLevel.Warning;
             _log.Log(level,
                 "Launched-window verification ({Result}): requested {Requested}, actual {Actual} (mode {Mode}, tolerance 8px).",
                 matches ? "matches" : "MISMATCH",
-                $"{requested.Value.Left},{requested.Value.Top} {requested.Value.Width}x{requested.Value.Height}",
+                DescribeRequested(requested.Value),
                 $"{actual.Left},{actual.Top} {actual.Width}x{actual.Height}",
                 options.WindowMode);
 
             _ = LogEventSink?.Invoke("chrome-window-bounds", new
             {
-                Requested = $"{requested.Value.Left},{requested.Value.Top} {requested.Value.Width}x{requested.Value.Height}",
+                Requested = DescribeRequested(requested.Value),
                 Actual = $"{actual.Left},{actual.Top} {actual.Width}x{actual.Height}",
                 Matches = matches,
                 Mode = options.WindowMode,

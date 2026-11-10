@@ -214,11 +214,24 @@ internal sealed class ChromeWindowController : IChromeWindowController
         BrowserOptions options, (int Left, int Top, int Width, int Height) bounds, string label, Action<string> debug)
     {
         debug($"CDP {label} was not verified; falling back to Win32.");
+if (label == "Hide")
+{
+// The hide fallback MOVES the window to the tiny corner and keeps it VISIBLE -
+// never ShowWindow(SW_HIDE), which would make Chrome occlusion-throttle it.
+var moved = ChromeWindowMover.MoveWindowsViaWin32(
+0, BrowserConnector.ResolveUserDataDir(options), options.ChromeDebugPort,
+(bounds.Left, bounds.Top), label, debug);
+return moved
+? Outcome.Successful()
+: Outcome.Failure(new OutcomeError(
+"Chrome window could not be located or moved - it may have been closed.",
+ErrorCodes.BrowserConnectionFailed, OutcomeErrorType.Problem));
+}
         var win32Verified = ChromeWindowMover.ShowWindowsViaWin32(
             launchedProcessId: 0,
             BrowserConnector.ResolveUserDataDir(options),
             options.ChromeDebugPort,
-            label == "Show" ? ChromeWindowMover.SwShownoactivate : ChromeWindowMover.SwHide,
+            ChromeWindowMover.SwShownoactivate,
             hwnd => label == "Show"
                 ? ChromeWindowMover.IsWindowVisibleWin32(hwnd) && !ChromeWindowMover.IsIconicWin32(hwnd)
                 : !ChromeWindowMover.IsWindowVisibleWin32(hwnd),
@@ -239,7 +252,12 @@ internal sealed class ChromeWindowController : IChromeWindowController
     public async Task<ChromeProfileState> GetStateAsync(BrowserOptions options, CancellationToken ct = default)
     {
         var debugPortOpen = await _environment.IsDebugPortOpenAsync(options.ChromeDebugPort, ct);
-        if (!debugPortOpen)
+        // Process-table-first ownership: the HTTP probe only decides DebugPortOpen. A closed
+// (or slow/flapping) probe still reports "owned" while our chrome.exe processes are
+// alive, so the doctor page never flips to "Start Chrome" mid-turn.
+if (!debugPortOpen && (ProcessInfosOverride is not null ? ProcessInfosOverride() : ChromeWindowMover.GetChromeProcessInfos()).All(p =>
+p.CommandLine is null ||
+!p.CommandLine.Contains(BrowserConnector.ResolveUserDataDir(options), StringComparison.OrdinalIgnoreCase)))
             return new ChromeProfileState(DebugPortOpen: false, OwnedByAgent: false, ProcessCount: 0);
 
         var userDataDir = BrowserConnector.ResolveUserDataDir(options);
@@ -253,7 +271,7 @@ internal sealed class ChromeWindowController : IChromeWindowController
 
         // The port may be held by a foreign Chrome (no KeylessAgent profile in any command line).
         return new ChromeProfileState(
-            DebugPortOpen: true,
+            DebugPortOpen: debugPortOpen,
             OwnedByAgent: owned.Count > 0,
             ProcessCount: owned.Count);
     }
