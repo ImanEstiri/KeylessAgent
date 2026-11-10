@@ -1046,7 +1046,22 @@ internal sealed class AgentLoop : IAgentLoop
                 var resultsMessage = _resultFormatter.Format(turn, batch, executed, options.Limits.MaxCommandsPerResponse, options.Limits, workspaceRoot);
                 if (resultsMode == ContextMode.Changed && feedbackAttachments.Count == 0)
                     resultsMessage += "\n\n[no file changes since last message]";
-                ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
+                // Inter-action pacing: pause after the model's commands ran, before the next
+// results upload (this is the mid-turn burst the captcha targets).
+var executionDelay = Browser.InterActionDelayResolver.AfterExecution(options.Browser);
+if (executionDelay > TimeSpan.Zero)
+{
+await logger.AppendAsync("inter-action-delay", new
+{
+Turn = turn,
+Batch = batch,
+Phase = "after-execution",
+Seconds = executionDelay.TotalSeconds,
+}, cancellationToken);
+await Task.Delay(executionDelay, cancellationToken);
+}
+
+ui.ShowProgress(new AgentProgressEvent(AgentEventType.SendingResults, "Sending results"));
                 await logger.AppendAsync("results-sent", new { Turn = turn, Batch = batch, Results = executed.Count }, cancellationToken);
                 if (!dryRun)
                 {

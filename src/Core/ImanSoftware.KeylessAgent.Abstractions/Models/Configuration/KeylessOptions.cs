@@ -248,6 +248,54 @@ public int MinMessageSpacingSeconds { get; init; } = 5;
     /// input (logged in) OR a login indicator, in one parallel wait. Default 15 seconds.
     /// </summary>
     public int LoginProbeSeconds { get; init; } = 15;
+
+/// <summary>
+/// Human-pacing delays inserted between specific DOM actions, to reduce the chance of the
+/// chat provider's anti-abuse captcha. Every value is in seconds. When Enabled is false
+/// every delay is skipped. When a field is absent the per-field default below applies.
+/// When a field is present but INVALID (negative, above the hard ceiling) the safe
+/// fallback (InvalidValueFallbackSeconds) is used, so a typo cannot silently re-enable
+/// rapid-fire. A non-numeric value fails the config load with KA_CONFIG_INVALID.
+/// </summary>
+public InterActionDelaysOptions InterActionDelays { get; init; } = new();
+}
+
+/// <summary>
+/// Human-pacing delays between specific DOM actions (<c>Browser.InterActionDelays</c>).
+/// </summary>
+public sealed record InterActionDelaysOptions
+{
+/// <summary>Master switch. False disables every delay in this section.</summary>
+public bool Enabled { get; init; } = true;
+
+/// <summary>
+/// Wait this many seconds after a model reply has been received AND its commands have
+/// been executed, BEFORE uploading the next results batch. Only applies to mid-turn
+/// sends (the first request of a turn skips it). Default 2.
+/// </summary>
+public int AfterExecutionSeconds { get; init; } = 2;
+
+/// <summary>
+/// Wait this many seconds AFTER attachments have been uploaded and registered by the
+/// chat, BEFORE the message text is pasted into the composer. Skipped when the send has
+/// no attachments. Default 2.
+/// </summary>
+public int AfterUploadSeconds { get; init; } = 2;
+
+/// <summary>
+/// Wait this many seconds AFTER the message text is pasted, BEFORE Send is pressed.
+/// Applies to every send. Default 2.
+/// </summary>
+public int AfterPasteSeconds { get; init; } = 2;
+
+/// <summary>
+/// Safe fallback applied when a delay field is present but INVALID (negative or above
+/// HardCeilingSeconds). Default 50.
+/// </summary>
+public int InvalidValueFallbackSeconds { get; init; } = 50;
+
+/// <summary>Hard ceiling for each delay; values above it use InvalidValueFallbackSeconds. Default 300.</summary>
+public int HardCeilingSeconds { get; init; } = 300;
 }
 
 /// <summary>

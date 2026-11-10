@@ -38,6 +38,14 @@ KeylessAgent reads `keyless.json` from the workspace root. The first run writes 
     "MaxDelayMs": 1500,
     "MaxMessagesPerMinute": 6,      // local rate limiter
     "MinMessageSpacingSeconds": 5,  // min wall-clock gap between two consecutive sends (anti-captcha)
+    "InterActionDelays": {          // per-action human-pacing delays (anti-captcha)
+    "Enabled": true,              // master switch: false disables every delay below
+    "AfterExecutionSeconds": 2,   // after a reply's commands ran, before the next upload
+    "AfterUploadSeconds": 2,      // after attachments uploaded, before the paste
+    "AfterPasteSeconds": 2,       // after the text is pasted, before Send
+    "InvalidValueFallbackSeconds": 50, // used when a delay is negative or above the ceiling
+    "HardCeilingSeconds": 300     // values above this are invalid -> the fallback above
+    },
     "Debug": false                  // screenshots on errors
   },
 
@@ -127,6 +135,9 @@ See [agentscript-spec.md](agentscript-spec.md#limits-enforced-injected-into-the-
 - **WindowMode**: `TinyCorner` (default), `EdgePeek`, `Offscreen`, `Minimized` (backward-compatibility alias of offscreen), or `Normal`. Affects auto-launched Chrome only and the hide geometry. The window must be visible-on-screen (at least 80x80 pixels) to prevent Chrome's occlusion throttling: fully offscreen positions do NOT work on Chrome 130+ / Windows 11 24H2 even with `--disable-features=CalculateNativeWinOcclusion` — the renderer throttles and truncates the DeepSeek stream (turn-17/18 evidence). TinyCorner keeps an 80x80 square in the bottom-right corner (primary screen bounds, not hardcoded); EdgePeek uses a 10x10 sliver in the corner (may still be throttled if Chrome's heuristic rejects it). Anti-throttling flags (`--disable-renderer-backgrounding`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling`) are always passed; verify the running Chrome with `keyless diagnostics chrome`.
 - **TruncationBudgetSeconds** (default 20): wall-clock budget for a throttled reply stream - the wait keeps polling (spaced by the normal poll delay) while the stream may still resume, and fails with KA_REPLY_TRUNCATED only when the time since the FIRST truncation detection exceeds this. The reply-truncated turn event carries ElapsedSeconds so the logs show real timing.
 - **MinimizeAfterLogin**: minimize the window again after login completes (default true). The window is restored ONLY for login/captcha.
+
+- 
+InterActionDelays: human-pacing pauses between specific DOM actions, to reduce the chance of the chat provider's anti-abuse captcha. Enabled is the master switch; a per-field value of 0 disables just that one. Set it to false (or every field to 0) for the fastest loop. Typos that produce a non-numeric value make keyless.json fail to load (KA_CONFIG_INVALID); out-of-range numeric values (negative or above HardCeilingSeconds, default 300) fall back to InvalidValueFallbackSeconds (default 50), so a typo cannot silently re-enable rapid-fire. AfterExecutionSeconds only applies to mid-turn result sends (a turn's first request skips it); AfterUploadSeconds only when attachments were actually uploaded; AfterPasteSeconds applies to every send.
 
 - 
 MinMessageSpacingSeconds (default 5): a minimum wall-clock gap between two consecutive outgoing chat messages, enforced on top of MaxMessagesPerMinute and the jitter delays. This stops a burst of quick batches from tripping the provider's anti-abuse captcha. If a captcha still appears, raise it to 10-15, or lower MaxMessagesPerMinute (which caps the burst). A value below 2 s combined with a rate above 6/min logs a warning but is allowed.

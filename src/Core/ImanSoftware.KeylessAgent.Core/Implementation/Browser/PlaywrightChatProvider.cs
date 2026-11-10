@@ -78,6 +78,11 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             ChromeLaunchTracker.Remember(options.Browser, BrowserConnector.ResolveUserDataDir(options.Browser));
 
             var (attachment, rawPage) = connected.Data;
+// The window is positioned once per app run: only a session that JUST launched
+// Chrome needs to move it into the tiny corner. An attached session (turn 2+)
+// leaves the window exactly where the previous turn put it — re-hiding costs two
+// CDP races per turn and re-triggers Chrome's occlusion throttling.
+var weJustLaunchedChrome = ShouldHideWindowOnConnect(attachment.Kind, options.Browser);
             var page = (IPage)rawPage;
             var log = new LoggerAdapter<PlaywrightChatProvider>(_loggerFactory);
 
@@ -139,7 +144,8 @@ internal sealed class PlaywrightChatProvider : IChatProvider
             // removed because, with a tolerant CDP read-back, both land in the tiny corner, so
             // the first was pure waste (two CDP races + two Win32 attempts per session).
             // "Normal" means never force the window, so it skips the hide entirely.
-            if (options.Browser.MinimizeAfterLogin &&
+            if (weJustLaunchedChrome
+&& options.Browser.MinimizeAfterLogin &&
                 !string.Equals(options.Browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase))
                 await HideWindowAsync(page, options.Browser, attachment.LaunchedProcessId, log, cancellationToken);
 
@@ -172,7 +178,17 @@ TimeSpan.FromSeconds(options.Browser.MinMessageSpacingSeconds),
     /// Test seam: replaces the login window controller (the login flow shows the hidden
     /// window once so the user can log in — pure CDP window move).
     /// </summary>
-    internal Func<BrowserOptions, IChromeWindowController> WindowControllerFactory { get; set; } =
+    /// <summary>
+/// Whether this connection should move the window into the tiny corner. Only a session
+/// that JUST launched Chrome needs to position it — an attached session (turn 2+) leaves
+/// the window where the previous turn put it. "Normal" means never force the window.
+/// </summary>
+internal static bool ShouldHideWindowOnConnect(BrowserConnectionKind kind, BrowserOptions browser)
+=> kind is BrowserConnectionKind.AutoLaunchedChrome or BrowserConnectionKind.PlaywrightLaunched
+&& browser.MinimizeAfterLogin
+&& !string.Equals(browser.WindowMode?.Trim(), "Normal", StringComparison.OrdinalIgnoreCase);
+
+internal Func<BrowserOptions, IChromeWindowController> WindowControllerFactory { get; set; } =
         options => new ChromeWindowController();
 
     /// <summary>

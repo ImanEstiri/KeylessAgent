@@ -314,6 +314,10 @@ options.Browser.MinMessageSpacingSeconds, options.Browser.MaxMessagesPerMinute);
             problems.Add("Browser delays must satisfy 0 <= MinDelayMs <= MaxDelayMs.");
         if (options.Browser.MaxMessagesPerMinute < 1)
             problems.Add("Browser.MaxMessagesPerMinute must be at least 1.");
+if (options.Browser.InterActionDelays.InvalidValueFallbackSeconds is < 0 or > 600)
+problems.Add("Browser.InterActionDelays.InvalidValueFallbackSeconds must be between 0 and 600.");
+if (options.Browser.InterActionDelays.HardCeilingSeconds is < 1 or > 3600)
+problems.Add("Browser.InterActionDelays.HardCeilingSeconds must be between 1 and 3600.");
 if (options.Browser.MinMessageSpacingSeconds is < 0 or > 300)
 problems.Add("Browser.MinMessageSpacingSeconds must be between 0 and 300.");
         if (string.IsNullOrWhiteSpace(options.Browser.SelectorsFile))

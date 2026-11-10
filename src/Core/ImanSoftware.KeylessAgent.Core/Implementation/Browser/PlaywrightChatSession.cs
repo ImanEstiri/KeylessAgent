@@ -183,6 +183,18 @@ internal sealed class PlaywrightChatSession : IChatSession
                 _options.Timings?.Stop("paste");
             }
 
+            // Inter-action pacing: after attachments uploaded and registered, pause before paste.
+            if (delivery.Data == AttachmentDelivery.Uploaded)
+            {
+            var uploadDelay = InterActionDelayResolver.AfterUpload(_options.Browser);
+            if (uploadDelay > TimeSpan.Zero)
+            {
+            if (_options.LogEvent is not null)
+            await _options.LogEvent("inter-action-delay", new { Phase = "after-upload", Seconds = uploadDelay.TotalSeconds });
+            await Task.Delay(uploadDelay, cancellationToken);
+            }
+            }
+
             // --- Step 3: insert the whole text and send ---
             // A hung insert must not cost the default Playwright timeout: 15 s, then the
             // send loop's Enter fallback takes over.
@@ -198,6 +210,15 @@ internal sealed class PlaywrightChatSession : IChatSession
                     _log.LogWarning("InsertText timed out after 15 s; the send loop falls back to Enter.");
                 }
             }
+            // Inter-action pacing: after the text is pasted, pause before Send.
+            var pasteDelay = InterActionDelayResolver.AfterPaste(_options.Browser);
+            if (pasteDelay > TimeSpan.Zero)
+            {
+            if (_options.LogEvent is not null)
+            await _options.LogEvent("inter-action-delay", new { Phase = "after-paste", Seconds = pasteDelay.TotalSeconds });
+            await Task.Delay(pasteDelay, cancellationToken);
+            }
+
             if (_options.Browser.HumanDelay)
             {
                 await Task.Delay(_random.Next(

@@ -37,6 +37,9 @@ public class PlaywrightChatSessionTests : IDisposable
             SendConfirmSeconds = sendConfirmSeconds,
             UploadWaitSeconds = uploadWaitSeconds,
             ReplyTimeoutSeconds = 10,
+// Session tests exercise send/confirm logic, not the anti-captcha pacing:
+// disable the inter-action delays so the timing assertions stay meaningful.
+InterActionDelays = new ImanSoftware.KeylessAgent.Abstractions.Models.Configuration.InterActionDelaysOptions { Enabled = false },
         };
         if (configureBrowser is not null)
             browserOptions = configureBrowser(browserOptions);
