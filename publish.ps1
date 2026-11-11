@@ -27,7 +27,16 @@ $branch   = (git -C $csprojDir rev-parse --abbrev-ref HEAD).Trim()
 
 function ToRepoRelative {
     param([string]$FullPath)
-    $rel = [System.IO.Path]::GetRelativePath($repoRoot, $FullPath)
+    $full = (Resolve-Path $FullPath).Path
+    $root = (Resolve-Path $repoRoot).Path
+    if (-not ($root.EndsWith('\') -or $root.EndsWith('/'))) {
+        $root += [System.IO.Path]::DirectorySeparatorChar
+    }
+    if ($full.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $full.Substring($root.Length)
+    } else {
+        $rel = $full
+    }
     return ($rel -replace '\\', '/')
 }
 $csprojRel = ToRepoRelative $CsprojPath
