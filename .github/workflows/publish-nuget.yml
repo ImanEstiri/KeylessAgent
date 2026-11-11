@@ -1,0 +1,223 @@
+name: publish-nuget
+
+# این فایل عمومیه و میتونه بدون تغییر بین ریپوهای مختلف کپی بشه.
+#
+# تریگر فقط workflow_dispatch هست - یا با "gh workflow run" از اسکریپت
+# لوکال (publish.ps1)، یا دستی از پنل Actions گیت‌هاب با دادن مسیر csproj.
+#
+# تصمیم ورژن (و bump در صورت نیاز) این‌جا روی گیت‌هاب انجام میشه، چون
+# این‌جا همیشه به nuget.org دسترسی هست.
+#
+# هر ریپو باید جدا یک Trusted Publishing policy روی nuget.org بسازه با
+# Workflow File دقیقاً "publish-nuget.yml"، و یک Repository Variable به اسم
+# NUGET_USER (یوزرنیم nuget.org).
+
+on:
+  workflow_dispatch:
+    inputs:
+      csproj_path:
+        description: "مسیر فایل csproj از ریشه ریپو (مثلا src/Core/Foo/Foo.csproj)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # لازم برای commit کردن version bump
+  id-token: write   # لازم برای OIDC / Trusted Publishing
+  packages: write   # لازم برای push و delete در GitHub Packages
+
+concurrency:
+  group: publish-nuget-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Resolve project info
+        id: info
+        shell: pwsh
+        run: |
+          $csprojPath = "${{ inputs.csproj_path }}"
+          if (-not (Test-Path $csprojPath)) {
+            throw "csproj not found at $csprojPath"
+          }
+
+          [xml]$xml = Get-Content $csprojPath
+          $packageId = $xml.Project.PropertyGroup.PackageId | Where-Object { $_ } | Select-Object -First 1
+          if (-not $packageId) {
+            $packageId = [System.IO.Path]::GetFileNameWithoutExtension($csprojPath)
+          }
+
+          "csproj_path=$csprojPath" >> $env:GITHUB_OUTPUT
+          "package_id=$packageId"   >> $env:GITHUB_OUTPUT
+
+      - name: Determine version (bump against nuget.org if needed)
+        id: version
+        shell: pwsh
+        run: |
+          $csprojPath = "${{ steps.info.outputs.csproj_path }}"
+          $packageId  = "${{ steps.info.outputs.package_id }}"
+          $repoRoot   = (git rev-parse --show-toplevel).Trim()
+
+          [xml]$csprojXml = Get-Content $csprojPath
+
+          function Find-VersionFile {
+              if ($csprojXml.Project.PropertyGroup.Version | Where-Object { $_ }) { return $csprojPath }
+              $dir = Split-Path (Resolve-Path $csprojPath) -Parent
+              while ($true) {
+                  $candidate = Join-Path $dir "Directory.Build.props"
+                  if (Test-Path $candidate) {
+                      [xml]$cxml = Get-Content $candidate
+                      if ($cxml.Project.PropertyGroup.Version | Where-Object { $_ }) { return $candidate }
+                  }
+                  if ($dir -eq $repoRoot) { break }
+                  $dir = Split-Path $dir -Parent
+              }
+              return $null
+          }
+
+          $versionFile = Find-VersionFile
+          if (-not $versionFile) { throw "Could not find a <Version> element for $csprojPath" }
+
+          [xml]$vxml = Get-Content $versionFile
+          $versionNode = $vxml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
+          $currentVersion = [string]$versionNode.Version
+          Write-Host "current version ($versionFile): $currentVersion"
+
+          function Get-VersionObj($v) {
+              if ($v -match '^(\d+\.\d+\.\d+)') { return [version]$Matches[1] }
+              return $null
+          }
+
+          $flatUrl = "https://api.nuget.org/v3-flatcontainer/$($packageId.ToLower())/index.json"
+          $latestOnNuget = $null
+          try {
+              $resp = Invoke-RestMethod -Uri $flatUrl
+              if ($resp.versions.Count -gt 0) {
+                  $latestOnNuget = $resp.versions | Where-Object { Get-VersionObj $_ } |
+                      Sort-Object { Get-VersionObj $_ } -Descending | Select-Object -First 1
+              }
+          } catch {
+              Write-Host "no published version found for $packageId yet."
+          }
+
+          $newVersion = $currentVersion
+          if ($latestOnNuget) {
+              Write-Host "latest on nuget.org: $latestOnNuget"
+              $curV = Get-VersionObj $currentVersion
+              $pubV = Get-VersionObj $latestOnNuget
+              if ($curV -and $pubV -and $curV -le $pubV) {
+                  $newVersion = "$($pubV.Major).$($pubV.Minor).$($pubV.Build + 1)"
+                  Write-Host "bumping to $newVersion"
+              } else {
+                  Write-Host "local version already ahead -> publishing $currentVersion as-is"
+              }
+          } else {
+              Write-Host "first publish -> using $currentVersion as-is"
+          }
+
+          if ($newVersion -ne $currentVersion) {
+              ($vxml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version = $newVersion
+              $vxml.Save($versionFile)
+
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add $versionFile
+              git commit -m "chore: bump $packageId to $newVersion [skip ci]"
+              git push
+              if ($LASTEXITCODE -ne 0) { throw "failed to push version bump commit." }
+          }
+
+          "version=$newVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Pack
+        id: pack
+        shell: pwsh
+        run: |
+          $outDir = Join-Path $PWD "artifacts/${{ steps.info.outputs.package_id }}"
+          dotnet pack "${{ steps.info.outputs.csproj_path }}" -c Release --output $outDir
+          if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed." }
+
+          $nupkg = Get-ChildItem -Path $outDir -Filter "*.nupkg" |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $nupkg) { throw "No .nupkg produced." }
+
+          "path=$($nupkg.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: NuGet login (OIDC -> temp API key)
+        uses: NuGet/login@v1
+        id: nuget_login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        shell: pwsh
+        run: |
+          dotnet nuget push "${{ steps.pack.outputs.path }}" `
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" `
+            --source https://api.nuget.org/v3/index.json `
+            --skip-duplicate
+
+      - name: Unlist every older version on nuget.org
+        shell: pwsh
+        run: |
+          $packageId = "${{ steps.info.outputs.package_id }}"
+          $published = "${{ steps.version.outputs.version }}"
+          $flatUrl = "https://api.nuget.org/v3-flatcontainer/$($packageId.ToLower())/index.json"
+
+          try {
+            $resp = Invoke-RestMethod -Uri $flatUrl
+          } catch {
+            Write-Host "could not query flatcontainer for $packageId, skipping unlist step."
+            exit 0
+          }
+
+          foreach ($v in $resp.versions) {
+            if ($v -ne $published) {
+              Write-Host "unlisting $packageId $v ..."
+              dotnet nuget delete $packageId $v `
+                --source https://api.nuget.org/v3/index.json `
+                --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" `
+                --non-interactive
+            }
+          }
+
+      - name: Push same package to GitHub Packages
+        shell: pwsh
+        run: |
+          dotnet nuget push "${{ steps.pack.outputs.path }}" `
+            --api-key ${{ secrets.GITHUB_TOKEN }} `
+            --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json `
+            --skip-duplicate
+
+      - name: Delete every older version in GitHub Packages
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $packageId = "${{ steps.info.outputs.package_id }}"
+          $published = "${{ steps.version.outputs.version }}"
+          $owner     = "${{ github.repository_owner }}"
+
+          $base = "orgs/$owner/packages/nuget/$packageId/versions"
+          $versionsJson = gh api $base 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $base = "users/$owner/packages/nuget/$packageId/versions"
+            $versionsJson = gh api $base
+          }
+
+          $versions = $versionsJson | ConvertFrom-Json
+          foreach ($v in $versions) {
+            if ($v.name -ne $published) {
+              Write-Host "deleting GitHub Packages version $($v.name) (id $($v.id)) ..."
+              gh api -X DELETE "$base/$($v.id)"
+            }
+          }
