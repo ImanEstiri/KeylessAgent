@@ -29,7 +29,6 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>keyless</ToolCommandName>
     <PackageId>ImanSoftware.KeylessAgent.Cli</PackageId>
-    <Version>1.1.0-beta</Version>
     <Description>KeylessAgent: a coding agent that works through your own logged-in DeepSeek web chat instead of an API key. Applies model replies to your workspace using a strict command language, on a protected agent branch.</Description>
     <PackageTags>ai-agent;coding-agent;deepseek;playwright;cli;dotnet-tool;keyless</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
