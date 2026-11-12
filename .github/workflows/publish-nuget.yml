@@ -1,3 +1,99 @@
+name: publish-nuget
+
+# این فایل عمومیه و میتونه بدون تغییر بین ریپوهای مختلف کپی بشه.
+#
+# تریگر فقط workflow_dispatch هست - یا با "gh workflow run" از اسکریپت
+# لوکال (publish.ps1)، یا دستی از پنل Actions گیت‌هاب با دادن مسیر csproj.
+#
+# تصمیم ورژن (و bump در صورت نیاز) این‌جا روی گیت‌هاب انجام میشه، چون
+# این‌جا همیشه به nuget.org دسترسی هست.
+#
+# هر ریپو باید جدا یک Trusted Publishing policy روی nuget.org بسازه با
+# Workflow File دقیقاً "publish-nuget.yml"، و یک Repository Variable به اسم
+# NUGET_USER (یوزرنیم nuget.org).
+
+on:
+  workflow_dispatch:
+    inputs:
+      csproj_path:
+        description: "مسیر فایل csproj از ریشه ریپو (مثلا src/Core/Foo/Foo.csproj)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # لازم برای commit کردن version bump
+  id-token: write   # لازم برای OIDC / Trusted Publishing
+  packages: write   # لازم برای push و delete در GitHub Packages
+
+concurrency:
+  group: publish-nuget-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Resolve project info
+        id: info
+        shell: pwsh
+        run: |
+          $csprojPath = "${{ inputs.csproj_path }}"
+          if (-not (Test-Path $csprojPath)) {
+            throw "csproj not found at $csprojPath"
+          }
+
+          [xml]$xml = Get-Content $csprojPath
+          $packageId = $xml.Project.PropertyGroup.PackageId | Where-Object { $_ } | Select-Object -First 1
+          if (-not $packageId) {
+            $packageId = [System.IO.Path]::GetFileNameWithoutExtension($csprojPath)
+          }
+
+          "csproj_path=$csprojPath" >> $env:GITHUB_OUTPUT
+          "package_id=$packageId"   >> $env:GITHUB_OUTPUT
+
+      - name: Determine version (bump against nuget.org if needed)
+        id: version
+        shell: pwsh
+        run: |
+          $csprojPath = "${{ steps.info.outputs.csproj_path }}"
+          $packageId  = "${{ steps.info.outputs.package_id }}"
+          $repoRoot   = (git rev-parse --show-toplevel).Trim()
+
+          [xml]$csprojXml = Get-Content $csprojPath
+
+          function Find-VersionFile {
+              if ($csprojXml.Project.PropertyGroup.Version | Where-Object { $_ }) { return $csprojPath }
+              $dir = Split-Path (Resolve-Path $csprojPath) -Parent
+              while ($true) {
+                  $candidate = Join-Path $dir "Directory.Build.props"
+                  if (Test-Path $candidate) {
+                      [xml]$cxml = Get-Content $candidate
+                      if ($cxml.Project.PropertyGroup.Version | Where-Object { $_ }) { return $candidate }
+                  }
+                  if ($dir -eq $repoRoot) { break }
+                  $dir = Split-Path $dir -Parent
+              }
+              return $null
+          }
+
+          $versionFile = Find-VersionFile
+          if (-not $versionFile) { throw "Could not find a <Version> element for $csprojPath" }
+
+          [xml]$vxml = Get-Content $versionFile
+          $versionNode = $vxml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
+          $currentVersion = [string]$versionNode.Version
+          Write-Host "current version ($versionFile): $currentVersion"
+
+          function Get-VersionObj($v) {
+              if ($v -match '^(\d+\.\d+\.\d+)') { return [version]$Matches[1] }
               return $null
           }
 
