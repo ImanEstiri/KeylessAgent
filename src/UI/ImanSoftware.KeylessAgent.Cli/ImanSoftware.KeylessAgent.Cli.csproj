@@ -1,30 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <!-- Physical-pixel screen metrics for the Chrome window geometry (see app.manifest). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- Commands and settings are instantiated by Spectre.Console.Cli through reflection. -->
     <NoWarn>$(NoWarn);CA1812;S6966</NoWarn>
-      <ApplicationManifest>app.manifest</ApplicationManifest>
-</PropertyGroup>
-
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Core\ImanSoftware.KeylessAgent.Core\ImanSoftware.KeylessAgent.Core.csproj" />
   </ItemGroup>
-
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="" />
   </ItemGroup>
-
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Spectre.Console.Cli" />
   </ItemGroup>
-
   <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>keyless</ToolCommandName>
