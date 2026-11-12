@@ -1,13 +1,14 @@
+using System.Reflection;
 using ImanSoftware.KeylessAgent.Cli.Commands.Chrome;
 using ImanSoftware.KeylessAgent.Cli.Commands.Config;
 using ImanSoftware.KeylessAgent.Cli.Commands.Diagnostics;
 using ImanSoftware.KeylessAgent.Cli.Commands.Doctor;
 using ImanSoftware.KeylessAgent.Cli.Commands.Hide;
-using ImanSoftware.KeylessAgent.Cli.Commands.Show;
 using ImanSoftware.KeylessAgent.Cli.Commands.Interactive;
 using ImanSoftware.KeylessAgent.Cli.Commands.Resume;
-using ImanSoftware.KeylessAgent.Cli.Commands.Selectors;
 using ImanSoftware.KeylessAgent.Cli.Commands.Run;
+using ImanSoftware.KeylessAgent.Cli.Commands.Selectors;
+using ImanSoftware.KeylessAgent.Cli.Commands.Show;
 using ImanSoftware.KeylessAgent.Cli.Commands.Undo;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -29,7 +30,13 @@ var app = new CommandApp<InteractiveCommand>();
 app.Configure(config =>
 {
     config.SetApplicationName("keyless");
-    config.SetApplicationVersion(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "0.0.0");
+
+
+    var informational = typeof(Program).Assembly
+    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    config.SetApplicationVersion(informational?.Split('+')[0]
+        ?? typeof(Program).Assembly.GetName().Version?.ToString(3)
+        ?? "0.0.0");
 
     config.AddCommand<RunCommand>("run")
         .WithDescription("Run one agent turn on a workspace. The workspace path is the first argument (or the first thing you are asked for).")

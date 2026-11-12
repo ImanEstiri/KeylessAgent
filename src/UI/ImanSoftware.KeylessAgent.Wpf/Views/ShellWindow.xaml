@@ -88,7 +88,7 @@
 
             <!-- Title bar spans both columns; draggable via WindowChrome.CaptionHeight. -->
             <Grid Grid.Row="0" Grid.ColumnSpan="2" Background="Transparent">
-                <TextBlock Text="◆ KeylessAgent"
+                <TextBlock Text="◆ KeylessAgent - ImanSoftware"
                            VerticalAlignment="Center"
                            Margin="16,0,0,0"
                            Style="{DynamicResource SubtitleText}" />
@@ -96,20 +96,48 @@
                             HorizontalAlignment="Right"
                             WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="MinimizeButton"
-                            Width="46" Height="32"
-                            Style="{StaticResource GhostButton}"
-                            Content="▢" Click="OnMinimizeClick"
-                            ToolTip="Minimize" />
+        Width="46" Height="32"
+        Style="{StaticResource GhostButton}"
+        Padding="0"
+        Click="OnMinimizeClick"
+        ToolTip="Minimize">
+                        <Path Data="M 0,5 L 10,5"
+          Stroke="{DynamicResource TextPrimary}"
+          StrokeThickness="1"
+          StrokeStartLineCap="Round"
+          StrokeEndLineCap="Round"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center" />
+                    </Button>
+
                     <Button x:Name="MaximizeButton"
-                            Width="46" Height="32"
-                            Style="{StaticResource GhostButton}"
-                            Content="▢" Click="OnMaximizeClick"
-                            ToolTip="Maximize / restore" />
+        Width="46" Height="32"
+        Style="{StaticResource GhostButton}"
+        Padding="0"
+        Click="OnMaximizeClick"
+        ToolTip="Maximize / restore">
+                        <Path Data="M 0,0 L 10,0 L 10,10 L 0,10 Z"
+          Stroke="{DynamicResource TextPrimary}"
+          StrokeThickness="1"
+          Fill="Transparent"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center" />
+                    </Button>
+
                     <Button x:Name="CloseButton"
-                            Width="46" Height="32"
-                            Style="{StaticResource DangerButton}"
-                            Content="✕" Click="OnCloseClick"
-                            ToolTip="Close" />
+        Width="46" Height="32"
+        Style="{StaticResource DangerButton}"
+        Padding="0"
+        Click="OnCloseClick"
+        ToolTip="Close">
+                        <Path Data="M 0,0 L 10,10 M 10,0 L 0,10"
+          Stroke="{DynamicResource TextPrimary}"
+          StrokeThickness="1"
+          StrokeStartLineCap="Round"
+          StrokeEndLineCap="Round"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center" />
+                    </Button>
                 </StackPanel>
             </Grid>
 

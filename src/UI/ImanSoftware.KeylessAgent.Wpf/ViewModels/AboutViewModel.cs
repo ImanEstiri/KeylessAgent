@@ -20,7 +20,14 @@ public sealed class AboutViewModel : ObservableObject
     {
         _openFolder = openFolder ?? throw new ArgumentNullException(nameof(openFolder));
         RepositoryFolder = repositoryFolder ?? AppContext.BaseDirectory;
-        Version = (typeof(AboutViewModel).Assembly.GetName().Version)?.ToString(3) ?? "0.0.0";
+
+        var assembly = typeof(AboutViewModel).Assembly;
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        Version = !string.IsNullOrWhiteSpace(informational)
+            ? informational.Split('+')[0]   // ← SHA گیت را قطع کن
+            : assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+
         Name = "KeylessAgent";
         Description =
             "KeylessAgent drives chat.deepseek.com to turn plain-English requests into safe, confirmed file and command changes in your workspace — no API key needed.";
