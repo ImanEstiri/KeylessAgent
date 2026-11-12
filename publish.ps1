@@ -78,11 +78,35 @@ if (-not $run) {
 }
 
 Write-Step "found run $($run.databaseId); watching until it finishes ..."
-gh run watch $run.databaseId --repo $repoFull --exit-status
+gh run watch $run.databaseId --repo $repoFull --exit-status | Out-Null
 
-if ($LASTEXITCODE -eq 0) {
-    Write-Step "publish workflow finished successfully."
-} else {
-    Write-Step "publish workflow failed or was cancelled - see the run on GitHub for details."
+# ---------------------------------------------------------------------
+# Three-state result: FAILED / PASSED WITH WARNINGS / PASSED.
+# The two critical steps (push to nuget.org, push to GitHub Packages)
+# fail the whole run if they fail. The cleanup steps (unlisting old
+# versions) are best-effort and only emit a "::warning::" line when
+# they hit a problem, which still shows up in the raw log text.
+# ---------------------------------------------------------------------
+$runInfo   = gh run view $run.databaseId --repo $repoFull --json conclusion | ConvertFrom-Json
+$conclusion = $runInfo.conclusion
+
+if ($conclusion -ne "success") {
+    Write-Host ""
+    Write-Host "RESULT: FAILED (conclusion: $conclusion)" -ForegroundColor Red
+    Write-Host "see https://github.com/$repoFull/actions/runs/$($run.databaseId) for details."
     exit 1
+}
+
+$log = gh run view $run.databaseId --repo $repoFull --log
+$warnings = $log | Select-String -Pattern '::warning::' -SimpleMatch |
+    ForEach-Object { ($_.Line -replace '^.*?::warning::', '').Trim() } |
+    Select-Object -Unique
+
+if ($warnings.Count -gt 0) {
+    Write-Host ""
+    Write-Host "RESULT: PASSED WITH WARNINGS (push to nuget.org and GitHub Packages succeeded; cleanup had issues):" -ForegroundColor DarkYellow
+    foreach ($w in $warnings) { Write-Host "  - $w" -ForegroundColor DarkYellow }
+} else {
+    Write-Host ""
+    Write-Host "RESULT: PASSED" -ForegroundColor Green
 }
