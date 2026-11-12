@@ -39,38 +39,25 @@ public class DocsConsistencyTests
     }
 
     [Fact]
-    public void VersionMatchesItsOwnSource()
+    public void VersionMatchesDirectoryBuildProps()
     {
-        // Each project's assembly version must match whatever actually controls that
-        // project's version: its own <Version> if the csproj sets one (projects like
-        // the CLI that are published independently keep their own version track),
-        // otherwise the shared <Version> in Directory.Build.props.
-        var csprojPath = Path.Combine("src", "UI", "ImanSoftware.KeylessAgent.Cli", "ImanSoftware.KeylessAgent.Cli.csproj");
-        var csproj = ReadSourceFile(csprojPath);
-        var csprojMatch = System.Text.RegularExpressions.Regex.Match(csproj, "<Version>([^<]+)</Version>");
+        // The version lives in ONE place: Directory.Build.props. The CLI assembly reads it
+        // (Program.cs uses the assembly version), publish.ps1 bumps it there, and the csproj
+        // carries no <Version> of its own.
+        var props = ReadSourceFile("Directory.Build.props");
+        var match = System.Text.RegularExpressions.Regex.Match(
+            props, "<Version>([^<]+)</Version>");
+        match.Success.Should().BeTrue("Directory.Build.props must carry <Version>");
 
-        string documented;
-        if (csprojMatch.Success)
-        {
-            documented = csprojMatch.Groups[1].Value;
-        }
-        else
-        {
-            var props = ReadSourceFile("Directory.Build.props");
-            var propsMatch = System.Text.RegularExpressions.Regex.Match(props, "<Version>([^<]+)</Version>");
-            propsMatch.Success.Should().BeTrue(
-                "Directory.Build.props must carry <Version> when the CLI csproj has none of its own");
-            documented = propsMatch.Groups[1].Value;
-        }
-
-        // AssemblyVersion can't carry a prerelease suffix (e.g. "-beta"), so compare the numeric part only.
-        var documentedNumeric = documented.Split('-')[0];
-
+        var documented = match.Groups[1].Value;
         var assembly = typeof(Program).Assembly.GetName().Version;
         var assemblyVersion = assembly == null ? "0.0.0" : $"{assembly.Major}.{assembly.Minor}.{assembly.Build}";
 
-        assemblyVersion.Should().Be(documentedNumeric,
-            "the CLI assembly version is built from its own <Version> when present, otherwise from Directory.Build.props");
+        assemblyVersion.Should().Be(documented,
+            "the CLI assembly version is built from Directory.Build.props and must equal it");
+
+        ReadSourceFile(Path.Combine("src", "UI", "ImanSoftware.KeylessAgent.Cli", "ImanSoftware.KeylessAgent.Cli.csproj"))
+            .Should().NotContain("<Version>", "a second <Version> would drift from the single source");
     }
 
     [Fact]
