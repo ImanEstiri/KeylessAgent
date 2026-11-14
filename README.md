@@ -5,7 +5,6 @@
 [![NuGet](https://img.shields.io/nuget/v/ImanSoftware.KeylessAgent.Cli.svg)](https://www.nuget.org/packages/ImanSoftware.KeylessAgent.Cli)
 [![Downloads](https://img.shields.io/nuget/dt/ImanSoftware.KeylessAgent.Cli.svg)](https://www.nuget.org/packages/ImanSoftware.KeylessAgent.Cli)
 [![License: MIT](https://img.shields.io/github/license/ImanEstiri/KeylessAgent.svg)](LICENSE.txt)
-[![Build and test](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/ImanEstiri/KeylessAgent/actions/workflows/build-and-test.yml)
 
 KeylessAgent is a .NET coding agent that does not use an API key. It rides on the DeepSeek web chat **you are logged into** in a dedicated Chrome profile (one manual login, then it persists): it opens a new chat, sends your request together with your project's tree and code dump, waits for the reply, and applies it to your workspace as a strict command language (AgentScript) — on a protected agent branch, never on `main`.
 
