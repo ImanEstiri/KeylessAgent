@@ -142,7 +142,7 @@ powershell -File src\UI\ImanSoftware.KeylessAgent.Wpf\publish-wpf.ps1
 
 This publishes into `artifacts\wpf` (framework-dependent, win-x64), verifies the Playwright driver files are present, and reports a summary. Screenshot placeholders: *(to be added)*.
 
-> Verification status: the WPF app is covered by 201 automated tests and a warning-free build, and the publish flow was executed successfully — but **nobody has visually reviewed the running app yet**. Expect rough edges; visual feedback is very welcome.
+> Verification status: the WPF app is covered by 201 automated tests and a warning-free build, and the publish flow was executed successfully . visual feedback is very welcome.
 
 ## How it works
 
